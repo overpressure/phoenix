@@ -798,7 +798,7 @@ systemctl unset-environment PICO4_SLAM_BACKEND SLAM_WRITE_CSVS SLAM_CSV_PATH XRT
 | `PICO4_SLAM` | on | 6DoF |
 | `PICO4_SLAM_BACKEND` | `stock` | `stock`: PICO OS's tracker through `pico4-slamd`; `basalt`: Monado's Basalt |
 | `PICO4_SLAMD_LSC` | by module id | `pico4-slamd`'s lens-shading table in `/system/etc/pvr/config`; set in the unit's environment |
-| `PICO4_SLAMD_DEBUG` | unset | `pico4-slamd` passes the tracker's debug and verbose log lines to the journal |
+| `PICO4_SLAMD_DEBUG` | unset | `pico4-slamd` passes the tracker's debug and verbose log lines to the journal, and libSlam's own informational ones (tag `SLAM`, its per-frame timing); without it, as on PICO OS, the stock libraries' stdout and stderr go to `/dev/null` and only their Android log lines reach the journal |
 | `PICO4_SLAMD_AE` | on | `0`: no PICO OS auto exposure; the driver's own sets the exposure |
 | `PICO4_SLAMD_RESTART_S` | 10 | seconds a tracker that lost its confidence stays lost before a restart; `0` off |
 | `PICO4_SLAMD_RELOCALISE_S` | 10 | seconds from the first frames without a relocalisation until the session is a new room |
