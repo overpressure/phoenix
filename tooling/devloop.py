@@ -245,18 +245,24 @@ def battery_refusal(reading: str) -> str:
 class Dev(Headset):
     """The development loop's steps on a headset in development mode."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913  # the headset and its folders; tests pass the host's fakes
         self,
         settings: localconfig.Settings,
         work: Path = WORK,
         runner: Callable[..., str] = run,
         clock: Timing = time,
         edl_count: Callable[[], int] | None = None,
+        *,
+        out: Path = ROOT / "out",
     ) -> None:
-        """Work on the headset @p settings name, with keys, images and results in @p work; tests pass fakes."""
+        """Work on the headset @p settings name, with keys, images and results in @p work; tests pass fakes.
+
+        @p out holds the local builds whose archive the installed system may come from (dev check's state).
+        """
         work.mkdir(parents=True, exist_ok=True)
         super().__init__(settings, work, runner, clock, *([edl_count] if edl_count else []))
         self.work = work
+        self.out = out
 
     def identity(self) -> dict:
         """Return the headset's saved identity, checked."""
@@ -886,8 +892,8 @@ class Dev(Headset):
         # once the system image is built.
         archive = self.ssh("cat /usr/share/pico4/userspace-archive.sha256", 10).strip()
         local = [
-            ARCHIVE,
-            *sorted(m.with_name(ARCHIVE.name) for m in (ROOT / "out").glob("*/pico4-userspace.manifest.json")),
+            self.out / "userspace" / ARCHIVE.name,
+            *sorted(m.with_name(ARCHIVE.name) for m in self.out.glob("*/pico4-userspace.manifest.json")),
         ]
         found = next((p for p in local if hw.manifest_archive_sha256(p) == archive), None)
         if found is not None:

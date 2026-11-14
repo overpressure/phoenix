@@ -403,7 +403,7 @@ class DevTests(HeadsetFixture):
                     return reply if isinstance(reply, str) else reply()
             return self.fake(argv, timeout, stdin=stdin, check=check, log=log)
 
-        return devloop.Dev(self.settings, self.root / "dev", fake, self.clock)
+        return devloop.Dev(self.settings, self.root / "dev", fake, self.clock, out=self.root / "out")
 
     def test_check_knows_the_boot_image_whose_kernel_runs(self):
         valve = {"kernel": "Linux version 7.2.0-pico4 (overpressure@pico4) # SMP PREEMPT", "boot": "direct"}
@@ -1102,6 +1102,31 @@ class DevTests(HeadsetFixture):
         dev.reboot()
         self.assertTrue(any("cat /etc/pico4/test-run" in t for t in self.texts()))
         self.assertFalse(any(devloop.INSTALL_ID in t for t in self.texts()))
+
+    def test_the_installed_system_s_build_is_looked_for_in_the_dev_s_out_folder_only(self):
+        (self.root / "dev").mkdir(exist_ok=True)
+        (self.root / "dev/installed.json").write_text("{}")
+        build = self.root / "out" / "userspace"
+        build.mkdir(parents=True)
+        (build / "pico4-userspace.tar.zst").write_bytes(b"archive")
+        digest = hashlib.sha256(b"archive").hexdigest()
+        manifest = {"archive": {"sha256": digest, "bytes": 7}, "packages": {}}
+        (build / "pico4-userspace.manifest.json").write_text(json.dumps(manifest))
+        dev = self.make(
+            {
+                "cat /proc/1/comm /proc/cmdline": "systemd\nconsole=x",
+                "cat /proc/1/comm /etc/pico4/install-id": "systemd\ndev-loop\n1234567",
+                "userspace-archive.sha256": digest,
+            }
+        )
+        looked = []
+        real = devloop.hw.manifest_archive_sha256
+        with patch.object(devloop.hw, "manifest_archive_sha256", lambda p: looked.append(p) or real(p)):
+            dev.reboot()
+        self.assertTrue(looked)
+        self.assertTrue(all(self.root in p.parents for p in looked), looked)  # never the checkout's own out/
+        state = json.loads((self.root / "dev/state.json").read_text())
+        self.assertEqual((state["installed"], state["sha256"]), (True, digest))
 
     def test_reboot_waits_for_another_boot_not_a_fixed_time(self):
         (self.root / "dev").mkdir(exist_ok=True)
