@@ -41,7 +41,8 @@ import uuid
 from typing import TYPE_CHECKING, Callable
 
 from overpressure import REPO, android, doctor, qualcomm, runner, ssh, tools, usbaccess
-from overpressure.install import Ask, Context, Failed, Field, Stage, Task
+from overpressure import backup as backups
+from overpressure.install import Ask, Context, Failed, Field, NoBackup, Stage, Task
 from overpressure.process import until
 
 from . import ADB_MODE, FASTBOOT_MODE, USB_MODES, device, devloop, localconfig, unlockfiles
@@ -571,8 +572,8 @@ class Plan:
             system="PICO OS",
         )
         ctx.note(
-            f"Your backup is in {folder}: it is your way back to PICO OS. Keep a copy somewhere safe: Export backup "
-            "on the installer's start page writes it into one file (python -m overpressure backup export FILE)."
+            f"Your backup is in {folder}: it is your way back to PICO OS. Keep a copy somewhere safe: "
+            f"{backups.HOW_TO_EXPORT}."
         )
 
     def capture_backup(self, ctx: Context, settings: localconfig.Settings, folder: Path, luns: list[int]) -> None:
@@ -727,8 +728,7 @@ class Plan:
         settings = ctx.settings(Settings)
         folder = settings.path("backup")
         if not (folder / "manifest.json").is_file():
-            msg = f"There is no backup in {folder}: import the one you exported (Import backup on the start page)."
-            raise Failed(msg, NOTHING_CHANGED)
+            raise NoBackup(folder, "the way back to PICO OS writes it", NOTHING_CHANGED)
         ctx.progress(None, "Checking every file of the backup")
         ctx.run(self.command("device", "verify-backup", "--backup", folder))
         if not self.backup_there(ctx):

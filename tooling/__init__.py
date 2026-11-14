@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
 
-from overpressure import qualcomm
+from overpressure import backup, qualcomm
 from overpressure.headset import (
     INSTALL,
     Action,
@@ -395,7 +395,7 @@ class Phoenix(Headset):
         if workflow == UPGRADE and not (devloop.WORK / devloop.INSTALLED).is_file():
             return "This computer has not installed the system on a headset: install it first."
         if workflow == RESTORE and not (self.backup_set().folder / "manifest.json").is_file():
-            return "This computer has no backup of your headset: import the one you exported (Import backup)."
+            return f"This computer has no backup of your headset: {backup.HOW_TO_IMPORT}."
         return ""
 
     def after_install(self) -> AfterInstall:

@@ -151,11 +151,7 @@ def load_stock(args: argparse.Namespace) -> tuple[str, bytes]:
         raise SystemExit(msg)
     folder = args.backup or localconfig.load().path("backup")
     if not (folder / "manifest.json").is_file():
-        msg = (
-            f"no backup of the headset at {folder}: the maintenance system is made from it. Import it (the "
-            "window's Import backup..., or python -m overpressure backup import FILE), or name it in .env "
-            "(PICO4_BACKUP)"
-        )
+        msg = backup.missing(folder, "the maintenance system is made from it") + " Or name it in .env (PICO4_BACKUP)."
         raise SystemExit(msg)
     try:
         path, data = backup.verified_partition(folder, "boot")

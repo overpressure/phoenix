@@ -310,10 +310,7 @@ class Dev(Headset):
         """Return the headset's stock recovery partition image from its EDL backup, checked against the manifest."""
         folder = self.s.path("backup")
         if not (folder / "manifest.json").is_file():
-            msg = (
-                f"no backup of the headset at {folder}: the boot images are made from it. Import it (the window's "
-                "Import backup..., or python -m overpressure backup import FILE), or name it in .env (PICO4_BACKUP)"
-            )
+            msg = backups.missing(folder, "the boot images are made from it") + " Or name it in .env (PICO4_BACKUP)."
             raise ValueError(msg)
         return backups.verified_partition(folder, "recovery")
 
