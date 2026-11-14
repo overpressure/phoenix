@@ -238,7 +238,10 @@ class PlanTests(unittest.TestCase):
         self.assertTrue(done["stage1"](ctx))  # ty: ignore[call-non-callable]  # every build has one
 
     def test_connect_and_prepare_find_the_serials_and_write_them_to_env(self):
+        reads = []  # the loader's last message, read after the restart into PICO OS (on Linux it waits for that)
+        self.plan.usb_reader = lambda: reads.append(1) or True
         ui = self.run_stages(("connect", "prepare"), self.yes("plug-in", "consent"))
+        self.assertEqual(len(reads), 1)
         self.assertEqual(ui.finished()["status"], "done", ui.finished())
         s = self.settings()
         self.assertEqual((s.adb_serial, s.edl_serial, s.fastboot_serial), (ADB, EDL, FASTBOOT))

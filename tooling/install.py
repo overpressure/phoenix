@@ -568,6 +568,8 @@ class Plan:
         # restart into EDL from this session's loader is not carried out after a whole backup.
         ctx.progress(None, "Restarting the headset into PICO OS")
         ctx.output(qualcomm.reboot_argv(settings.edl_program(), settings.path("loader")), 60, check=False)
+        # Linux: the loader restarts only once its last message is read (Windows' driver reads it itself).
+        qualcomm.drain_until_gone(ctx.clock, reader=self.usb_reader)
         android.wait_booted(
             settings.tool("adb"),
             settings.adb_serial,
