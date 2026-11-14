@@ -1,23 +1,13 @@
 # SPDX-License-Identifier: Unlicense
-"""devices.phoenix.tooling.stock: the PICO 4's members of PICO's full OTA, and its firmware default."""
+"""devices.phoenix.tooling's firmware default, which device.mk, env.example and firmware.json repeat."""
 
 import json
 import unittest
 from pathlib import Path
 
-from devices.phoenix.tooling import FIRMWARE, doctor, localconfig, stock
-from overpressure.api.v1 import ota
+from devices.phoenix.tooling import FIRMWARE, doctor, localconfig
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-class StockTests(unittest.TestCase):
-    def test_members_cover_every_output(self):
-        members = set(ota.members_needed(stock.COPIED, stock.BLOCK_IMAGES))
-        self.assertIn("firmware-update/NON-HLOS.bin", members)
-        self.assertIn("firmware-update/dspso.bin", members)
-        self.assertIn("system.new.dat.br", members)
-        self.assertIn("vendor.transfer.list", members)
 
 
 class FirmwareDefaultTests(unittest.TestCase):
@@ -27,7 +17,7 @@ class FirmwareDefaultTests(unittest.TestCase):
         version = FIRMWARE.split("-")[0]
         self.assertEqual(localconfig.Settings().firmware, FIRMWARE)
         self.assertEqual(doctor.FIRMWARE_VERSION, version)
-        self.assertIn(FIRMWARE, json.loads(stock.CATALOG.read_text(encoding="utf-8"))["builds"])
+        self.assertIn(FIRMWARE, json.loads((ROOT / "tooling/firmware.json").read_text(encoding="utf-8"))["builds"])
 
     def test_the_makefile_repeats_it(self):
         mk = (ROOT / "device.mk").read_text(encoding="utf-8")

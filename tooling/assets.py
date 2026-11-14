@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Unlicense
-"""The PICO 4's assets: every file the userspace build takes from PICO OS, out of PICO's public OTA.
+"""The PICO 4's assets: every file the system takes from PICO OS, out of the headset's own backup.
 
-    python -m overpressure assets [--firmware NAME] [--stock DIR] [--assets DIR] [KIND...]
+    python -m overpressure assets [--backup DIR] [--assets DIR] [KIND...]
 
-First the stock folder (python -m overpressure stock: PICO's full OTA's partitions, about 11 GB,
-the OTA members kept and not fetched again), then each KIND (all by default) into
-ASSETS/KIND-VERSION (VERSION: the firmware's number, 5.13.7), each into a fresh folder that
-replaces the old one only when it is complete. Python on any system: the images are read by
+Each KIND (all by default) from the headset's EDL backup (default: the one .env names) into
+ASSETS/KIND-VERSION (VERSION: the backup's firmware number, 5.13.7), each into a fresh folder
+that replaces the old one only when it is complete. stock-files packs the same kinds for the
+install (tooling/stockfiles.py). Python on any system: the images are read by
 overpressure's ext4 and FAT readers (docs/development.md#stock-firmware). Each folder holds a
 manifest.json with its sources and every file's SHA-256, which scripts/build-userspace.sh reads:
 
@@ -62,7 +62,7 @@ from overpressure.api.v1.assets import (
 from overpressure.api.v1.ext4 import Ext4Error
 from overpressure.api.v1.fat import FatError
 
-from . import FIRMWARE, aimgrip, controllermodel, ledmodel, leverarm, stock
+from . import aimgrip, controllermodel, ledmodel, leverarm
 
 Log = Callable[[str], None]
 
@@ -371,11 +371,6 @@ def current(folder: Path, name: str) -> bool:
     return isinstance(manifest, dict) and manifest.get("sources") == KINDS[name].sources
 
 
-def version_of(firmware: str) -> str:
-    """Return the firmware's number (5.13.7 of 5.13.7-global-seko): the assets folders' suffix."""
-    return firmware.split("-", 1)[0]
-
-
 #: The stock folder's images in a backup: its partition and, in super, the logical partition.
 BACKUP_IMAGES: dict[str, tuple[str, str | None]] = {
     "system.img": ("super", "system"),
@@ -415,27 +410,6 @@ def extract_all(folder: StockFolder, version: str, assets: Path, kinds: tuple[st
     return done
 
 
-def build(  # noqa: PLR0913  # what to extract and where; the stock step and the log keyword-only
-    firmware: str,
-    stock_dir: Path,
-    assets: Path,
-    kinds: tuple[str, ...] = tuple(KINDS),
-    *,
-    fetch: Callable[[str, Path, Log], dict] = stock.build,
-    log: Log = print,
-) -> list[Path]:
-    """Build the stock folder of @p firmware in @p stock_dir, then each kind into @p assets/KIND-VERSION.
-
-    Each kind goes into a fresh KIND-VERSION.new that replaces the old folder only when complete.
-    """
-    started = time.monotonic()
-    fetch(firmware, stock_dir, log)
-    with StockFolder(stock_dir) as folder:
-        done = extract_all(folder, version_of(firmware), assets, kinds, log)
-    log(f">> assets for {firmware}: {' '.join(p.name for p in done)} ({time.monotonic() - started:.0f} s)")
-    return done
-
-
 def from_backup(backup: Path, assets: Path, kinds: tuple[str, ...] = tuple(KINDS), *, log: Log = print) -> list[Path]:
     """Extract each kind from the headset's own backup @p backup into @p assets/KIND-VERSION (no download).
 
@@ -454,21 +428,18 @@ def main(argv: list[str] | None = None) -> int:
     """Run the assets command line."""
     ap = argparse.ArgumentParser(prog="python -m overpressure assets", description=__doc__.split("\n\n")[0])
     ap.add_argument("kinds", nargs="*", metavar="KIND", help=f"of {', '.join(KINDS)} (default: all)")
-    ap.add_argument("--firmware", default=FIRMWARE, help=f"firmware.json entry (default {FIRMWARE})")
-    ap.add_argument("--stock", type=Path, help="the stock folder (default cache/pico4-stock/FIRMWARE)")
+    ap.add_argument("--backup", type=Path, help="the headset's EDL backup (default: the one .env names)")
     ap.add_argument("--assets", type=Path, default=REPO / "assets", help="where the KIND-VERSION folders go")
-    ap.add_argument("--backup", type=Path, help="take them from this EDL backup of the headset instead (no download)")
     args = ap.parse_args(argv)
     unknown = [k for k in args.kinds if k not in KINDS]
     if unknown:
         ap.error(f"unknown KIND {', '.join(unknown)}; known: {', '.join(KINDS)}")
-    stock_dir = args.stock or REPO / "cache" / "pico4-stock" / args.firmware
     try:
-        if args.backup:
-            from_backup(args.backup, args.assets, tuple(args.kinds) or tuple(KINDS))
-        else:
-            build(args.firmware, stock_dir, args.assets, tuple(args.kinds) or tuple(KINDS))
-    except (AssetError, Ext4Error, FatError) as exc:
+        from . import localconfig  # noqa: PLC0415  # .env only when no backup is named
+
+        backup = args.backup or localconfig.load(REPO / ".env", {}).path("backup")
+        from_backup(backup, args.assets, tuple(args.kinds) or tuple(KINDS))
+    except (AssetError, Ext4Error, FatError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0

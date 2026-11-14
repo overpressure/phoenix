@@ -268,26 +268,17 @@ class AssetsTests(unittest.TestCase):
         with self.assertRaisesRegex(AssetError, "exists"):
             assets.extract("wlan", self.folder, self.root / "taken", log=lambda _line: None)
 
-    def test_build_replaces_each_folder_only_when_complete(self):
+    def test_each_folder_is_replaced_only_when_complete(self):
         out = self.root / "assets"
         (out / "wlan-5.13.7").mkdir(parents=True)
         (out / "wlan-5.13.7" / "old").write_bytes(b"old")
-        fetched = []
-
-        def fetch(firmware: str, stock: Path, _log: Callable[[str], None]) -> dict:
-            fetched.append((firmware, stock))
-            return {}
-
-        done = assets.build(
-            "5.13.7-global-seko", self.stock, out, ("wlan", "graphics-firmware"), fetch=fetch, log=lambda _l: None
-        )
-        self.assertEqual(fetched, [("5.13.7-global-seko", self.stock)])
+        done = assets.extract_all(self.folder, "5.13.7", out, ("wlan", "graphics-firmware"), log=lambda _l: None)
         self.assertEqual([p.name for p in done], ["wlan-5.13.7", "graphics-firmware-5.13.7"])
         self.assertFalse((out / "wlan-5.13.7" / "old").exists())
         self.assertFalse((out / "wlan-5.13.7.new").exists())
         (self.stock / "modem.bin").write_bytes(b"broken")
-        with self.assertRaises(AssetError):
-            assets.build("5.13.7-global-seko", self.stock, out, ("wlan",), fetch=fetch, log=lambda _l: None)
+        with StockFolder(self.stock) as changed, self.assertRaises(AssetError):
+            assets.extract_all(changed, "5.13.7", out, ("wlan",), log=lambda _l: None)
         self.assertTrue((out / "wlan-5.13.7" / "manifest.json").is_file())  # the old folder stays
 
 

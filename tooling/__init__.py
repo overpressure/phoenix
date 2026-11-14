@@ -76,7 +76,7 @@ def _relative(path: Path, root: Path) -> str:
     return str(path)
 
 
-#: The firmware every default names; device.mk and env.example repeat it (tests/test_stock.py).
+#: The firmware every default names; device.mk and env.example repeat it (tests/test_firmware.py).
 FIRMWARE = "5.13.7-global-seko"
 FIRMWARES = (FIRMWARE,)
 _firmware = Param(
@@ -87,9 +87,6 @@ _firmware = Param(
     FIRMWARES,
     "the PICO OS build in firmware.json whose stock kernel the image takes",
 )
-#: The stock firmware folder of python -m overpressure stock and assets, relative to the repository:
-#: the assets step reads it on this computer.
-STOCK_FOLDER = "cache/pico4-stock/" + FIRMWARE
 # The Linux build folders live in /var/tmp on purpose: the build container's volume, on a Linux file system and kept.
 #: The userspace build's root, on the Linux side.
 USERSPACE_BUILD = "/var/tmp/pico4-userspace-build"  # noqa: S108  # a root-owned build folder, not a temporary file
@@ -115,8 +112,7 @@ class Phoenix(Headset):
             ),
             "inspect": Command("image", "analyse a stock boot image and its kernel configuration", keep=True),
             "match": Command("image", "find the firmware.json entry for a headset's fingerprint", keep=True),
-            "stock": Command("stock", "the stock firmware's partitions from PICO's public OTA"),
-            "assets": Command("assets", "the stock firmware, then every file the userspace build takes from it"),
+            "assets": Command("assets", "every file the system takes from PICO OS, from the headset's backup"),
             "stock-files": Command("stockfiles", "PICO OS's files for the data partition, from the headset's backup"),
             "bootchain": Command(
                 "bootchain", "each PICO OS build's boot chain against the verified one, from PICO's OTAs"

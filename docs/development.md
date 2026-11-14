@@ -26,9 +26,8 @@ tooling/          the PICO 4's host tooling (Python): python -m overpressure COM
   __init__.py       HEADSET: its commands, the window's steps and the installer's workflows
   install.py        the installer's three workflows: install, upgrade, restore to stock
   image.py          stage-1 boot image (build, inspect, match) on overpressure/stage1.py
-  firmware.json     PICO's OTA builds
-  stock.py          the members of PICO's full OTA the assets need (overpressure/ota.py)
-  assets.py         every file the userspace build takes from them (overpressure/assets.py)
+  firmware.json     PICO's OTA builds (the stage-1 image's firmware, bootchain)
+  assets.py         every file the system takes from PICO OS, from the backup (overpressure/assets.py)
   device.py         identity, EDL backups, engineering ABL, unlock and restore; unlockfiles.py: their downloads
   hardware_test.py  the bounded acceptance runner (preflight, flash-run)
   cycle.py          the unattended acceptance cycle that ends on stock boot and ABL
@@ -73,7 +72,7 @@ what is missing; `python -m overpressure tools` fetches adb, fastboot and edl-ng
 
 | Task | Needs |
 | --- | --- |
-| Stage-1 image, stock firmware and assets, host tests, headset commands | Python 3.9+ on Windows, Linux or macOS (the start scripts or `uv sync` add the pinned brotli, pyusb and libusb-package); platform-tools and OpenSSH for the headset |
+| Stage-1 image, assets, host tests, headset commands | Python 3.9+ on Windows, Linux or macOS (the start scripts or `uv sync` add the pinned pyusb and libusb-package); platform-tools and OpenSSH for the headset |
 | Userspace archive, system image, Valve's kernel, the QEMU test kernel | the build container ([docs/tool.md](https://github.com/overpressure/overpressure/blob/main/docs/tool.md#linux-root-steps)): Docker or Podman on any host. Its image has every tool, LLVM 20 and qemu-user-static, and registers the aarch64 binfmt handler (F flag) on an x86-64 engine that has none |
 | Windows NCM initialization (a stage 1 on the stock kernel: the acceptance runner's) | UsbDk; pyusb and libusb-package |
 
@@ -106,31 +105,22 @@ machine.
 
 The system needs PICO OS's firmware and data files (DSP images, the head tracker, configuration). They are the
 same on every PICO 4 with that firmware. The image holds none of them: the install takes them from the
-headset's own backup ([install.md](install.md#pico-oss-files)). For development, `assets` takes the same
-files from PICO's public full OTA (or, with `--backup DIR`, from a backup, with no download):
+headset's own backup ([install.md](install.md#pico-oss-files)). For development, `assets` writes the same files
+as folders, from the same backup and with no download:
 
 ```sh
-# Any system, no root and no Linux: the OTA's partitions (about 3.6 GB of OTA members, kept under
-# STOCK/download), then every asset from them into assets/*-5.13.7
-python -m overpressure assets --firmware 5.13.7-global-seko [--stock STOCK] [--assets DIR] [KIND...]
+# Any system, no root and no Linux: every asset out of the backup (default: the one .env names)
+# into assets/*-5.13.7
+python -m overpressure assets [--backup DIR] [--assets DIR] [KIND...]
 ```
 
-`assets` ([tooling/assets.py](../tooling/assets.py), the window's *Stock firmware and assets*) builds the stock
-folder (`STOCK`, by default `cache/pico4-stock/FIRMWARE`) with `python -m overpressure stock`, then each kind
-into a fresh `assets/KIND-VERSION.new` that replaces the old folder only when complete. It is Python only: the
-stock images are read by overpressure's read-only ext4 and FAT readers
-([overpressure/ext4.py](https://github.com/overpressure/overpressure/blob/main/overpressure/ext4.py), [overpressure/fat.py](https://github.com/overpressure/overpressure/blob/main/overpressure/fat.py)), the
-OTA's block images decompressed by the pinned brotli package (or the `brotli` command without it). No
-e2fsprogs, mtools or Linux is involved.
-
-`stock` ([tooling/stock.py](../tooling/stock.py)) takes from the OTA zip only the members it needs, each checked
-against the zip's CRC: `system` and `vendor` as ext4 images rebuilt from their brotli block images and transfer
-lists, `firmware-update/NON-HLOS.bin` as `modem.bin` (FAT16), `firmware-update/dspso.bin` as `dsp.bin` (ext4),
-`recovery.img` and `boot.img`; `manifest.json` holds their sha256, which `assets` checks before it reads an image
-([overpressure/assets.py](https://github.com/overpressure/overpressure/blob/main/overpressure/assets.py)). The firmware is the headset's (`PICO4_FIRMWARE`,
-`python -m overpressure match`, [stage1.md](stage1.md)). The kernel step reads the same folder's `vendor.img` in
-the build container (the repository at `/work`). The results are proprietary: keep the stock folder and
-`assets/` private.
+`assets` ([tooling/assets.py](../tooling/assets.py)) reads the backup's `super` (its `system` and `vendor`
+logical partitions), `modem`, `dsp` and `bluetooth`, checked against the backup's hashes, and writes each kind
+into a fresh `assets/KIND-VERSION.new` that replaces the old folder only when complete; VERSION is the backup's
+firmware number. It is Python only: the images are read by overpressure's read-only ext4 and FAT readers
+([overpressure/ext4.py](https://github.com/overpressure/overpressure/blob/main/overpressure/ext4.py), [overpressure/fat.py](https://github.com/overpressure/overpressure/blob/main/overpressure/fat.py)), no
+e2fsprogs, mtools or Linux. `stock-files` packs the same kinds for the install. The results are proprietary:
+keep `assets/` private.
 
 | Kind (`assets/KIND-VERSION`) | Content | From |
 | --- | --- | --- |
@@ -150,13 +140,14 @@ file system has them, not its ownership. On Windows they carry no POSIX modes (t
 | Assets compared with an extraction by debugfs and mtools | every file byte-identical, every manifest identical |
 | The ext4 reader on system, vendor, dsp and persist | every file, link target, mode, owner and modification time as debugfs reads them |
 | The FAT reader on `modem.bin` | every file and its time as mtools reads them |
-| Time and disk, from an empty folder | 2 min 40 s: the 3.6 GB download in about 2 min (eight connections; PICO's server gives each about 3 MB/s), both images rebuilt in about 30 s, the five kinds in about 10 s. 10.8 GB in the stock folder (3.6 GB OTA members, 7.0 GB images), 133 MB of assets |
+| Time and disk | the five kinds from the backup in about 10 s, 128 MB of assets |
 
-For 5.13.7 every asset file is byte-identical to the same file in an EDL backup of a headset on that firmware.
+For 5.13.7 every asset file from a backup is byte-identical to the same file from PICO's public full OTA of that
+firmware.
 The headset's own factory data (sensor registry and calibration, camera, IMU and lens calibration, the serial
 the fan's table follows, the Wi-Fi MAC addresses) stays in its `persist` partition, mounted read-only at boot
 ([userspace.md](userspace.md#the-headsets-own-data)). The stage-1 image takes its stock boot image and the dev
-image its stock recovery (device-tree overlay and AVB footer) from the headset's EDL backup, not the OTA. The
+image its stock recovery (device-tree overlay and AVB footer) from the headset's EDL backup too. The
 user's backup remains the way back to stock and the reference of the write checks ([install.md](install.md)).
 
 ## The userspace build

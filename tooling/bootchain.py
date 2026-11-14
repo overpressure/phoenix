@@ -28,7 +28,7 @@ from typing import Callable
 from overpressure.api.v1 import kernelinfo, ota, payload
 
 from . import FIRMWARE
-from .stock import CATALOG
+from .image import CATALOG
 
 #: The boot chain's members of a full OTA, in boot order, without the ABL.
 BOOT_CHAIN = (

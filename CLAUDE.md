@@ -52,12 +52,12 @@ README.md current.
 ## Layout
 
 - `tooling/`: the PICO 4's host tooling, reached as `python -m overpressure
-  build|inspect|match|stock|assets|bootchain|device|hwtest|dev|cycle`. `__init__.py` holds `HEADSET`
+  build|inspect|match|assets|stock-files|bootchain|device|hwtest|dev|cycle`. `__init__.py` holds `HEADSET`
   (its commands, the window's steps, the installer's workflows, its backup); `install.py` the
   installer's plans (install, upgrade, restore); `device.py` EDL/fastboot/ADB and the verified
   firmware list; `devloop.py` the development loop; `cycle.py`, `hardware_test.py` the acceptance
   runs; `image.py` the stage-1 image; `stockfiles.py` PICO OS's files for the data partition, from the
-  headset's own backup (through `assets.py`; `stock.py` reads PICO's public OTA instead, for development).
+  headset's own backup (through `assets.py`, which also writes them as folders for development).
   What every headset shares comes from overpressure's headset interface, `overpressure.api.v1`
   ([the interface](https://github.com/overpressure/overpressure/blob/main/docs/adding-a-headset.md#the-headset-interface)).
 - `initramfs/`: stage 1, the maintenance environment in `recovery` and the base of test images;

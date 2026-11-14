@@ -3,8 +3,8 @@
 What the PICO 4's images take unchanged from PICO OS's stock image, where each comes from, what uses it and
 what could replace it. The stage-1 and recovery images take the headset's own `boot` and `recovery` from its EDL
 backup; the system links the rest to the headset's own copies ([install.md](install.md#pico-oss-files)). For
-development the same files come from a backup or PICO's public OTA of the firmware (`python -m overpressure
-stock`, then `assets`, [development.md](development.md#stock-firmware)); none is in the repository. What loads was measured on one headset (camera module vendor 9):
+development the same files come out of the backup as folders (`python -m overpressure assets`,
+[development.md](development.md#stock-firmware)); none is in the repository. What loads was measured on one headset (camera module vendor 9):
 the kernel log for the WLAN files, the files a tracker start opens for the rest. Device-specific data
 (calibration, OTP, persist) is not listed: the image links it from the headset's own `persist` partition at
 boot ([userspace.md](userspace.md#the-headsets-own-data)).

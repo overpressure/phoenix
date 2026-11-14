@@ -46,7 +46,7 @@ class ExtractionTests(unittest.TestCase):
             self.assertIn(name, taken, name)
         for path in ("/bin/cdsprpcd", "/system/bin/bootstrap/linker64", '"/cdsp"', "fastrpc_shell_3"):
             self.assertIn(path, source, path)
-        # From the stock firmware (PICO's public OTA), checked against its manifest first.
+        # From the headset's backup, checked against its hashes first.
         self.assertEqual(assets.KINDS["stock-slam"].images, ("system.img", "vendor.img", "modem.bin", "dsp.bin"))
         # As a fresh PICO OS install, nothing of the camera modules' ids from the backup.
         self.assertNotIn("camera_otp", source)

@@ -1,5 +1,5 @@
 # The PICO 4's targets of the root Makefile (make DEVICE=phoenix ...; it is the default).
-# tooling/__init__.py's FIRMWARE (pinned by tests/test_stock.py).
+# tooling/__init__.py's FIRMWARE (pinned by tests/test_firmware.py).
 FIRMWARE ?= 5.13.7-global-seko
 BUILD_ROOT ?= /var/tmp/pico4-userspace-build
 USERSPACE ?= out/userspace

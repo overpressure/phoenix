@@ -700,7 +700,7 @@ the recorded head accelerometer (`--head-up`, or `--estimate-head-up` from a sti
 
 PICO OS's files are the headset's own: the install takes them from its backup and writes them to the data
 partition (`python -m overpressure stock-files`, [install.md](install.md#pico-oss-files)); the DSP images come
-from its `modem` partition at boot. The same extraction, as folders, from a backup or PICO's OTA
+from its `modem` partition at boot. The same extraction, as folders, from the backup
 ([development.md](development.md#stock-firmware)):
 
 ```sh
