@@ -150,7 +150,7 @@ file system has them, not its ownership. On Windows they carry no POSIX modes (t
 | Assets compared with an extraction by debugfs and mtools | every file byte-identical, every manifest identical |
 | The ext4 reader on system, vendor, dsp and persist | every file, link target, mode, owner and modification time as debugfs reads them |
 | The FAT reader on `modem.bin` | every file and its time as mtools reads them |
-| Time and disk, from an empty folder | 20 min, almost all the 3.6 GB download (at about 3 MB/s); both images rebuilt in about 30 s, the five kinds in about 10 s. 10.8 GB in the stock folder (3.6 GB OTA members, 7.0 GB images), 133 MB of assets |
+| Time and disk, from an empty folder | 2 min 40 s: the 3.6 GB download in about 2 min (eight connections; PICO's server gives each about 3 MB/s), both images rebuilt in about 30 s, the five kinds in about 10 s. 10.8 GB in the stock folder (3.6 GB OTA members, 7.0 GB images), 133 MB of assets |
 
 For 5.13.7 every asset file is byte-identical to the same file in an EDL backup of a headset on that firmware.
 The headset's own factory data (sensor registry and calibration, camera, IMU and lens calibration, the serial
