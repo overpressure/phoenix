@@ -95,6 +95,10 @@ FASTBOOT_WHERE = (
 
 NOTHING_CHANGED = "Nothing was changed on your headset."
 AGAIN = "Start the installer again to go on where it stopped."
+#: A task that changes nothing on the headset: what a failure there says, unless it says more itself.
+UNCHANGED = NOTHING_CHANGED + " " + AGAIN
+#: The install stage's questions: the headset already waits in the maintenance system.
+IN_MAINTENANCE = "The headset waits in the maintenance system; nothing of the new system is written yet. " + AGAIN
 #: Where the headset is when PICO OS is not through with its MCU: the installer did not take it out of PICO OS.
 STILL_PICO_OS = "PICO OS runs on the headset; the installer has not taken it out of PICO OS. " + AGAIN
 PLUG_IN = Ask(
@@ -733,7 +737,10 @@ class Plan:
         ctx.run(self.command("device", "verify-backup", "--backup", folder))
         if not self.backup_there(ctx):
             msg = f"The backup in {folder} is not of the headset {settings.path('identity')} describes."
-            raise Failed(msg, NOTHING_CHANGED)
+            raise Failed(
+                msg,
+                f"{NOTHING_CHANGED} Name this headset's own backup in .env ({KEY('backup')}). {AGAIN}",
+            )
 
     def pico_os_running(self, ctx: Context) -> bool:
         """Tell whether the headset .env names answers adb now: PICO OS runs, its system is stock already."""
@@ -763,8 +770,8 @@ class Plan:
                 "The host tools, then every file of your headset's backup is checked against its manifest. The "
                 "headset is not needed yet.",
                 (
-                    self.step_task("tools", "Host tools", "about 1 min", done=self.tools_there),
-                    Task("verify-backup", "Check the backup", self.check_backup, "about 5 min", where=NOTHING_CHANGED),
+                    self.step_task("tools", "Host tools", "about 1 min", done=self.tools_there, where=UNCHANGED),
+                    Task("verify-backup", "Check the backup", self.check_backup, "about 5 min", where=UNCHANGED),
                 ),
             ),
             Stage(
@@ -778,7 +785,7 @@ class Plan:
                         "Your consent",
                         self.consent_restore,
                         done=lambda ctx: ctx.completed("system"),
-                        where=NOTHING_CHANGED,
+                        where=UNCHANGED,
                     ),
                     Task(
                         "system",
@@ -874,7 +881,7 @@ class Plan:
                 + INSTALL_TIME
                 + " Keep the cable in.",
                 (
-                    Task("plug-in", "Connect the headset", self.plug_in_upgrade, ""),
+                    Task("plug-in", "Connect the headset", self.plug_in_upgrade, "", where=UNCHANGED),
                     # This version's maintenance system goes to recovery first: the install runs in it.
                     self.step_task(
                         "flash",
@@ -935,7 +942,7 @@ class Plan:
                 "Your consent",
                 self.consent,
                 done=lambda ctx: self.consented(ctx, ("backup", *prepare_writes)),
-                where=NOTHING_CHANGED,
+                where=UNCHANGED,
             ),
             Task(
                 "backup",
@@ -996,9 +1003,17 @@ class Plan:
                 "What the install needs on this computer: the host tools and the unlock files are fetched, "
                 "anything else is explained. The headset is not needed.",
                 (
-                    self.step_task("tools", "Host tools", "about 1 min", done=self.tools_there),
-                    self.step_task("unlock-files", "Unlock files", "about 2 min", done=self.unlock_files_there),
-                    Task("doctor", "Everything else this computer needs", self.check_computer, "under a minute"),
+                    self.step_task("tools", "Host tools", "about 1 min", done=self.tools_there, where=UNCHANGED),
+                    self.step_task(
+                        "unlock-files", "Unlock files", "about 2 min", done=self.unlock_files_there, where=UNCHANGED
+                    ),
+                    Task(
+                        "doctor",
+                        "Everything else this computer needs",
+                        self.check_computer,
+                        "under a minute",
+                        where=UNCHANGED,
+                    ),
                 ),
             ),
             Stage(
@@ -1007,16 +1022,16 @@ class Plan:
                 "Turn on developer mode and USB debugging, then plug the headset in. The installer finds it and "
                 "checks that the install has run on a headset like it. Nothing is written to it.",
                 (
-                    Task("find", "Find the headset", self.find, "a few seconds", where=NOTHING_CHANGED),
+                    Task("find", "Find the headset", self.find, "a few seconds", where=UNCHANGED),
                     Task(
                         "identity",
                         "Check the headset and its firmware",
                         self.identity,
                         "a few seconds",
                         done=self.identity_known,
-                        where=NOTHING_CHANGED,
+                        where=UNCHANGED,
                     ),
-                    Task("panel", "Check the display panel", self.panel, "a few seconds", where=NOTHING_CHANGED),
+                    Task("panel", "Check the display panel", self.panel, "a few seconds", where=UNCHANGED),
                 ),
             ),
             Stage(
@@ -1035,8 +1050,8 @@ class Plan:
                 + INSTALL_TIME
                 + " Keep the cable in.",
                 (
-                    Task("wifi", "Wi-Fi (optional)", self.wifi, "a minute"),
-                    Task("ssh-key", "Your SSH key (optional)", self.ssh_key, "a minute"),
+                    Task("wifi", "Wi-Fi (optional)", self.wifi, "a minute", where=IN_MAINTENANCE),
+                    Task("ssh-key", "Your SSH key (optional)", self.ssh_key, "a minute", where=IN_MAINTENANCE),
                     self.step_task(
                         "install",
                         "Build and install the system",

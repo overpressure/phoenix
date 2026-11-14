@@ -399,7 +399,7 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(engine.run(), "stopped")
         self.assertEqual(len(polls), 3)
         self.assertLess(clock.now, plan.PLUG_IN_SECONDS / 10)  # not the ten minutes it waits at most
-        self.assertEqual((ui.finished()["task"], ui.finished()["where"]), ("find", plan.NOTHING_CHANGED))
+        self.assertEqual((ui.finished()["task"], ui.finished()["where"]), ("find", plan.UNCHANGED))
         self.assertNotIn("PICO4_ADB_SERIAL", self.env.read_text(encoding="utf-8"))
 
     # -- Linux: a headset this user may not open (no udev rule) ----------------------------------
@@ -697,6 +697,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual([w.erases for w in HEADSET.workflows()], [True, False, True])
         self.assertEqual([s.id for s in self.plan.upgrade_stages()], ["computer", "build", "install"])
         self.assertEqual([s.id for s in self.plan.restore_stages()], ["backup", "restore", "pico-os", "bootloader"])
+
+    def test_every_task_that_can_fail_says_where_the_headset_is_and_what_next(self):
+        # Its where is what a failure shows unless the failure says more; only the closing notes have none.
+        for stages in (self.plan.stages(), self.plan.upgrade_stages(), self.plan.restore_stages()):
+            for task in (t for s in stages for t in s.tasks if t.id not in ("ready", "restored")):
+                self.assertTrue(task.where, task.id)
+                self.assertTrue("again" in task.where or "get help" in task.where, (task.id, task.where))
 
     def test_the_upgrade_rebuilds_the_system_and_keeps_the_data(self):
         stages = {s.id: s for s in self.plan.upgrade_stages()}
