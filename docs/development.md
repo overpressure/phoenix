@@ -201,16 +201,15 @@ Each step is skipped when its inputs did not change:
    `pico4-userspace.tar.zst` (zstd level 12, multithreaded) and `pico4-userspace.manifest.json` with the
    sources, hashes and installed package versions.
 
-Times on the same host, with an archive of about 800 MB:
+Times on the same host (Docker on WSL2), with the pinned release; the archive is 1.76 GB, 4.0 GiB installed:
 
 | Change | Build time |
 | --- | --- |
-| nothing, or only an adaptation package of a `--packages` checkout (built here in seconds) | 45 s |
-| the package list or `pacman.conf` (new base root, packages reused) | 2 min |
-| everything: a new build root | about 16 min |
+| nothing | 2 min |
+| everything: a new build root, the project's packages from the release and 1.9 GB of Valve's packages downloaded | 8 min |
 
-Writing the archive takes about 25 s of each. A changed package rebuilds in full; makepkg's stripping, debug
-packages and compression run emulated: about a minute for Monado.
+Writing the archive takes about 1.5 min of each. A package built here (`--packages`, `--build-packages`) rebuilds
+in full; makepkg's stripping, debug packages and compression run emulated: about a minute for Monado.
 
 ## Upgrade check
 
