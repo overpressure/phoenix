@@ -155,9 +155,10 @@ What the system keeps:
 - **Kernel panics.** `panic=5`; the firmware refuses the warm reset, and the tree's PS_HOLD reset restarts the
   headset, about 40 s from a forced panic to SSH.
 - **Logs.** `systemd-pstore.service` is masked, so pstore logs stay for the maintenance stage 1 to export. preinit
-  and the system's scripts log to `/run/pico4/boot.log`. journald forwards warnings to the kernel log; it keeps the
-  journal on the data partition, up to 1 GiB: Valve's `persistent-store.conf` and `system-max-use.conf`
-  (steamos-customizations-deckard) sort after the image's `50-pico4.conf` (`Storage=volatile`) and win. `pico4-userspace-netdiag` writes USB link samples 20, 60 and 150 s after boot
+  and the system's scripts log to `/run/pico4/boot.log`. journald keeps the journal as the Frame does,
+  persistent on the data partition, up to 1 GiB (Valve's `persistent-store.conf` and `system-max-use.conf`,
+  steamos-customizations-deckard), so earlier boots' journals stay for the support bundle; the image's
+  `50-pico4.conf` only forwards warnings to the kernel log. `pico4-userspace-netdiag` writes USB link samples 20, 60 and 150 s after boot
   to pstore (pmsg). A timer rewrites the USB log drive with the journal, kernel log, unit and network state 45 s
   after boot and every 2 minutes, at idle CPU and I/O priority. The journal goes last, in the room the 32 MiB
   drive has left: a boot with a session outgrows it within the hour, and then the drive holds its newest lines.
