@@ -1,11 +1,18 @@
 # What is distributed
 
-The project publishes source: its own code, recipes, patches and pins, and one binary, Valve's kernel with the
-project's changes, which is GPL-2.0 and published with its source ([overpressure/linux](https://github.com/overpressure/linux)). It publishes
-no image, no vendor file and no other binary of anyone else's. Each owner builds their own image on their own
-computer, from files each of them downloads from where the vendors publish them; PICO OS's own files come from
-the owner's own headset. This is a description of how the
-project works, not legal advice.
+The project publishes source (its own code, recipes, patches and pins) and binaries built from open source,
+each with its source:
+
+| Binary | Where | Its source |
+| --- | --- | --- |
+| Valve's kernel with the project's changes (GPL-2.0) | [overpressure/linux](https://github.com/overpressure/linux)'s releases: `Image.gz`, the device tree, the configuration | the release's tag in the same repository |
+| The project's packages: Monado, Basalt, gamescope, GTK 2, MangoHud, hexagonrpc, PipeWire's ALSA plugin and others, and the adaptation layer | [overpressure/packages](https://github.com/overpressure/packages)' releases, one pacman repository per layer | the recipes, pins and patches at the release's tag; the copyleft ones (GPL, LGPL: GTK 2, hexagonrpc, PipeWire's ALSA plugin) also as their complete sources in the release itself (`NAME-VERSION.src.tar.gz`, `makepkg --allsource`) |
+| The build container (`overpressure/builder`): Ubuntu 24.04's packages and the project's scripts | the GitHub container registry | the scripts in [overpressure/builder](https://github.com/overpressure/builder); Ubuntu's packages are Ubuntu's, each release lists them with their versions |
+| `prebuilt/aarch64/pico4-reboot`, `pico4-splash` (this project's, freestanding) | this repository | `src/` |
+
+It publishes no image, no vendor file and no binary of PICO's or Valve's. Each owner's system is built on
+their own headset during the install, from files downloaded from where the vendors publish them; PICO OS's own
+files come from the owner's own headset. This is a description of how the project works, not legal advice.
 
 | Input | Publisher | In this repository | How an owner gets it | Used for |
 | --- | --- | --- | --- | --- |
@@ -16,10 +23,10 @@ project works, not legal advice.
 | Engineering ABL | PICO, in a public PICO Neo 3 OTA | URL and hash (`tooling/unlockfiles.py`) | `python -m overpressure device fetch-unlock-files` | unlocking, development mode |
 | Firehose loader | PICO, in a public PICO Neo 3 package | URL and hash (`tooling/unlockfiles.py`) | the same command | EDL backups and restores |
 | The headset's calibration | the owner's headset | no | read from `persist`, on the headset, at run time | tracking, displays |
-| Holo Core and the Frame's packages, Steam's client, SteamVR | Valve, public package repositories without signatures | names and hashes (overpressure/packages' `headsets/phoenix/packages.lock`) | the userspace build, on their PC | the userspace, Valve's session |
+| Holo Core and the Frame's packages, Steam's client, SteamVR | Valve, public package repositories without signatures | names and hashes (overpressure/packages' `headsets/phoenix/packages.lock`) | the system build, on their headset | the userspace, Valve's session |
 | Valve's kernel | Valve, its public GPL source package; the project's changes in [overpressure/linux](https://github.com/overpressure/linux) | the pinned release (`kernel/release.json`) | the release's `Image.gz` and device tree, checked by hash, or built from its commit (`kernel build`) | the kernel |
 | The Steam client's updates, games | Valve, with the owner's own Steam account | no | Steam, on the headset | Steam |
-| Open source projects | their upstreams | recipes, pins and patches ([overpressure/packages](https://github.com/overpressure/packages)) | the userspace build | Monado, gamescope and others |
+| Open source projects | their upstreams | recipes, pins and patches ([overpressure/packages](https://github.com/overpressure/packages)) | the packages release the system build downloads, or built from the recipes | Monado, gamescope and others |
 | `prebuilt/aarch64/pico4-reboot`, `pico4-splash` | this project | yes, with their sources in `src/` | the repository | stage 1 and the userspace build without a cross compiler for them |
 
 ## What this means for an owner
@@ -36,8 +43,9 @@ project works, not legal advice.
 
 ## What this means for the project
 
-- Nothing built leaves a computer through the project, so no binary of the kernel or of GPL programs is
-  published and no GPL source offer arises: every owner builds from the public source.
+- Every binary it publishes is open source and comes with its source: the kernel's and the packages' at their
+  release's tag, and the copyleft packages' complete sources in their release. A package's files are its recipe's
+  build; none holds a file of PICO's or Valve's.
 - overpressure's `.gitignore` keeps `backup/`, `assets/`, `cache/`, `out/` and `.env` out of its checkout, where
   they live, and its `scripts/check-private.py` (`--repo devices/phoenix` for this repository) stops private
   data, vendor register tables and binaries in every commit of both.
