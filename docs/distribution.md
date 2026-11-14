@@ -6,7 +6,7 @@ each with its source:
 | Binary | Where | Its source |
 | --- | --- | --- |
 | Valve's kernel with the project's changes (GPL-2.0) | [overpressure/linux](https://github.com/overpressure/linux)'s releases: `Image.gz`, the device tree, the configuration | the release's tag in the same repository |
-| The project's packages: Monado, Basalt, gamescope, GTK 2, MangoHud, hexagonrpc, PipeWire's ALSA plugin and others, and the adaptation layer | [overpressure/packages](https://github.com/overpressure/packages)' releases, one pacman repository per layer | the recipes, pins and patches at the release's tag; the copyleft ones (GPL, LGPL: GTK 2, hexagonrpc, PipeWire's ALSA plugin) also as their complete sources in the release itself (`NAME-VERSION.src.tar.gz`, `makepkg --allsource`) |
+| The project's packages: Monado, Basalt, gamescope, GTK 2, MangoHud, hexagonrpc, PipeWire's ALSA plugin and others, and the adaptation layer | [overpressure/packages](https://github.com/overpressure/packages)' releases, one pacman repository per layer | the recipes, pins and patches at the release's tag; the copyleft ones (GPL, LGPL: GTK 2, hexagonrpc, PipeWire's ALSA plugin) also as their complete sources in the release itself (`NAME-VERSION.src.tar.gz`, `makepkg --allsource`; PipeWire's ALSA plugin's from 2026.11.14.1 on) |
 | The build container (`overpressure/builder`): Ubuntu 24.04's packages and the project's scripts | the GitHub container registry | the scripts in [overpressure/builder](https://github.com/overpressure/builder); Ubuntu's packages are Ubuntu's, each release lists them with their versions |
 | `prebuilt/aarch64/pico4-reboot`, `pico4-splash` (this project's, freestanding) | this repository | `src/` |
 
