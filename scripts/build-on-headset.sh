@@ -115,9 +115,14 @@ if [ -e /sys/class/tty/ttyHS1 ] && ! pgrep -f "pico4-fan run" > /dev/null; then
 	curl -fsSL --retry 3 -o "$host/run/pico4-fan-run" \
 		"https://raw.githubusercontent.com/$repository/$commit/phoenix/pico4-power/pico4-fan"
 	mkdir -p "$host/run/pico4-fan"
+	# Its last-resort power-off reaches no systemd from the build host: it signals PID 1 instead, which
+	# powers off on SIGUSR2 in the maintenance stage 1 (pico4-init) and on SIGRTMIN+4 under systemd.
+	poweroff_signal=SIGUSR2
+	[ ! -d /run/systemd/system ] || poweroff_signal=SIGRTMIN+4
 	# A plain command, so that $! is the program itself (chroot and env exec it): it holds this
 	# namespace's mounts, the data partition among them, until it ends.
-	chroot "$host" /usr/bin/env -i PATH=/usr/bin python3 /run/pico4-fan-run run > "$base/fan.log" 2>&1 &
+	chroot "$host" /usr/bin/env -i PATH=/usr/bin PICO4_FAN_POWEROFF_SIGNAL=$poweroff_signal \
+		python3 /run/pico4-fan-run run > "$base/fan.log" 2>&1 &
 	fan=$!
 	log "the fan runs with PICO OS's policy (pico4-fan, log in $base/fan.log)"
 fi

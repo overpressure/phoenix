@@ -244,7 +244,9 @@ files the image shares; about 1 MB) goes over SSH, and
   (`unshare --propagation private`): on the installed system `/` is a shared mount, and the lazy unmount of a
   recursive bind of `/sys` once took the system's own cgroup and configfs mounts with it.
 - **The fan.** Where no fan service runs (stage 1), the build runs the installed system's `pico4-fan`, from the
-  pinned overpressure/packages, in the build host for as long as it runs.
+  pinned overpressure/packages, in the build host for as long as it runs. Its last-resort power-off for a stalled
+  fan or a silent MCU ([cooling.md](cooling.md#pico4-fan)) signals PID 1 there: stage 1's `pico4-init` stops
+  the build, syncs and powers the headset off.
 - **Disk.** The build folder keeps the build host (1.4 GB), the build root (7.6 GB) and the compressed image
   (1.7 GB) for the next upgrade: 10.7 GB of the 104 GB data partition.
 

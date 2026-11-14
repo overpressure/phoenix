@@ -137,7 +137,10 @@ The development headset is a standard PICO 4 of the late batch: control type 1, 
   once per outage, then once a minute; a fan that reports 0 rpm at 30 % or more three times in a row is logged once.
 - **A fan that does not cool** (not in PICO OS): at PICO OS's overheating point (hottest mean at or above 95.1 °C for
   two minutes, then every 30 s), a failed last transaction or a stalled fan logs the reason and runs
-  `systemctl poweroff`. The kernel throttles meanwhile.
+  `systemctl poweroff`. During the headset's build in its build host, where no systemd answers, it sends PID 1
+  the signal it powers off on instead: SIGUSR2 to the maintenance stage 1's `pico4-init` (which stops every
+  process, syncs and powers off), SIGRTMIN+4 to the installed system's systemd
+  ([install.md](install.md#built-on-the-headset)). The kernel throttles meanwhile.
 - **The MCU.** Frames come only from an allowlist: SetFanSpeed with a duty of 0–100, the four queries and PICO OS's
   wake (SetBrightness with level 63, `A0 05 00 3F 00 9A`). Nothing can build a lens move, calibration write, firmware
   frame or another backlight level, so nothing puts the MCU to sleep. An answer of only `F1` (asleep) is followed by
