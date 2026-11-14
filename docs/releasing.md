@@ -9,8 +9,8 @@ source zip and its SHA-256, nothing uploaded by hand. Its image is checked again
 ## Versions
 
 `MAJOR.MINOR[-beta[.N]]`, as a Git tag `vMAJOR.MINOR...`, the same as `version` in
-[headset.json](../headset.json). A beta is a pre-release: `headset add phoenix` takes it only with `--channel
-beta` or `--version`. `api` in `headset.json` names the overpressure headset interface the release was made for
+[headset.json](../headset.json). A beta is a pre-release: `headset add phoenix` takes it while there is no stable
+release, later only with `--channel beta` or `--version`. `api` in `headset.json` names the overpressure headset interface the release was made for
 (`MAJOR.MINOR`): every overpressure that runs it installs the release, also later ones, so a release that needs
 a new minor or major comes after the overpressure release that brings it. The image reports this version and commit, and overpressure's version, in
 `/usr/share/pico4/version`; a release build's commit carries no `-dirty`.
