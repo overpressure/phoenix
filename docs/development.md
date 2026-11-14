@@ -52,13 +52,14 @@ tests/            host tests (unittest), test_recovery_policy.sh, qemu/
 docs/             documentation
 ```
 
-overpressure's package `overpressure/` holds what other headsets share (listed in its
-[CLAUDE.md](https://github.com/overpressure/overpressure/blob/main/CLAUDE.md)): `.env` settings, the doctor, the stage-1 builder, OTA handling, adb and
-fastboot, Qualcomm EDL, verified backups and the backup file, processes and waits, SSH, recorded runs, the
-read-only storage policy, the disclaimer (`disclaimer.py`) and the computer's power check (`power.py`), the
-formats (with the ext4 and FAT readers), `elfdeps.py`, `windows_ncm.py`, and `linux.py` with `container/`
-(the build container). `scripts/stock-lib.sh` serves the kernel build (a file out of the stock vendor image,
-through overpressure's ext4 reader).
+What every headset shares is overpressure's, and this repository reaches it only through its headset
+interface, `overpressure.api.v1` ([the interface](https://github.com/overpressure/overpressure/blob/main/docs/adding-a-headset.md#the-headset-interface)): `.env` settings, the doctor, the stage-1
+builder, OTA handling, adb and fastboot, Qualcomm EDL, verified backups and their words in the window, the
+installer's stages and asks, processes and waits, SSH, recorded runs, the read-only storage policy, the
+formats (with the ext4 and FAT readers) and the Windows USB link. The window, the command line, the
+disclaimer, the power check and the build container are overpressure's own: this repository declares, they
+run it. overpressure's `scripts/stock-lib.sh` serves the kernel build (a file out of the stock vendor image,
+through its ext4 reader).
 
 Private and generated, out of Git, at the overpressure checkout's root: `backup/` (identity and EDL backups), `assets/` (Firehose loader,
 engineering ABL, GPU firmware, sensor data), `cache/` (downloads), `out/` (build output and test evidence;
@@ -316,8 +317,8 @@ drains while tethered, and when it charges at less than 200 mA below 95 % (`powe
 
 ## Conventions
 
-The repository's [CLAUDE.md](https://github.com/overpressure/overpressure/blob/main/CLAUDE.md) has them: Python on the standard library and the packages
-`pyproject.toml` pins, each with a fallback; `set -euo pipefail` in shell scripts; SPDX headers in C (BSL-1.0
+overpressure's [CLAUDE.md](https://github.com/overpressure/overpressure/blob/main/CLAUDE.md) has them: Python on the standard library and the packages
+overpressure's `pyproject.toml` pins, each with a fallback; `set -euo pipefail` in shell scripts; SPDX headers in C (BSL-1.0
 for Monado code); external sources pinned by commit or hash, patches as `.patch` files next to their PKGBUILD
 with regenerated `sha256sums`; the project's own sources in `src/`, `SKIP` in the recipes; documents state facts;
 conventional commits.

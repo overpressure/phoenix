@@ -38,6 +38,7 @@ project works, not legal advice.
 
 - Nothing built leaves a computer through the project, so no binary of the kernel or of GPL programs is
   published and no GPL source offer arises: every owner builds from the public source.
-- `.gitignore` keeps `backup/`, `assets/`, `cache/`, `out/` and `.env` out, and `scripts/check-private.py` stops
-  private data, vendor register tables and binaries in every commit.
+- overpressure's `.gitignore` keeps `backup/`, `assets/`, `cache/`, `out/` and `.env` out of its checkout, where
+  they live, and its `scripts/check-private.py` (`--repo devices/phoenix` for this repository) stops private
+  data, vendor register tables and binaries in every commit of both.
 - PICO's and Valve's terms for these files were not reviewed by a lawyer.

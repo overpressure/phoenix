@@ -40,7 +40,8 @@ Docker or Podman. On Linux also `python3-tk`
 **The installer.** Download [overpressure's release](https://github.com/overpressure/overpressure/releases) and
 unpack it. Double-click `Install.cmd` (Windows) or `Install.command` (macOS), or run `sh install.sh` (Linux).
 Accept the disclaimer and choose the PICO 4: the first time, **Download** fetches this repository's newest stable
-release into `devices/phoenix/` (or a beta, a preview of `main`, an older release). Then **Install**, **Upgrade**
+release into `devices/phoenix/` (a beta until there is a stable one; or a preview of `main`, an older release). A
+newer release on the same channel shows on its card as *Update available*. Then **Install**, **Upgrade**
 or **Restore to stock**. Each
 goes on where it stopped when started again, and after a failure says what state the headset is in and what to
 do. The install's four stages:
@@ -52,7 +53,7 @@ do. The install's four stages:
 | 3 Prepare your headset | one consent, a verified backup to this computer (**your way back: export it**), the engineering bootloader, the unlock, then the maintenance system: made here in a few minutes from the backup's own boot and recovery partitions and Valve's kernel (nothing of PICO OS's is downloaded); also makes this computer's SSH key | EDL, fastboot |
 | 4 Install | Wi-Fi and your own SSH key if you like; the headset builds the SteamOS-compatible system itself, then it goes on and is checked; then "Unplug it and put it on" | on the cable |
 
-**Upgrade** puts this version's maintenance system on the headset, has the headset build this version and installs
+**Upgrade** puts the downloaded release's maintenance system on the headset, has the headset build that release and installs
 it over yours, keeping your data. **Restore to stock** brings back
 PICO OS and its bootloader from the backup, with a stop for PICO OS's setup and USB debugging in between (wear the
 headset on the cable through that setup: its first start may update the lens and fan controller)
@@ -60,7 +61,7 @@ headset on the cable through that setup: its first start may update the lens and
 checked file to keep safe; *Import backup…* brings it to another computer.
 
 **In a terminal**, the same: `python -m overpressure headset add phoenix` (`--channel beta|preview`, `--version
-V`), then `python -m overpressure install`, `upgrade`, `restore` and `backup export|import FILE` (and `backup compact` for a backup from an older version)
+V`; `headset update phoenix` for a newer one), then `python -m overpressure install`, `upgrade`, `restore` and `backup export|import FILE` (and `backup compact` for a backup from an older version)
 ([the tool](https://github.com/overpressure/overpressure/blob/main/docs/tool.md#the-installer)); `python -m overpressure steps` lists every step's command. Commands
 that touch the headset ask the disclaimer `y`/`n` first (`--accept-disclaimer` for unattended runs) and refuse on a
 laptop on battery below 30 %.
