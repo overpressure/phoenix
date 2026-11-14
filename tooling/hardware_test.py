@@ -18,11 +18,11 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from overpressure import REPO, android, bootimg, evidence, qualcomm, windows_ncm
-from overpressure import backup as backups
-from overpressure.android import fastboot_value
-from overpressure.evidence import require, utc
-from overpressure.storage import data_device, validate_mounts, validate_storage
+from overpressure.api.v1 import REPO, android, bootimg, evidence, qualcomm, windows_ncm
+from overpressure.api.v1 import backup as backups
+from overpressure.api.v1.android import fastboot_value
+from overpressure.api.v1.evidence import require, utc
+from overpressure.api.v1.storage import data_device, validate_mounts, validate_storage
 
 from . import device, userspace
 

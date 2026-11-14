@@ -14,8 +14,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
 
-from overpressure import backup, qualcomm
-from overpressure.headset import (
+from overpressure.api.v1 import backup, qualcomm
+from overpressure.api.v1.headset import (
     INSTALL,
     Action,
     AfterInstall,
@@ -28,14 +28,14 @@ from overpressure.headset import (
     Workflow,
     tools_step,
 )
-from overpressure.usbaccess import UsbMode
+from overpressure.api.v1.usbaccess import UsbMode
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
-    from overpressure.doctor import Check, Host
-    from overpressure.install import Stage
+    from overpressure.api.v1.doctor import Check, Host
+    from overpressure.api.v1.install import Stage
 
 #: The PICO 4 on USB, as the host's tools open it (checked on this unit): PICO OS with USB debugging,
 #: the bootloader's fastboot and EDL. Its maintenance system and the installed system are a USB network.
@@ -449,8 +449,8 @@ class Phoenix(Headset):
 
     def adopt_backup(self, imported: BackupSet) -> None:
         """Name the imported backup in .env, and the serials it came with where .env has none."""
-        from overpressure import REPO  # noqa: PLC0415  # only here
-        from overpressure import localconfig as base  # noqa: PLC0415  # only here
+        from overpressure.api.v1 import REPO  # noqa: PLC0415  # only here
+        from overpressure.api.v1 import localconfig as base  # noqa: PLC0415  # only here
 
         from . import localconfig  # noqa: PLC0415  # it imports this package's modules: circular otherwise
 

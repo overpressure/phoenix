@@ -17,8 +17,8 @@ from typing import IO, TYPE_CHECKING
 from unittest.mock import patch
 
 from devices.phoenix.tooling import cycle, devloop, localconfig
-from overpressure import REPO, progress, qualcomm
-from overpressure.localconfig import parse
+from overpressure.api.v1 import REPO, progress, qualcomm
+from overpressure.api.v1.localconfig import parse
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence

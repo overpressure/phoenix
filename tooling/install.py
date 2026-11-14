@@ -40,10 +40,10 @@ import sys
 import uuid
 from typing import TYPE_CHECKING, Callable
 
-from overpressure import REPO, android, doctor, qualcomm, runner, ssh, tools, usbaccess
-from overpressure import backup as backups
-from overpressure.install import Ask, Context, Failed, Field, NoBackup, Stage, Task
-from overpressure.process import until
+from overpressure.api.v1 import REPO, android, doctor, qualcomm, runner, ssh, tools, usbaccess
+from overpressure.api.v1 import backup as backups
+from overpressure.api.v1.install import Ask, Context, Failed, Field, NoBackup, Stage, Task
+from overpressure.api.v1.process import until
 
 from . import ADB_MODE, FASTBOOT_MODE, USB_MODES, device, devloop, localconfig, unlockfiles
 from . import doctor as checks
@@ -53,8 +53,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
-    from overpressure.doctor import Check
-    from overpressure.headset import Headset, Step
+    from overpressure.api.v1.doctor import Check
+    from overpressure.api.v1.headset import Headset, Step
 
 ROOT = REPO
 Settings = localconfig.Settings

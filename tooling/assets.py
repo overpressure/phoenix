@@ -49,10 +49,18 @@ from pathlib import Path
 from typing import Callable
 
 from devices.phoenix.kernel import imx471_mode
-from overpressure import REPO
-from overpressure.assets import AssetError, BackupFolder, StockFolder, copy_matching, dump, widen_modes, write_manifest
-from overpressure.ext4 import Ext4Error
-from overpressure.fat import FatError
+from overpressure.api.v1 import REPO
+from overpressure.api.v1.assets import (
+    AssetError,
+    BackupFolder,
+    StockFolder,
+    copy_matching,
+    dump,
+    widen_modes,
+    write_manifest,
+)
+from overpressure.api.v1.ext4 import Ext4Error
+from overpressure.api.v1.fat import FatError
 
 from . import FIRMWARE, aimgrip, controllermodel, ledmodel, leverarm, stock
 

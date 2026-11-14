@@ -27,7 +27,7 @@ import argparse
 from pathlib import Path
 from typing import Callable
 
-from overpressure import ota
+from overpressure.api.v1 import ota
 
 from . import FIRMWARE
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from overpressure import localconfig as _base
+from overpressure.api.v1 import localconfig as _base
 
 from . import FIRMWARE
 from .unlockfiles import ENGINEERING_ABL_SHA256

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from devices.phoenix.tooling import FIRMWARE, doctor, localconfig, stock
-from overpressure import ota
+from overpressure.api.v1 import ota
 
 ROOT = Path(__file__).resolve().parents[1]
 

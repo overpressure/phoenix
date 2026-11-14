@@ -19,7 +19,7 @@ from unittest.mock import patch
 
 from devices.phoenix.tooling import devloop
 from devices.phoenix.tooling import hardware_test as hw
-from overpressure import bootimg, cpio, evidence
+from overpressure.api.v1 import bootimg, cpio, evidence
 
 
 def report(run_id: str) -> bytes:

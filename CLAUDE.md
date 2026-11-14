@@ -13,7 +13,8 @@ build on the PC. This repository is dropped into `devices/phoenix/` of an overpr
 development a clone: `git clone https://github.com/overpressure/phoenix devices/phoenix`). Paths are relative
 to this repository; commands run from the overpressure checkout's root. Commits go to this repository by pull
 request; a change overpressure's generic code needs lands there first (keeping the headset interface, `api` in
-`headset.json`, compatible), then here. CI runs this repository against overpressure's `main`.
+`headset.json`, backwards compatible), then here. The tooling and its tests import overpressure only through
+`overpressure.api.v1`, and never its window or command line. CI runs this repository against overpressure's `main`.
 
 ## Where things stand
 

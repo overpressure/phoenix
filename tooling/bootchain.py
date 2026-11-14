@@ -25,7 +25,7 @@ import struct
 from dataclasses import dataclass
 from typing import Callable
 
-from overpressure import kernelinfo, ota, payload
+from overpressure.api.v1 import kernelinfo, ota, payload
 
 from . import FIRMWARE
 from .stock import CATALOG

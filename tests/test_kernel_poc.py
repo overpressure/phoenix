@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from unittest import mock
 
 from devices.phoenix.kernel import imx471_mode, recovery_image
-from overpressure import avb, bootimg, cpio
+from overpressure.api.v1 import avb, bootimg, cpio
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

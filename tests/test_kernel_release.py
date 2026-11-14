@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from devices.phoenix.tooling import kernel
-from overpressure import REPO
+from overpressure.api.v1 import REPO
 
 
 def pin_of(files: dict[str, bytes]) -> kernel.Release:

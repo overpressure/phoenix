@@ -19,10 +19,10 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from overpressure import android, process
-from overpressure.android import run
-from overpressure.backup import digest, partition_names, save_new, verified_backup, verified_backup_shown
-from overpressure.qualcomm import (
+from overpressure.api.v1 import android, process
+from overpressure.api.v1.android import run
+from overpressure.api.v1.backup import digest, partition_names, save_new, verified_backup, verified_backup_shown
+from overpressure.api.v1.qualcomm import (
     DumpProgress,
     backup_commands,
     capture_backup,

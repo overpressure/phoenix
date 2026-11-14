@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from overpressure import REPO, backup, compress, cpio, ota, stage1
+from overpressure.api.v1 import REPO, backup, compress, cpio, ota, stage1
 
 from . import FIRMWARE, localconfig
 

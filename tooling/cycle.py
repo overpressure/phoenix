@@ -28,16 +28,16 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, TypeVar
 
-from overpressure import REPO, android, qualcomm, usbaccess
-from overpressure import backup as backups
-from overpressure.fastboot import NOT_IN_FASTBOOT
-from overpressure.process import run, until
-from overpressure.qualcomm import edl_devices
+from overpressure.api.v1 import REPO, android, qualcomm, usbaccess
+from overpressure.api.v1 import backup as backups
+from overpressure.api.v1.fastboot import NOT_IN_FASTBOOT
+from overpressure.api.v1.process import run, until
+from overpressure.api.v1.qualcomm import edl_devices
 
 from . import ADB_MODE, EDL_RESTART, FASTBOOT_MODE, USB_MODES, device, localconfig
 
 if TYPE_CHECKING:
-    from overpressure.process import Timing
+    from overpressure.api.v1.process import Timing
 
 ROOT = REPO
 T = TypeVar("T")

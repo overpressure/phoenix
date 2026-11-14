@@ -44,7 +44,7 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING, Callable
 
 from devices.phoenix.kernel import recovery_image
-from overpressure import (
+from overpressure.api.v1 import (
     REPO,
     android,
     avb,
@@ -55,19 +55,19 @@ from overpressure import (
     ssh,
     windows_ncm,
 )
-from overpressure import (
+from overpressure.api.v1 import (
     backup as backups,
 )
-from overpressure.fastboot import NOT_IN_FASTBOOT
-from overpressure.fastboot import flash as flash_image
-from overpressure.headset import manifest
+from overpressure.api.v1.fastboot import NOT_IN_FASTBOOT
+from overpressure.api.v1.fastboot import flash as flash_image
+from overpressure.api.v1.headset import manifest
 
 from . import device, localconfig, stockfiles
 from . import hardware_test as hw
 from .cycle import Headset, run
 
 if TYPE_CHECKING:
-    from overpressure.process import Timing
+    from overpressure.api.v1.process import Timing
 
 ROOT = REPO
 WORK = ROOT / "out" / "dev"

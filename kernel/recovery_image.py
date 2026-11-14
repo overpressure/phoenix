@@ -49,8 +49,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from overpressure import avb, bootimg, compress, cpio, kernelinfo
-from overpressure import stage1 as stage1_overlay
+from overpressure.api.v1 import avb, bootimg, compress, cpio, kernelinfo
+from overpressure.api.v1 import stage1 as stage1_overlay
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence

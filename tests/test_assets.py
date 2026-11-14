@@ -13,7 +13,7 @@ from unittest import mock
 
 from devices.phoenix.tests.test_kernel_poc import camera_module
 from devices.phoenix.tooling import HEADSET, assets
-from overpressure.assets import AssetError, StockFolder
+from overpressure.api.v1.assets import AssetError, StockFolder
 from tests.images import Ext4Image, FatImage, stock_folder
 
 ROOT = Path(__file__).resolve().parents[1]

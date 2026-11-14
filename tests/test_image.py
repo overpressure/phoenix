@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 from devices.phoenix.tooling import FIRMWARE, image
-from overpressure import backup
+from overpressure.api.v1 import backup
 
 
 class StockBootTests(unittest.TestCase):

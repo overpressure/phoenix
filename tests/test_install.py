@@ -13,10 +13,10 @@ from unittest import mock
 
 from devices.phoenix.tooling import HEADSET, devloop, localconfig
 from devices.phoenix.tooling import install as plan
-from overpressure import doctor, qualcomm, tools
-from overpressure.doctor import Check
-from overpressure.headset import BackupSet
-from overpressure.install import Context, Engine, Stage, Task
+from overpressure.api.v1 import doctor, qualcomm, tools
+from overpressure.api.v1.doctor import Check
+from overpressure.api.v1.headset import BackupSet
+from overpressure.api.v1.install import Context, Engine, Stage, Task
 
 if TYPE_CHECKING:
     from collections.abc import Callable

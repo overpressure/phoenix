@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from overpressure import REPO, tools
+from overpressure.api.v1 import REPO, tools
 
 Log = Callable[[str], None]
 Opener = Callable[..., object]

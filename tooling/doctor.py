@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
 
-from overpressure import REPO, backup, doctor
-from overpressure.doctor import HEADSET, MISSING, OK, WARNING, Check, Host
+from overpressure.api.v1 import REPO, backup, doctor
+from overpressure.api.v1.doctor import HEADSET, MISSING, OK, WARNING, Check, Host
 
 from . import FIRMWARE, USB_MODES, device, localconfig
 

@@ -12,7 +12,7 @@ from unittest import mock
 
 from devices.phoenix.tooling import HEADSET, localconfig
 from devices.phoenix.tooling import doctor as checks
-from overpressure import backup, doctor, tools
+from overpressure.api.v1 import backup, doctor, tools
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence

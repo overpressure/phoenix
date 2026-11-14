@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 
 from devices.phoenix.tooling import assets, stock, stockfiles
-from overpressure import ota
+from overpressure.api.v1 import ota
 
 ROOT = Path(__file__).resolve().parents[1]
 

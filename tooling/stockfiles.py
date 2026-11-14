@@ -29,8 +29,8 @@ import tempfile
 from pathlib import Path, PurePosixPath
 from typing import IO, Callable
 
-from overpressure import REPO
-from overpressure.assets import AssetError
+from overpressure.api.v1 import REPO
+from overpressure.api.v1.assets import AssetError
 
 from . import assets
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Protocol
 
-from overpressure import ota
+from overpressure.api.v1 import ota
 
 if TYPE_CHECKING:
     from pathlib import Path
