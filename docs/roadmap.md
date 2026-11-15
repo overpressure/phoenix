@@ -197,7 +197,7 @@ built for the Frame's hardware.
   ([session.md](session.md#first-run-setup)). The client's screen reader (Orca) speaks.
 - **Settings.** Overpressure Settings, a SteamVR dashboard tab, has what the PICO 4 cannot do the Frame's way:
   the lens distance and the controllers' pairing, and brings the controllers' page in front when none is
-  connected ([session.md](session.md#settings)); not yet checked worn.
+  connected ([session.md](session.md#settings)); verified worn.
 - **Acceptance.** `dev check` runs 30 s of Valve's session on the installed system, with the headset and both
   controllers in SteamVR.
 

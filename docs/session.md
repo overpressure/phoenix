@@ -352,7 +352,9 @@ are in [pico4_settings.h](https://github.com/overpressure/packages/blob/main/pho
 | Check | Result |
 | --- | --- |
 | The pages rendered in English and German | as designed; GCC builds it without warnings |
-| Worn: lens distance, controllers' pairing, the hands-free panel | open |
+| Worn: the dashboard's tabs | Overpressure Settings is the only one of the project's |
+| Worn: lens distance | the slider and ±0.5 mm move the lenses; a held preset stores the distance, a pressed one moves to it |
+| Worn: both controllers switched off, then on | the Controllers page came up in front within seconds; both reconnected and it went |
 
 ### Monado as a service
 
