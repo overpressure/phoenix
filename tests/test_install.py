@@ -76,6 +76,10 @@ class PlanTests(unittest.TestCase):
         patcher = mock.patch.object(tools, "CACHE", self.root / "cache" / "tools")
         patcher.start()
         self.addCleanup(patcher.stop)
+        # The installer's own waits for the headset (into fastboot, the maintenance system's login) on a stand-in.
+        patcher = mock.patch.object(plan, "AskingDev")
+        self.dev = patcher.start()
+        self.addCleanup(patcher.stop)
         self.env = self.root / ".env"
         self.identity = self.root / "backup" / "device.json"
         self.backup = self.root / "backup" / "stock"
@@ -258,9 +262,11 @@ class PlanTests(unittest.TestCase):
                 "dev image",
                 "dev boot-image",
                 "dev flash",
-                "dev connect",
             ],
         )
+        # Into fastboot before the flash and the maintenance system's login run here, where a wait asks for a replug.
+        self.dev.return_value.to_fastboot.assert_called()
+        self.dev.return_value.connect.assert_called_once_with()
         # After the backup the headset goes back to PICO OS: the bootloader's step enters EDL afresh from there.
         shown = [" ".join(map(str, c)) for c in self.captured]
         self.assertTrue(any(c.endswith("reset --mode Reset") for c in shown))
@@ -717,6 +723,20 @@ class WorkflowTests(unittest.TestCase):
         # This version's maintenance system is written first: the headset's build and the write need its tools.
         self.assertEqual(tasks, ["plug-in", "flash", "maintenance", "install", "installed", "check", "ready"])
         self.assertNotIn("--format-data", " ".join(self.plan.steps["install"].argv))
+
+    def test_the_upgrade_waits_for_fastboot_and_its_maintenance_system_here_where_a_wait_asks_for_a_replug(self):
+        install = {t.id: t for t in next(s for s in self.plan.upgrade_stages() if s.id == "install").tasks}
+        self.assertTrue(install["flash"].writes)
+        ctx = mock.Mock()
+        order = []
+        with mock.patch.object(plan, "AskingDev") as dev:
+            dev.return_value.to_fastboot.side_effect = lambda: order.append("fastboot")
+            ctx.run.side_effect = lambda argv: order.append(" ".join(argv[-2:]))
+            with mock.patch.object(self.plan, "argv", side_effect=lambda _ctx, key: ["dev", key]):
+                install["flash"].run(ctx)
+                install["maintenance"].run(ctx)
+        self.assertEqual(order, ["fastboot", "dev flash"])  # dev flash then finds the headset in fastboot
+        dev.return_value.connect.assert_called_once_with()  # the login's waits here too, not in a child
 
     def test_the_restore_asks_once_and_writes_only_after_the_backup_is_checked(self):
         stages = self.plan.restore_stages()

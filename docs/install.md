@@ -323,7 +323,9 @@ the others' recorded progress (the install starts afresh after a restore).
 ### A headset that does not show up
 
 The installer waits for the headset in a new USB mode itself (fastboot, the maintenance stage 1), not in a child
-program. A wait that runs out (180 s for fastboot, 120 s for the maintenance stage 1) does not fail the task: it asks
+program: in the install's and the upgrade's flash of the maintenance system it brings the headset into fastboot
+before `dev flash` runs (which then only writes), the login to the maintenance system (`dev connect`'s) runs in it,
+and so do the restore's waits. A wait that runs out (180 s for fastboot, 120 s for the maintenance stage 1) does not fail the task: it asks
 the owner to plug the cable in again and waits anew after *Done*; *Cancel* stops, and the next start goes on from
 that task. On Linux the task's log says what the USB bus holds of each of the headset's modes, which tells a
 headset that is not on the bus from one that is but which adb or fastboot does not list yet.

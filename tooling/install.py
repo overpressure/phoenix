@@ -838,6 +838,30 @@ class Plan:
             return True
         return devloop.Dev(ctx.settings(Settings), self.work).maintenance_running()
 
+    def flash_task(self, title: str, where: str) -> Task:
+        """Return the task that writes this version's maintenance system to recovery and starts it (dev flash).
+
+        The way into fastboot runs here, where a wait that runs out asks for a replug and waits again
+        (replug_until); dev flash then finds the headset there and only writes.
+        """
+
+        def run(ctx: Context) -> None:
+            AskingDev(ctx, self.work).to_fastboot()
+            self.run_step(ctx, "flash")
+
+        return Task("flash", title, run, "about 3 min", self.steps["flash"].writes, where=where)
+
+    def connect_task(self, where: str) -> Task:
+        """Return the task that logs in to the maintenance system the flash started (dev connect), here.
+
+        Its waits ask for a replug when they run out (AskingDev); it only reads: the flash is checked by readback.
+        """
+
+        def run(ctx: Context) -> None:
+            AskingDev(ctx, self.work).connect()
+
+        return Task("maintenance", "Connect to the maintenance system", run, "about 1 min", where=where)
+
     def restore_part(self, part: str) -> Callable[[Context], None]:
         """Return the task that writes the restore's @p part from the backup (dev restore --only PART)."""
 
@@ -1006,20 +1030,11 @@ class Plan:
                 (
                     Task("plug-in", "Connect the headset", self.plug_in_upgrade, "", where=UNCHANGED),
                     # This version's maintenance system goes to recovery first: the install runs in it.
-                    self.step_task(
-                        "flash",
+                    self.flash_task(
                         "Update the maintenance system",
-                        "about 3 min",
-                        where="Your headset is in its bootloader (fastboot) or starting the maintenance system. "
-                        + AGAIN,
+                        "Your headset is in its bootloader (fastboot) or starting the maintenance system. " + AGAIN,
                     ),
-                    Task(
-                        "maintenance",
-                        "Connect to the maintenance system",
-                        lambda ctx: self.run_step(ctx, "connect"),
-                        "about 1 min",
-                        where="The headset may be in its maintenance system. " + AGAIN,
-                    ),
+                    self.connect_task("The headset may be in its maintenance system. " + AGAIN),
                     self.step_task(
                         "install",
                         "Build and install the system",
@@ -1109,14 +1124,8 @@ class Plan:
             "start the installer again: it goes on from there."
         )
         prepare += [
-            self.step_task("flash", "Maintenance system", "about 3 min", where=maintenance_where),
-            Task(
-                "maintenance",
-                "Connect to the maintenance system",
-                lambda ctx: self.run_step(ctx, "connect"),
-                "about 1 min",
-                where=maintenance_where,
-            ),
+            self.flash_task("Maintenance system", maintenance_where),
+            self.connect_task(maintenance_where),
         ]
         installed_where = "The system is installed. Keep the cable in and start the installer again."
         return (
