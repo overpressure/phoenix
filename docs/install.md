@@ -330,6 +330,12 @@ the owner to plug the cable in again and waits anew after *Done*; *Cancel* stops
 that task. On Linux the task's log says what the USB bus holds of each of the headset's modes, which tells a
 headset that is not on the bus from one that is but which adb or fastboot does not list yet.
 
+From a running system the way into fastboot is a restart over SSH. The installer first waits up to 60 s for the
+headset to answer there; one that does not is not restarted, and the task stops with what to check. On Linux the
+usual reason is udev's watch on the headset's log drive: its loop keeps udev busy, so the USB network never comes
+up (NetworkManager waits for udev). The message, like `python -m overpressure doctor`, then gives the rule that
+turns the watch off for the headset's drives (`OPTIONS+="nowatch"` for `1d6b:0104` "PICO 4 Linux").
+
 ### The backup as one file
 
 `python -m overpressure backup export FILE` (*Export backup…*) writes one checked file

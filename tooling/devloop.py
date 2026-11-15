@@ -53,6 +53,7 @@ from overpressure.api.v1 import (
     progress,
     qualcomm,
     ssh,
+    usbaccess,
     windows_ncm,
 )
 from overpressure.api.v1 import (
@@ -62,11 +63,13 @@ from overpressure.api.v1.fastboot import NOT_IN_FASTBOOT
 from overpressure.api.v1.fastboot import flash as flash_image
 from overpressure.api.v1.headset import manifest
 
-from . import device, localconfig, stockfiles
+from . import USB_MODES, device, localconfig, stockfiles
 from . import hardware_test as hw
 from .cycle import Headset, run
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from overpressure.api.v1.process import Timing
 
 ROOT = REPO
@@ -74,6 +77,9 @@ WORK = ROOT / "out" / "dev"
 HOST = "172.16.42.1"
 RUN_ID = "dev-loop"
 CONTACT = "/run/pico4/host-contact"  # uptime of the last command (recovery-watch)
+#: What the headset echoes when it answers over SSH, and how long it may take to (a system that is still starting).
+REACHED = "reachable"
+REACH_SECONDS = 60.0
 ARCHIVE = ROOT / "out" / "userspace" / "pico4-userspace.tar.zst"
 #: Boot images the dev loop writes through fastboot: the dev image to recovery, stock boot back.
 BOOT_PARTITIONS = ("boot", "recovery")
@@ -295,6 +301,28 @@ class Dev(Headset):
         with contextlib.suppress(subprocess.TimeoutExpired):
             self.ssh(command, 15, check=False)
 
+    def answers(self) -> bool:
+        """Tell whether the headset's own system (stage 1 or the installed system) answers over SSH now."""
+        (self.work / "known_hosts").unlink(missing_ok=True)  # each system has its own host key
+        try:
+            output = self.ssh(f"echo {REACHED}", 10, check=False)
+        except subprocess.TimeoutExpired:
+            return False
+        return REACHED in output.split()
+
+    def reach(self, seconds: float = REACH_SECONDS) -> None:
+        """Return once the headset's own system answers over SSH, for a restart through it.
+
+        A restart sent to a headset that does not answer is lost, and the wait for what comes next would run
+        out without a word on why: raise UnreachableError, which says what to check, and on Linux names the
+        udev rule this computer lacks for the headset's network.
+        """
+        end = self.clock.monotonic() + seconds
+        while not self.answers():
+            if self.clock.monotonic() >= end:
+                raise UnreachableError(unanswered())
+            self.clock.sleep(2)
+
     def installed_running(self) -> bool:
         """Tell whether the installed system answers over SSH now: its first process is systemd (stage 1's is not)."""
         (self.work / "known_hosts").unlink(missing_ok=True)  # each system has its own host key
@@ -448,6 +476,7 @@ class Dev(Headset):
             self.run([self.s.tool("adb"), "-s", self.s.adb_serial, "reboot", "bootloader"], 30)
             self.release_adb()  # that command started the server again
         else:
+            self.reach()
             self.ssh_reboot("systemctl reboot --reboot-argument=bootloader 2>/dev/null || pico4-reboot bootloader")
 
         def ready() -> None:
@@ -1210,6 +1239,27 @@ class DevChecks(hw.Runner):
     def ssh(self, command: str, timeout: float = 30) -> str:
         """Run @p command on the headset through the dev loop's key; return its output."""
         return self.command(self.dev.ssh_argv(command), timeout)
+
+
+class UnreachableError(RuntimeError, process.Final):
+    """The headset answers over USB neither in PICO OS, in fastboot nor in its own system; the message says why."""
+
+
+def unanswered(dirs: Sequence[Path] = usbaccess.RULE_DIRS, *, linux: bool | None = None) -> str:
+    """Return why the headset cannot be restarted into fastboot, and what to check, in the owner's words."""
+    text = (
+        f"The headset answers neither in PICO OS, in fastboot nor in its own system (SSH to {HOST}), so it cannot "
+        "be restarted into fastboot. Check that it is on and plugged in, then try again."
+    )
+    if not (sys.platform == "linux" if linux is None else linux):
+        return text
+    watched = usbaccess.watched_modes(USB_MODES, usbaccess.rule_files(dirs))
+    if watched:
+        fix = usbaccess.fix([], watched=watched)
+        return (
+            f"{text} This computer's udev watches the headset's log drive, which keeps its USB network down. Run: {fix}"
+        )
+    return f"{text} python -m overpressure doctor names what this computer lacks."
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per command word

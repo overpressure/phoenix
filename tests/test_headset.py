@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING
 from unittest.mock import patch
 
+from devices.phoenix import tooling
 from devices.phoenix.tooling import cycle, devloop, localconfig
 from overpressure.api.v1 import REPO, progress, qualcomm
 from overpressure.api.v1.localconfig import parse
@@ -161,6 +162,8 @@ class HeadsetFixture(unittest.TestCase):
             self.restarting = [1, 1, 1, 0, 0]  # still there a while, then gone, then back (as the PICO 4)
         elif "getprop sys.boot_completed" in text:
             output = "1\nPico/Phoenix_ovs/PICOA8110:10/5.13.7/test:user/dev-keys"
+        elif f"echo {devloop.REACHED}" in text:
+            output = devloop.REACHED  # its own system answers over SSH
         elif "getprop sys.pxr.init.status" in text:
             output = "1\n"  # PICO OS is through with the MCU
         elif "hwtest flash-run" in text:
@@ -683,6 +686,45 @@ class DevTests(HeadsetFixture):
             elif text.endswith("fastboot devices"):
                 self.assertFalse(server, self.texts())
         self.assertTrue(self.fastboot_listed)
+
+    def test_a_headset_that_does_not_answer_is_not_restarted_and_the_error_says_why(self):
+        # A Linux host whose udev never set up the headset's network: SSH runs out of time, a restart would be lost.
+        def silent() -> str:
+            msg = "ssh"
+            raise subprocess.TimeoutExpired(msg, 10)
+
+        self.fastboot_listed = False
+        dev = self.make({f"echo {devloop.REACHED}": silent})
+        with self.assertRaises(devloop.UnreachableError) as caught:
+            dev.to_fastboot()
+        self.assertGreaterEqual(self.clock.monotonic(), devloop.REACH_SECONDS)
+        self.assertFalse(any("reboot-argument" in t for t in self.texts()))
+        self.assertIn("cannot be restarted into fastboot", str(caught.exception))
+
+    def test_a_headset_that_answers_late_is_restarted(self):
+        answers = iter(["", "", f"{devloop.REACHED}\n"])
+        self.fastboot_listed = False
+
+        def into_fastboot() -> str:
+            self.fastboot_listed = True
+            return ""
+
+        dev = self.make(
+            {f"echo {devloop.REACHED}": lambda: next(answers), "--reboot-argument=bootloader": into_fastboot}
+        )
+        dev.to_fastboot()
+        self.assertTrue(self.fastboot_listed)
+
+    def test_on_linux_the_error_names_the_nowatch_rule_this_computer_lacks(self):
+        rules = self.root / "rules.d"
+        rules.mkdir()
+        text = devloop.unanswered((rules,), linux=True)
+        self.assertIn("keeps its USB network down. Run: printf", text)
+        self.assertIn('OPTIONS+="nowatch"', text)
+        self.assertIn('ATTRS{product}=="PICO 4 Linux"', text)
+        (rules / "70-overpressure.rules").write_text(tooling.LINUX_MODE.storage_rule() + "\n", encoding="utf-8")
+        self.assertIn("python -m overpressure doctor", devloop.unanswered((rules,), linux=True))
+        self.assertNotIn("doctor", devloop.unanswered((rules,), linux=False))
 
     def test_which_system_runs_by_its_first_process(self):
         self.assertTrue(self.make({"cat /proc/1/comm": "systemd\n"}).installed_running())
