@@ -27,7 +27,7 @@ The project's packages (Monado with the PICO 4's driver, Basalt, gamescope, hexa
 plugin, GTK 2, MangoHud and others) and the PICO 4's image definition are their own repository,
 [overpressure/packages](https://github.com/overpressure/packages), whose THIRD-PARTY.md lists the material
 from other projects and the project's own code under their licenses. `userspace/packages.json` pins its
-release `2026.11.15`, which carries the complete sources of its GPL and LGPL packages.
+release `2026.11.15.1`, which carries the complete sources of its GPL and LGPL packages.
 
 ## The kernel
 

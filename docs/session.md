@@ -505,13 +505,23 @@ decoder and shows it through the local SteamVR. The PC's `driver_vrlink` knows t
   while no capture queue streams.
 - **Buffers.** `vrlink` asks for 16 capture buffers; Venus would raise that to the firmware's 18. Patch
   0027 keeps a client's 16.
-- **Controllers.** `vrlink` sends input only for `Prop_ControllerType_String` `frame_controller`, and the
-  PC activates a controller only with a serial, a manufacturer and a type. `vrlink` reads poses and
-  haptics through legacy actions
-  ([pico4-vrlink-bindings.json](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4-vrlink-bindings.json)) and inputs
-  by the Frame's paths. `libpico4-vrlink-compat.so`, in `vrlink`'s process only, reports
-  `frame_controller` and a manufacturer, and maps the Frame's `thumbstick`, `dpad_down` and `dpad_up` to
-  `joystick`, `x` and `y`. SteamVR on the headset keeps `pico_controller`.
+- **Controllers.** The PC sees PICO 4 controllers, as from Valve's own Steam Link client on PICO OS.
+  `vrlink` is the Frame's client: it packs input only for `Prop_ControllerType_String` `frame_controller`,
+  reads inputs by the Frame's paths and haptics through legacy actions
+  ([pico4-vrlink-bindings.json](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4-vrlink-bindings.json)).
+  [`libpico4-vrlink-compat.so`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-vrlink/pico4-vrlink-compat.c),
+  preloaded into `vrlink`'s process only, changes what it reads:
+  - its input packing gets `frame_controller`, its static properties Valve's PICO 4 ones (type
+    `pico_controller`, model `PICO 4 (Left Controller)`, Valve's render model and input profile), so the PC
+    sets up its PICO 4 controller with Valve's bindings;
+  - each Frame path that fills an input slot of the PC's `pico_controller` reads our input with that slot's
+    meaning (A/X, B/Y, the left menu button as system, the joystick, trigger and grip);
+  - the pose: `vrlink` sends each device's driver pose (SteamVR's internal `IVRClientInternal`) with its
+    driver-from-head transform, for our controllers the aim pose. The layer composes PICO OS's aim-to-grip
+    and Valve's PICO 4 offset onto that transform, so the PC gets the grip pose times Valve's offset, as
+    Valve's client sends it (PICO OS's OpenXR grip pose is that same aim-to-grip).
+
+  SteamVR on the headset keeps `pico_controller` and its bindings.
 - **The codec's address fault.** About 2.5 s after the last client closes the codec, and at boot, the
   IOMMU logs `Unhandled context fault` at address 0 for stream `0x2100` as the codec powers down.
   Decoding after it works (a 22-minute stream, repeated decoder starts), so it is harmless; what the
@@ -523,6 +533,7 @@ decoder and shows it through the local SteamVR. The PC's `driver_vrlink` knows t
 | `vrlink`'s path without the PC (Venus decodes into images built as `vrlink` builds them, a compute shader samples them through a YCbCr sampler) | 8-bit and Main10 at 1280×5120: image and reported size match (9,891,840 and 13,885,440 bytes), the picture is identical to FFmpeg's decode; 8-bit 1536×6144: sizes match (14,229,504 bytes) |
 | Frames before the first key frame (4, 12 and 40, Main10 at 1280×5120) | first picture 160, 261 and 438 ms after the decoder's start, no errors; without the kernel commit “media: venus: a decoder without pictures skips what comes before the headers” none within 5 s |
 | Steam Link from a PC (POOLS on an NVIDIA GPU, 1280×5120 Main10 over Wi-Fi), worn | picture, audio, head tracking and controllers work; about 22 minutes at 90 frames/s in one run |
+| Steam Link controllers, worn | the PC shows PICO 4 controllers and every control registers in SteamVR's Test Controller; the PC's models sit on the real controllers within about 6° and 2 cm, where Valve's offset puts them; the PC's pointer starts 1.7 cm to the side, at the tip of Valve's PICO 4 model |
 | The picture's start | about 12 s after `vrlink`'s start, with a decoder reset at the first video |
 | Frame times, POOLS | game frame start to illumination 73 ms median (67–78 ms, 5th–95th percentile): encode 11–22 ms, network 4 ms, decode 6 ms, decode end to illumination 30 ms. At 22 ms encode the stream runs at about 67 frames/s, at 11 ms at 90 |
 
