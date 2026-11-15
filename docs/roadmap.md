@@ -193,9 +193,11 @@ built for the Frame's hardware.
 - **Onboarding.** From an empty data partition, `pico4-onboarding` runs the first-run setup as SteamVR's scene in
   the room view: language (all 31 of the client's), time zone, Wi-Fi with its password page, controllers and the
   lens distance, in the client's words and fonts; the client then starts in the chosen language. It pairs
-  controllers hands-free when none is there and shows the PICO 4's introduction once after sign-in; worn, the
-  setup, the pairing and the introduction's replay work ([session.md](session.md#first-run-setup)). The client's
-  screen reader (Orca) speaks.
+  controllers hands-free when none is there; worn, the setup and the pairing work
+  ([session.md](session.md#first-run-setup)). The client's screen reader (Orca) speaks.
+- **Settings.** Overpressure Settings, a SteamVR dashboard tab, has what the PICO 4 cannot do the Frame's way:
+  the lens distance and the controllers' pairing, and brings the controllers' page in front when none is
+  connected ([session.md](session.md#settings)); not yet checked worn.
 - **Acceptance.** `dev check` runs 30 s of Valve's session on the installed system, with the headset and both
   controllers in SteamVR.
 

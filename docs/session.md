@@ -244,24 +244,20 @@ What a new owner meets, from an empty data partition:
 | [First-run setup](#first-run-setup) | welcome, language, time zone, Wi-Fi, controllers, lens distance | before the first sign-in, once |
 | The Frame's guided tour | pairing, health, playspace, laser mouse, system button, PC pairing | does not run (device type 541) |
 | SteamVR | playspace setup for a new room ([xr.md](xr.md#room-setup)) | when a game starts in a new room, or from Space Setup |
-| Introduction | the PICO 4's controllers, health and safety, laser and PICO button, the playspace setup | after the first sign-in, once |
+| [Overpressure Settings](#settings) | the lens distance, the controllers' pairing | SteamVR's dashboard; the controllers' page in front when none is connected |
 
-The setup and the introduction are [`pico4-onboarding`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4-onboarding.cpp)
+The setup is [`pico4-onboarding`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4-onboarding.cpp)
 ([`pico4-onboarding.service`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-session/pico4-onboarding.service), part of
-`steamvr.service`): a SteamVR overlay 1.3 m in front of the wearer, level, over other overlays. It comes
-back in front when the headset is put on and a second after it left the view (more than 30 degrees
-aside, or 0.3 m above or below the eyes); while looked at it stays. During the setup it is SteamVR's
-scene application, otherwise a background one.
+`steamvr.service`), SteamVR's scene application: a panel 1.3 m in front of the wearer, level, over other
+overlays. It comes back in front when the headset is put on and a second after it left the view (more
+than 30 degrees aside, or 0.3 m above or below the eyes); while looked at it stays. Once the setup is
+done, or someone signed in (`CompletedOOBE` in `~/.steam/registry.vdf`), it exits at once.
 
 - **Controllers.** With no controller connected 20 s after the start, the station listens for one
   controller after the other, 60 s each, through the driver's pairing socket
   ([xr.md](xr.md#pairing)), while the panel says what to press (trigger and PICO button together for
   about 6 s, PICO OS's instruction). With one controller connected, its laser pairs the other from the
-  panel's Pair button.
-- **Introduction.** Once after the first sign-in (`CompletedOOBE` in `~/.steam/registry.vdf`): the
-  controllers, health and safety, the laser and the PICO button (press: the menu; hold: recenter), the
-  playspace. Skip or Done writes `~/.local/share/pico4/onboarding-done`; the dashboard's Introduction tab
-  shows it again.
+  panel's Pair button. After the setup, [Overpressure Settings](#settings) does the same.
 - **Not covered:** the Frame tour's PC pairing; Steam Link is in the menu ([Steam Link](#steam-link)).
 
 ### First-run setup
@@ -296,8 +292,7 @@ vrclient's `IVRMailbox_002`: its `open` takes a third string after the name and 
 `nullptr`; any other value crashes the caller. A settings file written before SteamVR starts does not
 work: on a first start SteamVR writes its own copy back. Steam's own path property `/steam/oobe` is not
 used: without the client the dashboard's contents it pins are SteamVR's own bar. When the setup ends the
-room view goes off, `expectSteam` on, the setup leaves its mark and restarts as the background
-application for the introduction, and the client starts.
+room view goes off, `expectSteam` on, the setup leaves its mark and exits, and the client starts.
 
 The client's own words come from its files at runtime (localization files and language-screen module in
 `~/.local/share/Steam/steamui`): its welcome, language and zone names, the network page's texts and the
@@ -321,16 +316,43 @@ Cyrillic, the client's Noto font (`clientui/fonts`) every other script.
 | (none) | the lens distance, 62 to 72 mm in 0.5 mm steps, through `pico4-lens` |
 
 Done on the last page, or Skip on the first, writes `~/.local/share/pico4/setup-done` and the client
-starts; the introduction follows the first sign-in.
+starts.
 
 The pages' logic, zones, languages and the readers of the client's files and nmcli's output are in
-[pico4_setup.h](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4_setup.h) and [pico4_onboarding.h](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4_onboarding.h), tested
-on the host. `pico4-onboarding --render DIR [LANGUAGE]` draws every page as PNG without SteamVR.
+[pico4_setup.h](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4_setup.h), [pico4_onboarding.h](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4_onboarding.h) and
+[pico4_pairing.h](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4_pairing.h), tested on the host.
+`pico4-onboarding --render DIR [LANGUAGE]` draws every page as PNG without SteamVR.
 
 | Check | Result |
 | --- | --- |
-| Worn, after an install with both controllers off | the panel listened for the left controller hands-free; the right one connected when switched on and its laser paired the left; the introduction ran to its end, left its mark and replayed from the Introduction tab |
+| Worn, after an install with both controllers off | the panel listened for the left controller hands-free; the right one connected when switched on and its laser paired the left |
+| Worn, on an installed system: room view, keyboard, Wi-Fi | the room view shows behind the panel; the password field opens the keyboard; after a refused password the retry joins |
 | The setup's pages worn, from an empty data partition | open |
+
+### Settings
+
+Overpressure Settings ([`overpressure-settings`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/overpressure-settings.cpp),
+[`overpressure-settings.service`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-session/overpressure-settings.service), part of `steamvr.service`) is
+a tab in SteamVR's dashboard for what the PICO 4 cannot do the Frame's way, laid out like SteamVR's own
+settings: a menu on the left, the chosen page on the right, in the client's language with the texts of
+pico4-onboarding.strings.
+
+| Page | Why | What |
+| --- | --- | --- |
+| Lens distance | the lenses have no wheel, and SteamVR shows the IPD but has no control that sets it | a slider, ±0.5 mm buttons and four presets ([xr.md](xr.md#lens-distortion-and-ipd)) |
+| Controllers | SteamVR cannot pair the PICO 4's controllers | each one's state, and Pair for a missing one through the driver's pairing socket ([xr.md](xr.md#pairing)) |
+
+With no controller connected 20 s after the start, and the first-run setup over (it pairs itself), the
+Controllers page comes up 1.3 m in front of the wearer as the setup's panel does, and the station
+listens hands-free for one controller after the other, 60 s each. With one connected, its laser pairs
+the other or closes the panel; with both connected the panel goes after 3 s. The layout and decisions
+are in [pico4_settings.h](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4_settings.h), tested on the host;
+`overpressure-settings --render DIR [LANGUAGE]` draws the pages as PNG without SteamVR.
+
+| Check | Result |
+| --- | --- |
+| The pages rendered in English and German | as designed; GCC builds it without warnings |
+| Worn: lens distance, controllers' pairing, the hands-free panel | open |
 
 ### Monado as a service
 
@@ -371,7 +393,7 @@ display in direct mode with three swapchain images.
   function with "Unable to release resource of unknown type") and ends with SIGSEGV. Any client overlay
   that ever had an image through `SetOverlayRaw` or `SetOverlayFromFile` triggers it, even a cleared
   1×1 one; images through `SetOverlayTexture` (Vulkan) do not, so the project's panels use Vulkan
-  textures. A stop still crashes with the Steam client, the lens panel and the room view all stopped, so
+  textures. A stop still crashes with the Steam client, the settings and the room view all stopped, so
   the remaining source is unknown (SteamVR's dashboard is untested), as is whether other SteamVR
   installations do this. It costs a core dump of about 6 MB: `coredump.conf.d/50-pico4-limit.conf` keeps
   core dumps within 1 GB, and `steamvr.service`'s result stays clean.

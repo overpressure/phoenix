@@ -182,7 +182,7 @@ reports), `A0 07 00 lo hi xor` (the target in 0.01 mm, 62.00–72.00), then `A0 
 50 ms until the reply `79 state xor` says 0 (1 while moving, 2 at the near end). 0.9 mm take 0.17 s
 and end within 0.05 mm. The range is the PICO 4's specified 62–72 mm; PICO OS allows 58–72 mm with a
 risk warning below 62, and the motor stops by itself at 59.4–59.9 mm.
-[`pico4-lens-panel`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4-lens-panel.cpp) adds a SteamVR dashboard control for it: a
+The Lens distance page of [Overpressure Settings](session.md#settings) in SteamVR's dashboard controls it: a
 slider, ±0.5 mm buttons and four presets (press moves, hold 1 s stores, in `~/.config/pico4-lens/presets`).
 
 ## Controller radio ("station")
