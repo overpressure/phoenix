@@ -45,8 +45,11 @@ Every other partition stays read-only; the calibration and firmware the system n
 - **Updates.** A new system image replaces `super` whole; the data stays. On an image it has not booted
   before, preinit takes `/var/lib/pacman` (which describes the image) from the new image.
 - **Boot indication.** [`pico4-splash`](../src/splash/pico4-splash.c) draws the logo's headset
-  ([docs/logo](https://github.com/overpressure/overpressure/blob/main/docs/logo/README.md)), the name and a moving bar in the middle of both lenses while the
-  system starts ([pico4-splash-draw.h](../src/splash/pico4-splash-draw.h)). preinit starts it once the data
+  ([docs/logo](https://github.com/overpressure/overpressure/blob/main/docs/logo/README.md)), 320 pixels wide (about a seventh of a lens), the name in
+  Inter and a moving bar in the middle of both lenses while the system starts
+  ([pico4-splash-draw.h](../src/splash/pico4-splash-draw.h)). Text is Inter's own outlines
+  ([pico4-splash-font.h](../src/splash/pico4-splash-font.h), written by [font.py](../src/splash/font.py) from the pinned
+  font file), filled by the splash's anti-aliased filler. preinit starts it once the data
   and PICO OS's files are there; `pico4-splash.service` takes the display over and the bar carries on (its place follows the
   clock). It sets the panels' 90 Hz mode on msm's primary plane and gives up DRM master, so the next compositor
   (Monado, SteamVR's) becomes master; that compositor's commit ends the indication, four minutes at the latest.
@@ -175,7 +178,10 @@ from there starts the maintenance stage 1 again.
 With the USB cable attached, a powered-off headset starts again with `androidboot.mode=charger`. PICO OS then
 runs AOSP's `charger`; preinit starts systemd with `pico4-charger.target`: `basic.target`,
 `pico4-charger.service` ([`charger`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/charger)), the USB link,
-systemd-networkd and sshd. The boot indication does not run, so the lenses stay dark. Holding the power key 2 s
+systemd-networkd and sshd. The boot indication does not run. As AOSP's charger shows the battery when it starts
+and on a press of the power key, the lenses show the battery for 4 s then: its level, red at 15 % and below, a bolt
+while it charges, and the level in per cent (`pico4-splash --battery PERCENT CHARGING SECONDS`, which then switches
+the panels off); otherwise they stay dark. Holding the power key 2 s
 starts the system (a plain reboot); 10 s without USB power turn the headset off, as AOSP's charger does.
 [test_charger.sh](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/test_charger.sh) tests these decisions in `pico4-base`'s build.
 
@@ -433,6 +439,7 @@ it. This follows from the order and the boot rules; it was not tried with a pull
 | Start without stage 1 | preinit at 1.4 s, systemd at 1.9 s (storage sweep 0.03 s); USB link at about 4 s, `wlan0` (re-probed) at about 9 s; systemd `running`, no failed units; `/` read-only from `sda7`, `/data` writable, `/etc` an overlay; governor `schedutil` |
 | Boot time | the graphical target 9.7 s and 11.0 s after the kernel starts, `pico4-session.service` started at 5.3 to 5.7 s; the audio DSP's chain (`pico4-lpass-macros`, 5 to 6 s) ends it |
 | Charger mode | a power-off with the cable in starts `pico4-charger.target` (10.7 s): charger service, `sshd` and USB link run, boot indication and session do not; a plain reboot from it starts the system |
+| Charger mode's battery, looked at | shown in both lenses when charger mode starts and on a short press of the power key, then dark again; holding the key 2 s starts the system |
 | Persistence | files in `/home`, `/var`, `/etc` and `/root` survive a reboot and a system update (new image in `super`, its package database taken over) |
 | `dev check` on the installed system | userspace check passes (USB link, storage, systemd, no unexpected listener); head IMU passes; Valve's session: 90.03 commits/s, 0.0 % late, 0 stalls, hottest zone 67.1 °C after 30 s; SteamVR saw the headset (the controllers were not connected) |
 | Development loop | `dev recovery`, `dev reboot` (stays in maintenance), `dev normal` (installed system again); from fastboot without the recovery request, `dev reboot` connects to the installed system |

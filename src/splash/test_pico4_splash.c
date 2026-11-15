@@ -8,6 +8,7 @@
  *   ./test_pico4_splash [OUT.ppm]
  */
 #include <stdio.h>
+#include <string.h>
 
 #include "pico4-splash-draw.h"
 
@@ -103,13 +104,16 @@ int main(int argc, char **argv)
 		near(on_dial(cx, 40, 180), C_LENS, 2, "no red zone at the left");
 	}
 
-	/* The name under it: the o's ring and its hole, the p's descender. */
-	float x = (CANVAS_W - name_width()) / 2, h = NAME_X;
-	near(canvas[(int)(NAME_TOP + h / 2)][(int)(x + h)], C_NAME, 8, "the o's ring");
-	near(canvas[(int)(NAME_TOP + h / 2)][(int)(x + h / 2)], 0, 0, "the o's hole");
-	for (const char *p = NAME; *p != 'p'; p++)
-		x += (letter(*p)->advance + NAME_GAP) * h;
-	near(canvas[(int)(NAME_TOP + 1.3f * h)][(int)x], C_NAME, 8, "the p's descender");
+	/* The name under it, in Inter: the o's ring and its hole, the p's descender. */
+	float k = NAME_SIZE / FONT_UNITS, x = (CANVAS_W - text_width(NAME, NAME_SIZE)) / 2;
+	float middle = NAME_BASELINE - FONT_X_HEIGHT * k / 2;
+	near(canvas[(int)middle][(int)(x + 613 * k)], 0, 0, "the o's hole");
+	check(canvas[(int)middle][(int)(x + 190 * k)] != 0, "the o's ring");
+	x += text_width("over", NAME_SIZE);
+	int descender = 0;
+	for (int col = (int)x; col < (int)(x + text_width("p", NAME_SIZE)); col++)
+		descender |= canvas[(int)NAME_BASELINE + 6][col];
+	check(descender, "the p's descender");
 
 	/* Nothing cut off: the canvas' edges stay black. */
 	int edge_lit = 0;
@@ -136,6 +140,33 @@ int main(int argc, char **argv)
 
 	if (argc > 1)
 		write_ppm(argv[1]);
+
+	/* Charger mode's battery: the level's colour and length, the bolt, the per cent under it. */
+	int body_y = (int)(BATTERY_Y + BATTERY_H / 2), left = (int)(BATTERY_X + BATTERY_LINE + BATTERY_GAP + 4);
+	int right = (int)(BATTERY_X + BATTERY_W - BATTERY_LINE - BATTERY_GAP - 4);
+	memset(canvas, 0, sizeof(canvas));
+	draw_battery(61, 1);
+	near(canvas[body_y][left], C_LEVEL, 2, "the level from the left");
+	near(canvas[body_y][right], 0, 0, "no level at the right at 61 per cent");
+	near(canvas[body_y][(int)(BATTERY_X + BATTERY_W / 2) + 1], C_WHITE, 8, "the bolt in the middle");
+	near(canvas[body_y][(int)BATTERY_X + 2], C_OUTLINE, 8, "the outline");
+	int digits_lit = 0;
+	for (int col = 0; col < CANVAS_W; col++)
+		digits_lit |= canvas[(int)(LEVEL_BASELINE - 10)][col];
+	check(digits_lit, "the per cent under the battery");
+	memset(canvas, 0, sizeof(canvas));
+	draw_battery(8, 0);
+	near(canvas[body_y][left], C_LOW, 2, "a low level in red");
+	near(canvas[body_y][(int)(BATTERY_X + BATTERY_W / 2) + 1], 0, 0, "no bolt when not charging");
+	memset(canvas, 0, sizeof(canvas));
+	draw_battery(100, 1);
+	check(canvas[body_y][right] != 0, "a full level reaches the right");
+	int battery_edge = 0;
+	for (int y = 0; y < CANVAS_H; y++)
+		battery_edge |= canvas[y][0] | canvas[y][CANVAS_W - 1];
+	for (int col = 0; col < CANVAS_W; col++)
+		battery_edge |= canvas[0][col] | canvas[CANVAS_H - 1][col];
+	check(!battery_edge, "the battery picture is not cut off");
 	if (failures) {
 		printf("test_pico4_splash: %d failed\n", failures);
 		return 1;

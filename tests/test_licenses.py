@@ -15,6 +15,7 @@ REPO = Path(__file__).resolve().parents[1]  # this headset's repository
 LICENSES = {
     "": {"Unlicense"},
     "src/splash/": {"BSL-1.0"},
+    "src/splash/pico4-splash-font.h": {"OFL-1.1"},  # Inter's outlines (src/splash/OFL.txt)
 }
 
 SOURCE_SUFFIXES = {".c", ".cpp", ".dts", ".frag", ".h", ".hpp", ".ps1", ".py", ".sh", ".vert"}

@@ -23,6 +23,9 @@
  *       -o prebuilt/aarch64/pico4-splash src/splash/pico4-splash.c
  *
  * usage: pico4-splash [SECONDS]   give up after SECONDS (default 300) even if nobody took over
+ *        pico4-splash --battery PERCENT CHARGING SECONDS
+ *                                 charger mode's picture: the battery at PERCENT, with a bolt while
+ *                                 CHARGING (1), for SECONDS; then it switches the panels off
  *
  * SIGTERM ends it; the kernel then removes its framebuffer and the panels go dark, unless a
  * compositor already shows its own frames.
@@ -397,11 +400,76 @@ static long number(const char *s)
 	return n;
 }
 
+/* The mode, the CRTC on and the plane over both eyes with our framebuffer, in one commit. */
+static int show(void)
+{
+	struct drm_mode_create_blob blob = {.data = (__u64)(unsigned long)&mode, .length = sizeof(mode)};
+	if (ioc(DRM_IOCTL_MODE_CREATEPROPBLOB, &blob))
+		quit("cannot create the mode", 1);
+	add(connector, property(connector, DRM_MODE_OBJECT_CONNECTOR, "CRTC_ID", 0), crtc);
+	add(crtc, property(crtc, DRM_MODE_OBJECT_CRTC, "MODE_ID", 0), blob.blob_id);
+	add(crtc, property(crtc, DRM_MODE_OBJECT_CRTC, "ACTIVE", 0), 1);
+	/* One plane over both eyes, at the mode's size; the controller splits it. */
+	static const char *plain[] = {"FB_ID", "CRTC_ID", "CRTC_X", "CRTC_Y", "CRTC_W", "CRTC_H",
+				      "SRC_X", "SRC_Y", "SRC_W", "SRC_H"};
+	__u64 state[] = {buffer.fb, crtc, 0, 0, 2 * EYE, EYE, 0, 0, (__u64)2 * EYE << 16, (__u64)EYE << 16};
+	for (unsigned j = 0; j < sizeof(state) / sizeof(state[0]); j++)
+		add(plane, property(plane, DRM_MODE_OBJECT_PLANE, plain[j], 0), state[j]);
+	return commit(DRM_MODE_ATOMIC_ALLOW_MODESET);
+}
+
+/* The panels off: the plane, the CRTC and the connector given back, so that they do not stay lit black. */
+static void dark(void)
+{
+	add(connector, property(connector, DRM_MODE_OBJECT_CONNECTOR, "CRTC_ID", 0), 0);
+	add(crtc, property(crtc, DRM_MODE_OBJECT_CRTC, "MODE_ID", 0), 0);
+	add(crtc, property(crtc, DRM_MODE_OBJECT_CRTC, "ACTIVE", 0), 0);
+	add(plane, property(plane, DRM_MODE_OBJECT_PLANE, "FB_ID", 0), 0);
+	add(plane, property(plane, DRM_MODE_OBJECT_PLANE, "CRTC_ID", 0), 0);
+	if (commit(DRM_MODE_ATOMIC_ALLOW_MODESET))
+		say("the panels refused to switch off");
+}
+
+/*
+ * Charger mode's picture (charger in overpressure/packages' pico4-base): the battery at PERCENT,
+ * with the bolt while CHARGING, for SECONDS, then the panels off. It keeps the display for that time:
+ * nothing else draws in charger mode.
+ */
+static long battery(long percent, long charging, long seconds)
+{
+	open_display(60000);
+	struct drm_set_client_cap universal = {DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1};
+	struct drm_set_client_cap atomic = {DRM_CLIENT_CAP_ATOMIC, 1};
+	if (ioc(DRM_IOCTL_SET_CLIENT_CAP, &universal) || ioc(DRM_IOCTL_SET_CLIENT_CAP, &atomic))
+		quit("no atomic modesetting", 1);
+	if (ioc(DRM_IOCTL_SET_MASTER, 0))
+		quit("another program drives the display", 0);
+	find_output();
+	find_primary();
+	allocate(&buffer);
+	draw_battery((int)percent, (int)charging);
+	for (int eye = 0; eye < 2; eye++)
+		for (int y = 0; y < CANVAS_H; y++)
+			memcpy(pixel(&buffer, eye * EYE + EYE / 2 - CANVAS_W / 2, EYE / 2 - CANVAS_H / 2 + y), canvas[y],
+			       sizeof(canvas[y]));
+	if (show())
+		quit("the panels refused the mode", 1);
+	say("showing the battery");
+	sleep_ms(seconds * 1000);
+	dark();
+	quit(0, 0);
+}
+
 long pico4_main(long argc, char **argv)
 {
-	long seconds = argc > 1 ? number(argv[1]) : 300;
-	if (argc > 2 || seconds <= 0) {
-		say("usage: pico4-splash [SECONDS]");
+	if (argc == 5 && eq(argv[1], "--battery")) {
+		long percent = number(argv[2]), charging = number(argv[3]), seconds = number(argv[4]);
+		if (percent >= 0 && percent <= 100 && (charging == 0 || charging == 1) && seconds > 0)
+			return battery(percent, charging, seconds);
+	}
+	long seconds = argc == 2 ? number(argv[1]) : argc == 1 ? 300 : -1;
+	if (seconds <= 0) {
+		say("usage: pico4-splash [SECONDS] | pico4-splash --battery PERCENT CHARGING(0|1) SECONDS");
 		return argc > 1 && (eq(argv[1], "-h") || eq(argv[1], "--help")) ? 0 : 2;
 	}
 	long end = now_ms() + seconds * 1000;
@@ -422,19 +490,7 @@ long pico4_main(long argc, char **argv)
 	draw_track();
 	draw(&buffer, now_ms());
 
-	struct drm_mode_create_blob blob = {.data = (__u64)(unsigned long)&mode, .length = sizeof(mode)};
-	if (ioc(DRM_IOCTL_MODE_CREATEPROPBLOB, &blob))
-		quit("cannot create the mode", 1);
-	add(connector, property(connector, DRM_MODE_OBJECT_CONNECTOR, "CRTC_ID", 0), crtc);
-	add(crtc, property(crtc, DRM_MODE_OBJECT_CRTC, "MODE_ID", 0), blob.blob_id);
-	add(crtc, property(crtc, DRM_MODE_OBJECT_CRTC, "ACTIVE", 0), 1);
-	/* One plane over both eyes, at the mode's size; the controller splits it. */
-	static const char *plain[] = {"FB_ID", "CRTC_ID", "CRTC_X", "CRTC_Y", "CRTC_W", "CRTC_H",
-				      "SRC_X", "SRC_Y", "SRC_W", "SRC_H"};
-	__u64 state[] = {buffer.fb, crtc, 0, 0, 2 * EYE, EYE, 0, 0, (__u64)2 * EYE << 16, (__u64)EYE << 16};
-	for (unsigned j = 0; j < sizeof(state) / sizeof(state[0]); j++)
-		add(plane, property(plane, DRM_MODE_OBJECT_PLANE, plain[j], 0), state[j]);
-	if (commit(DRM_MODE_ATOMIC_ALLOW_MODESET))
+	if (show())
 		quit("the panels refused the mode", 1);
 	ioc(DRM_IOCTL_DROP_MASTER, 0);
 	say("showing the boot indication");

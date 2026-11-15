@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSL-1.0
 /*
- * pico4-splash's picture: the logo's headset (docs/logo/overpressure-mark.svg), the name under it and a
- * moving bar under that, in the middle of each eye.
+ * pico4-splash's pictures: the logo's headset (docs/logo/overpressure-mark.svg), the name under it and a
+ * moving bar under that, in the middle of each eye; and charger mode's battery with its level.
  *
  * Freestanding like pico4-splash.c, which includes it (and so does its host test): no libc, no libm.
  * The headset and the name are drawn once into a canvas, then copied into both eyes; the bar is
@@ -16,15 +16,13 @@
 /* -- layout, in panel pixels -------------------------------------------------------------- */
 
 #define CANVAS_W 600
-#define CANVAS_H 392
-#define MARK_W 560.0f      /* the headset's width: about a quarter of an eye */
-#define NAME_TOP 336.0f    /* the name's x-height line in the canvas */
-#define NAME_X 34.0f       /* the name's x-height */
-#define NAME_STROKE 4.8f
-#define NAME_GAP 0.58f     /* between letters, in x-heights */
-#define BAR_W 360
-#define BAR_H 8
-#define BAR_GAP 44         /* from the canvas' bottom to the bar */
+#define CANVAS_H 260
+#define MARK_W 320.0f      /* the headset's width: about a seventh of an eye */
+#define NAME_BASELINE 236.0f /* the name's baseline in the canvas */
+#define NAME_SIZE 48.0f    /* the name's size, pixels to the em */
+#define BAR_W 220
+#define BAR_H 6
+#define BAR_GAP 28         /* from the canvas' bottom to the bar */
 #define GROUP_H (CANVAS_H + BAR_GAP + BAR_H)
 #define BAR_CYCLE 1600     /* ms for the bar's segment to cross the track */
 #define BAR_SEGMENT 0.38f  /* the segment's length, a share of the track */
@@ -239,14 +237,6 @@ static void circle(float cx, float cy, float r)
 	close_path();
 }
 
-/* A circle drawn the other way round: inside an outer one, it cuts a hole. */
-static void hole(float cx, float cy, float r)
-{
-	move(cx + r, cy);
-	arc(cx, cy, r, 360, 0);
-	close_path();
-}
-
 static void cubic(float x1, float y1, float x2, float y2, float x3, float y3)
 {
 	float x0 = (pen_x - ox) / scale, y0 = (pen_y - oy) / scale;
@@ -280,31 +270,6 @@ static void arc_stroke(float cx, float cy, float r, float w, float a0, float a1)
 	arc(cx + r * cosine(a1), cy + r * sine(a1), h, a1, a1 + 180);
 	arc(cx, cy, r - h, a1, a0);
 	arc(cx + r * cosine(a0), cy + r * sine(a0), h, a0 + 180, a0 + 360);
-	close_path();
-}
-
-/* A straight line of width W from (X0, Y0) to (X1, Y1) with round ends; the ends' half circles turn
- * through the line's own direction (D) and its normal (N). */
-static void line_stroke(float x0, float y0, float x1, float y1, float w)
-{
-	float dx = x1 - x0, dy = y1 - y0, len = dx * dx + dy * dy, h = w / 2;
-	/* The length by Newton's method: no libm. */
-	float s = len > 1 ? len / 2 : 1;
-	for (int i = 0; i < 20; i++)
-		s = 0.5f * (s + len / s);
-	dx /= s, dy /= s;
-	float nx = -dy, ny = dx;
-	move(x0 + nx * h, y0 + ny * h);
-	line(x1 + nx * h, y1 + ny * h);
-	for (int i = 1; i <= 16; i++) {
-		float c = cosine(i * 180.0f / 16), sn = sine(i * 180.0f / 16);
-		line(x1 + h * (nx * c + dx * sn), y1 + h * (ny * c + dy * sn));
-	}
-	line(x0 - nx * h, y0 - ny * h);
-	for (int i = 1; i <= 16; i++) {
-		float c = cosine(i * 180.0f / 16), sn = sine(i * 180.0f / 16);
-		line(x0 - h * (nx * c + dx * sn), y0 - h * (ny * c + dy * sn));
-	}
 	close_path();
 }
 
@@ -370,69 +335,68 @@ static void headset(void)
 	}
 }
 
-/* -- the name ------------------------------------------------------------------------------------ */
+/* -- text, in Inter (pico4-splash-font.h) ------------------------------------------------------- */
 
-/* A letter of "overpressure": lines and arcs of the name's stroke, in x-heights from the top left of
- * its x-height box (y down); ADVANCE is its width. */
-enum { END, LINE, ARC, RING };
-struct part {
-	unsigned char kind;
-	float a, b, c, d, e; /* LINE x0 y0 x1 y1; ARC cx cy r from to (degrees); RING cx cy r */
-};
-struct letter {
-	char ch;
-	float advance;
-	struct part parts[4];
-};
+#include "pico4-splash-font.h"
 
-static const struct letter letters[] = {
-	{'o', 1.00f, {{RING, 0.5f, 0.5f, 0.5f, 0, 0}, {END, 0, 0, 0, 0, 0}}},
-	{'v', 0.88f, {{LINE, 0, 0, 0.44f, 1, 0}, {LINE, 0.44f, 1, 0.88f, 0, 0}, {END, 0, 0, 0, 0, 0}}},
-	{'e', 1.00f, {{ARC, 0.5f, 0.5f, 0.5f, 35, 360}, {LINE, 0, 0.5f, 1, 0.5f, 0}, {END, 0, 0, 0, 0, 0}}},
-	{'r', 0.62f, {{LINE, 0, 0, 0, 1, 0}, {ARC, 0.45f, 0.45f, 0.45f, 180, 290}, {END, 0, 0, 0, 0, 0}}},
-	{'p', 1.00f, {{RING, 0.5f, 0.5f, 0.5f, 0, 0}, {LINE, 0, 0, 0, 1.42f, 0}, {END, 0, 0, 0, 0, 0}}},
-	{'s', 0.56f, {{ARC, 0.28f, 0.255f, 0.255f, 90, 340}, {ARC, 0.28f, 0.745f, 0.255f, 270, 520}, {END, 0, 0, 0, 0, 0}}},
-	{'u', 0.88f, {{LINE, 0, 0, 0, 0.5f, 0}, {ARC, 0.44f, 0.5f, 0.44f, 0, 180}, {LINE, 0.88f, 0, 0.88f, 1, 0}, {END, 0, 0, 0, 0, 0}}},
-};
-
-static const struct letter *letter(char ch)
+/* Along the quadratic curve from the pen through the control (X1, Y1) to (X2, Y2), in 10 lines. */
+static void quad(float x1, float y1, float x2, float y2)
 {
-	for (unsigned i = 0; i < sizeof(letters) / sizeof(letters[0]); i++)
-		if (letters[i].ch == ch)
-			return &letters[i];
-	return 0;
+	float x0 = (pen_x - ox) / scale, y0 = (pen_y - oy) / scale;
+	for (int i = 1; i <= 10; i++) {
+		float t = i / 10.0f, u = 1 - t;
+		line(u * u * x0 + 2 * u * t * x1 + t * t * x2, u * u * y0 + 2 * u * t * y1 + t * t * y2);
+	}
 }
+
+static const struct font_glyph *font_glyph(char ch)
+{
+	for (unsigned i = 0; i < sizeof(font_glyphs) / sizeof(font_glyphs[0]); i++)
+		if (font_glyphs[i].ch == ch)
+			return &font_glyphs[i];
+	return &font_glyphs[0];
+}
+
+/* TEXT's width at SIZE pixels to the em. */
+static float text_width(const char *text, float size)
+{
+	float w = 0;
+	for (; *text; text++)
+		w += font_glyph(*text)->advance;
+	return w * size / FONT_UNITS;
+}
+
+/* TEXT with its baseline starting at (X, BASELINE), SIZE pixels to the em, in RGB: each glyph's outline
+ * filled as one shape, so that its holes stay open. */
+static void text(const char *text, float x, float baseline, float size, unsigned rgb)
+{
+	float k = size / FONT_UNITS;
+	scale = 1, ox = 0, oy = 0;
+	for (; *text; text++) {
+		const struct font_glyph *g = font_glyph(*text);
+		const short *op = font_ops + g->start, *end = op + g->count;
+		while (op < end) {
+			if (*op == FONT_MOVE)
+				move(x + op[1] * k, baseline - op[2] * k), op += 3;
+			else if (*op == FONT_LINE)
+				line(x + op[1] * k, baseline - op[2] * k), op += 3;
+			else if (*op == FONT_QUAD)
+				quad(x + op[1] * k, baseline - op[2] * k, x + op[3] * k, baseline - op[4] * k), op += 5;
+			else
+				close_path(), op += 1;
+		}
+		solid(rgb);
+		x += g->advance * k;
+	}
+}
+
+/* -- the name ------------------------------------------------------------------------------------ */
 
 static const char NAME[] = "overpressure";
 
-static float name_width(void)
-{
-	float w = 0;
-	for (const char *p = NAME; *p; p++)
-		w += letter(*p)->advance + (p[1] ? NAME_GAP : 0);
-	return w * NAME_X;
-}
-
 static void name(void)
 {
-	scale = 1, oy = 0;
-	float x = (CANVAS_W - name_width()) / 2, y = NAME_TOP, u = NAME_X, w = NAME_STROKE, h = w / 2;
-	for (const char *p = NAME; *p; p++) {
-		const struct letter *l = letter(*p);
-		for (const struct part *q = l->parts; q->kind != END; q++) {
-			ox = 0;
-			if (q->kind == LINE)
-				line_stroke(x + q->a * u, y + q->b * u, x + q->c * u, y + q->d * u, w);
-			else if (q->kind == ARC)
-				arc_stroke(x + q->a * u, y + q->b * u, q->c * u, w, q->d, q->e);
-			else {
-				circle(x + q->a * u, y + q->b * u, q->c * u + h);
-				hole(x + q->a * u, y + q->b * u, q->c * u - h);
-			}
-			solid(C_NAME); /* each part on its own: parts that overlap stay one shape */
-		}
-		x += (l->advance + NAME_GAP) * u;
-	}
+	text(NAME, (CANVAS_W - text_width(NAME, NAME_SIZE)) / 2, NAME_BASELINE, NAME_SIZE, C_NAME);
 }
 
 /* Draw the headset and the name into the canvas. */
@@ -481,6 +445,85 @@ static void bar_row(unsigned *row, int y, long ms)
 		float lo = x > s0 ? x : s0, hi = x + 1 < s1 ? x + 1 : s1;
 		row[x] = mix(C_TRACK, C_SEGMENT, hi > lo ? hi - lo : 0, track[y][x]);
 	}
+}
+
+/* -- the charging display (pico4-splash --battery) ------------------------------------------------- */
+
+/* Charger mode's picture, in the same canvas: a battery filled to the level, a bolt while it charges,
+ * and the level in per cent under it. */
+#define BATTERY_W 180.0f
+#define BATTERY_H 90.0f
+#define BATTERY_X ((CANVAS_W - BATTERY_W - TERMINAL_W) / 2) /* the body's top left */
+#define BATTERY_Y 20.0f
+#define BATTERY_R 18.0f
+#define BATTERY_LINE 9.0f  /* the outline */
+#define BATTERY_GAP 6.0f   /* between the outline and the level */
+#define TERMINAL_W 11.0f
+#define TERMINAL_H 36.0f
+#define BOLT 0.6f          /* the bolt's size: its points are for a battery 150 pixels high */
+#define LEVEL_SIZE 64.0f   /* the per cent's size, pixels to the em */
+#define LEVEL_BASELINE 190.0f
+#define LOW_PERCENT 15     /* from here down the level is red */
+#define C_OUTLINE 0xe8e8e8
+#define C_LEVEL C_SEGMENT
+#define C_LOW C_RED
+#define C_BLACK 0x000000
+
+/* PERCENT as text with a per cent sign into OUT (at least 5 bytes). */
+static void percent_text(int percent, char *out)
+{
+	int n = 0;
+	if (percent >= 100)
+		out[n++] = '1', out[n++] = '0', out[n++] = '0';
+	else {
+		if (percent >= 10)
+			out[n++] = (char)('0' + percent / 10);
+		out[n++] = (char)('0' + percent % 10);
+	}
+	out[n++] = '%';
+	out[n] = 0;
+}
+
+static void bolt(float cx, float cy)
+{
+	scale = BOLT, ox = cx, oy = cy;
+	move(14, -58);
+	line(-30, 8);
+	line(-4, 8);
+	line(-16, 58);
+	line(30, -10);
+	line(4, -10);
+	close_path();
+	solid(C_WHITE);
+	scale = 1, ox = 0, oy = 0;
+}
+
+/* Draw the battery at PERCENT (clamped to 0..100), with the bolt while CHARGING, into the canvas. */
+static void draw_battery(int percent, int charging)
+{
+	percent = percent < 0 ? 0 : percent > 100 ? 100 : percent;
+	scale = 1, ox = 0, oy = 0;
+	float x = BATTERY_X, y = BATTERY_Y, w = BATTERY_W, h = BATTERY_H, in = BATTERY_LINE;
+	/* The outline: the body filled, its inside black again; then the terminal. */
+	rounded(x, y, w, h, BATTERY_R);
+	solid(C_OUTLINE);
+	rounded(x + in, y + in, w - 2 * in, h - 2 * in, BATTERY_R - in);
+	solid(C_BLACK);
+	rounded(x + w - 3, y + (h - TERMINAL_H) / 2, TERMINAL_W + 3, TERMINAL_H, 5);
+	solid(C_OUTLINE);
+	/* The level, from the left; at least a sliver, so that an empty battery still shows a little red. */
+	float inset = in + BATTERY_GAP, full = w - 2 * inset, level = full * (float)percent / 100;
+	float r = BATTERY_R - inset > 3 ? BATTERY_R - inset : 3;
+	level = level < 2 * r ? 2 * r : level;
+	rounded(x + inset, y + inset, level, h - 2 * inset, r);
+	solid(percent <= LOW_PERCENT ? C_LOW : C_LEVEL);
+	if (charging)
+		bolt(x + w / 2, y + h / 2);
+	/* The level in per cent, centred under the battery with its terminal. */
+	char level_text[5];
+	percent_text(percent, level_text);
+	float width = text_width(level_text, LEVEL_SIZE);
+	text(level_text, x + (w + TERMINAL_W) / 2 - width / 2, LEVEL_BASELINE, LEVEL_SIZE, C_OUTLINE);
 }
 
 #endif

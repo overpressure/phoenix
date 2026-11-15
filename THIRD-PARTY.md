@@ -10,7 +10,8 @@ the headers.
 | Path | License | Note |
 | --- | --- | --- |
 | `src/splash/` | BSL-1.0 | |
-| `prebuilt/aarch64/pico4-splash` | BSL-1.0 | built from `src/splash/` |
+| `src/splash/pico4-splash-font.h` | OFL-1.1 | outlines of Inter 4.1 (The Inter Project Authors), written by `src/splash/font.py`; the license is `src/splash/OFL.txt` |
+| `prebuilt/aarch64/pico4-splash` | BSL-1.0, OFL-1.1 | built from `src/splash/`, with Inter's outlines |
 
 `prebuilt/aarch64/pico4-reboot` is built from `src/reboot/` (Unlicense). Both prebuilt programs are
 freestanding and link no library.

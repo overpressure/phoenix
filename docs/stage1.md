@@ -150,7 +150,7 @@ warns when the image is larger than the stock partition.
 `pico4-reboot` ([source](../src/reboot/pico4-reboot.c), about 1.5 KB, no libc) passes a command string to the
 kernel, which BusyBox's `reboot` cannot; the Qualcomm restart driver picks the next boot target (fastboot,
 recovery) from it. The system image carries the same file. `pico4-splash` ([source](../src/splash/pico4-splash.c),
-about 13 KB, no libm), the installed system's boot indication in the lenses, is in the system image only, so
+about 21 KB with Inter's outlines, no libm), the installed system's boot indication in the lenses, is in the system image only, so
 preinit runs it before the data partition is mounted. From `devices/phoenix/`, with any aarch64 cross
 compiler:
 
@@ -167,7 +167,10 @@ aarch64-linux-gnu-gcc -Os -static -nostdlib -ffreestanding -fno-stack-protector 
 The build container's cross compiler lacks arm64 kernel headers: in a `container run`, first
 `apt-get install linux-libc-dev-arm64-cross`. The splash picture is tested on the host
 (`test_pico4_splash.c` in [scripts/c-tests.sh](../scripts/c-tests.sh)), which writes it as a PPM when
-given a name.
+given a name. Its text is Inter's outlines in `src/splash/pico4-splash-font.h`; a change of the characters it draws
+writes that header again from the pinned font file (`python src/splash/font.py InterVariable.ttf
+src/splash/pico4-splash-font.h`, the file from Inter's repository at the commit `font.py` names, checked by its
+SHA-256).
 
 ## Booting
 
