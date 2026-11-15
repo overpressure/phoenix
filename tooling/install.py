@@ -26,9 +26,13 @@ the EDL backup's LUNs, the unlock's fastboot serial and the Wi-Fi profile.
 The upgrade (upgrade_stages) checks this computer, makes this version's images from the backup,
 then dev flash, dev connect, dev install --on-headset, dev installed and dev check: the data partition stays.
 The way back (restore_stages) checks the backup file by file, then with one consent brings back
-PICO OS's system, boot, recovery and fresh data (dev restore --installed, unless PICO OS runs
-already), waits for PICO OS's setup and USB debugging, and returns the stock bootloader (cycle
---restore-only).
+PICO OS's system, boot, recovery and fresh data, a task each (dev restore --installed --only PART,
+unless PICO OS runs already), waits for PICO OS's setup and USB debugging, and returns the stock
+bootloader (cycle --restore-only).
+
+The waits for the headset in a new USB mode (fastboot, the maintenance system) run here, not in a
+child program: one that runs out asks the owner to plug the headset in again and waits once more
+(replug_until), instead of failing the task.
 """
 
 from __future__ import annotations
@@ -38,12 +42,12 @@ import json
 import re
 import sys
 import uuid
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Callable, ClassVar, TypeVar
 
 from overpressure.api.v1 import REPO, android, doctor, qualcomm, runner, ssh, tools, usbaccess
 from overpressure.api.v1 import backup as backups
 from overpressure.api.v1.install import Ask, Context, Failed, Field, NoBackup, Stage, Task
-from overpressure.api.v1.process import until
+from overpressure.api.v1.process import Final, until
 
 from . import ADB_MODE, FASTBOOT_MODE, USB_MODES, device, devloop, localconfig, unlockfiles
 from . import doctor as checks
@@ -56,6 +60,7 @@ if TYPE_CHECKING:
     from overpressure.api.v1.doctor import Check
     from overpressure.api.v1.headset import Headset, Step
 
+T = TypeVar("T")
 ROOT = REPO
 Settings = localconfig.Settings
 KEY = Settings.key
@@ -160,6 +165,8 @@ NO_PUBLIC_KEY = (
 OWNER_KEY = "owner-key.pub"
 #: What the Wi-Fi ask's answer was, in the state (the network and its password stay in memory).
 WIFI_JOIN, WIFI_SKIP = "join", "skip"
+#: What the restore's maintenance task records when PICO OS ran already: its writes are not needed.
+PICO_OS_RAN = "pico-os"
 READY = (
     "Unplug the headset and put it on. Sign in to Steam, pair the controllers and set up your room in the "
     "headset. If you skipped Wi-Fi, join a network in its settings first. The installer can upgrade the "
@@ -206,6 +213,66 @@ RESTORED = (
     "Your headset runs PICO OS again, with the system and the bootloader from your backup. Its bootloader stays "
     "unlocked, as the install left it. Keep your backup: the installer can install the system again from here."
 )
+
+
+def replug(what: str, seconds: float) -> Ask:
+    """Return the ask after a wait for @p what that ran out after @p seconds: plug the headset in again."""
+    return Ask(
+        "replug",
+        "action",
+        "Plug the headset in again",
+        f"This computer has not seen the headset ({what}) for {seconds:.0f} s. Unplug the USB cable from the "
+        "headset, wait a few seconds and plug it in again (another USB port of this computer may help), then press "
+        "Done: the installer waits for it again. Cancel stops here; starting the installer again goes on from this "
+        "step.",
+    )
+
+
+def usb_seen(modes: Sequence[usbaccess.UsbMode] = USB_MODES) -> str:
+    """Return what this computer's USB bus holds of the headset's @p modes (Linux), for the task's log; else empty.
+
+    It tells a headset that is not on the bus from one that is, but which adb or fastboot does not list yet.
+    """
+    if sys.platform != "linux":
+        return ""
+    found = [f"{mode.name} {len(usbaccess.device_files(mode.vendor, mode.product))}" for mode in modes]
+    return "devices on USB: " + ", ".join(found)
+
+
+def replug_until(ctx: Context, what: str, seconds: float, operation: Callable[[], T]) -> T:
+    """Wait as until() does; when @p seconds run out, ask the owner to plug the headset in again, then wait anew.
+
+    A Final error ends the wait at once, as in until(); declining the ask stops the run.
+    """
+    while True:
+        try:
+            return until(what, seconds, operation, ctx.clock)
+        except Final:  # noqa: PERF203  # a wait loop: until() ends it, or the owner's answer to the ask
+            raise
+        except RuntimeError as exc:
+            seen = usb_seen()
+            ctx.log(f"{exc}" + (f"; {seen}" if seen else ""))
+            ctx.ask(replug(what, seconds))
+
+
+class AskingDev(devloop.Dev):
+    """The dev loop for the installer's own steps: a stop ends its waits, and one that runs out asks for a replug."""
+
+    def __init__(self, ctx: Context, work: Path) -> None:
+        """Work on the headset .env names, in @p work, for a task's @p ctx."""
+        super().__init__(ctx.settings(Settings), work, clock=ctx.clock)
+        self.ctx = ctx
+
+    #: The dev loop's waits in the owner's words.
+    WAITS: ClassVar[dict[str, str]] = {
+        "fastboot": "fastboot mode",
+        "NCM gadget": "the maintenance system",
+        "stage-1 SSH": "the maintenance system",
+    }
+
+    def until(self, name: str, seconds: float, operation: Callable[[], T]) -> T:
+        """Wait as replug_until() does."""
+        return replug_until(self.ctx, self.WAITS.get(name, name), seconds, operation)
 
 
 def device_rows(output: str, states: Sequence[str] = ("device", "unauthorized", "offline")) -> dict[str, str]:
@@ -662,7 +729,7 @@ class Plan:
                 raise RuntimeError(msg)
             return next(iter(rows))
 
-        serial = until("the headset in fastboot", FASTBOOT_SECONDS, one, ctx.clock)
+        serial = replug_until(ctx, "fastboot mode", FASTBOOT_SECONDS, one)
         ctx.set_setting(KEY("fastboot_serial"), serial)
 
     @staticmethod
@@ -750,17 +817,41 @@ class Plan:
         rows = device_rows(ctx.output([settings.tool("adb"), "devices"], 30, check=False), ("device",))
         return bool(settings.adb_serial) and settings.adb_serial in rows
 
-    def restore_system(self, ctx: Context) -> None:
-        """Bring back PICO OS's system, boot, recovery and fresh data from the backup (dev restore).
+    def restore_maintenance(self, ctx: Context) -> None:
+        """Start the maintenance system from wherever the headset is, for the restore's writes (dev recovery).
 
-        A headset that runs PICO OS already has its stock system; any other is taken to carry the
-        installed system, also where another computer installed it (--installed).
+        A headset that runs PICO OS already has its stock system: the restore's writes are skipped
+        (PICO_OS_RAN). Any other is taken to carry the installed system, also where another
+        computer installed it.
         """
         ctx.ask(RESTORE_PLUG_IN)
         if self.pico_os_running(ctx):
             ctx.note("PICO OS runs on the headset already: only its bootloader is left.")
+            ctx.remember(PICO_OS_RAN)
             return
-        ctx.run([*self.argv(ctx, "restore"), "--installed"])
+        ctx.remember("")
+        AskingDev(ctx, self.work).recovery()
+
+    def maintenance_done(self, ctx: Context) -> bool:
+        """Tell whether the restore needs no maintenance system (it is done, or PICO OS ran) or one runs now."""
+        if ctx.completed("recovery") or ctx.recall("maintenance") == PICO_OS_RAN:
+            return True
+        return devloop.Dev(ctx.settings(Settings), self.work).maintenance_running()
+
+    def restore_part(self, part: str) -> Callable[[Context], None]:
+        """Return the task that writes the restore's @p part from the backup (dev restore --only PART)."""
+
+        def run(ctx: Context) -> None:
+            if part == "recovery":  # into fastboot here, where the wait can ask for a replug
+                AskingDev(ctx, self.work).to_fastboot()
+            ctx.run([*self.argv(ctx, "restore"), "--installed", "--only", part])
+
+        return run
+
+    @staticmethod
+    def restore_written(part: str) -> Callable[[Context], bool]:
+        """Return the done check of the restore's @p part: written in an earlier run, or not needed (PICO OS ran)."""
+        return lambda ctx: ctx.completed(part) or ctx.recall("maintenance") == PICO_OS_RAN
 
     def restore_stages(self) -> tuple[Stage, ...]:
         """Return the way back to stock: the backup checked, PICO OS's system, its setup, the stock bootloader."""
@@ -790,11 +881,41 @@ class Plan:
                         where=UNCHANGED,
                     ),
                     Task(
+                        "maintenance",
+                        "Start the maintenance system",
+                        self.restore_maintenance,
+                        "about 1 min",
+                        done=self.maintenance_done,
+                        where="The headset is in its bootloader or its maintenance system, or the system still runs; "
+                        "nothing was written. " + AGAIN,
+                    ),
+                    Task(
                         "system",
                         "PICO OS's system",
-                        self.restore_system,
-                        "about 20 min",
+                        self.restore_part("system"),
+                        "about 15 min",
                         writes=True,
+                        done=self.restore_written("system"),
+                        where="The headset waits in its maintenance system; PICO OS's system may be half written. "
+                        + written,
+                    ),
+                    Task(
+                        "data",
+                        "Fresh data",
+                        self.restore_part("data"),
+                        "about 1 min",
+                        writes=True,
+                        done=self.restore_written("data"),
+                        where="The headset waits in its maintenance system with PICO OS's system written back. "
+                        + written,
+                    ),
+                    Task(
+                        "recovery",
+                        "PICO OS's recovery",
+                        self.restore_part("recovery"),
+                        "about 2 min",
+                        writes=True,
+                        done=self.restore_written("recovery"),
                         where="The headset is in its maintenance system or its bootloader, or PICO OS is starting. "
                         + written,
                     ),

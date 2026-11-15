@@ -85,6 +85,9 @@ INSTALLED = "installed.json"
 INSTALL_ID = "/etc/pico4/install-id"
 #: Partitions "dev restore-partition" writes back from the backup through fastboot.
 RESTORABLE = ("boot", "recovery", "misc")
+#: The parts of an installed system's restore, in order ("dev restore --only"), and the backup's images each writes.
+RESTORE_PARTS = ("system", "data", "recovery")
+RESTORE_IMAGES = {"system": ("super", "boot"), "data": (), "recovery": ("recovery",)}
 #: Command-line word naming the partition a dev image was written for (pico4.part=recovery).
 PART_MARK = "pico4.part="
 #: This boot's random ID: a reboot is over once another one answers.
@@ -1113,15 +1116,16 @@ class Dev(Headset):
 
         return self.until("stage 1 or the installed system", 240, which)
 
-    def restore(self, *, installed: bool = False) -> None:
+    def restore(self, *, installed: bool = False, only: str | None = None) -> None:
         """Leave the loop: the backup's stock boot image, then PICO OS. ABL stays engineering.
 
         With the system installed (dev install, as this computer's record says or @p installed tells
-        for a headset another computer installed), PICO OS's system, recovery and data come back too.
+        for a headset another computer installed), PICO OS's system, recovery and data come back too;
+        @p only: one part of that (restore_installed).
         """
         self.s.require("adb_serial", "fastboot_serial")
-        if installed or (self.work / INSTALLED).exists():
-            self.restore_installed()
+        if installed or only or (self.work / INSTALLED).exists():
+            self.restore_installed(only)
             return
         stock, expected = self.stock_boot()
         if backups.digest(stock) != expected:
@@ -1131,27 +1135,46 @@ class Dev(Headset):
         (self.work / "state.json").unlink(missing_ok=True)
         print(f"PICO OS: {self.wait_pico_os()}")
 
-    def restore_installed(self) -> None:
+    def restore_installed(self, only: str | None = None) -> None:
         """Bring back PICO OS as the backup has it, from the maintenance stage 1.
 
         Super and boot are written back (checked against the manifest, read back), userdata and
         metadata wiped (PICO OS's own data was not in the backup; it formats both and starts its
         first-time setup), misc cleared; then stock recovery goes back through fastboot, and PICO
-        OS starts.
+        OS starts. @p only: one of those parts (RESTORE_PARTS), from where the installer's earlier
+        tasks left the headset: system and data in a running maintenance stage 1, recovery from it
+        or from fastboot.
         """
+        parts = RESTORE_PARTS if only is None else (only,)
         images = {}
-        for name in ("super", "boot", "recovery"):
+        for name in (name for part in parts for name in RESTORE_IMAGES[part]):
             path, expected = self.stock_partition(name)
             if backups.digest(path) != expected:
                 msg = f"{path} differs from the backup manifest"
                 raise RuntimeError(msg)
             images[name] = path
-        # A fresh maintenance boot from wherever the headset is: the installed system, the
-        # maintenance stage 1 or fastboot (connect alone waits for a stage 1 that may not run).
-        self.recovery()
-        self.check_battery()
-        self.write_partition("super", images["super"], 3600)
-        self.write_partition("boot", images["boot"], 300)
+        if only is None:
+            # A fresh maintenance boot from wherever the headset is: the installed system, the
+            # maintenance stage 1 or fastboot (connect alone waits for a stage 1 that may not run).
+            self.recovery()
+        if "system" in parts:
+            self.check_battery()
+            self.write_partition("super", images["super"], 3600)
+            self.write_partition("boot", images["boot"], 300)
+        if "data" in parts:
+            self.wipe_data()
+        if "recovery" not in parts:
+            return
+        self.restore_partition("recovery")
+        (self.work / INSTALLED).unlink(missing_ok=True)
+        (self.work / "state.json").unlink(missing_ok=True)
+        print(
+            "PICO OS is starting with fresh data: its first-time setup follows on the headset "
+            "(ADB stays off until developer mode is enabled again)"
+        )
+
+    def wipe_data(self) -> None:
+        """Wipe userdata and metadata, then clear misc's recovery request (the restore's data part)."""
         backup = self.s.path("backup")
         for name in ("userdata", "metadata"):
             size = qualcomm.partition_size(backup, name)
@@ -1161,13 +1184,16 @@ class Dev(Headset):
         if self.ssh("pico4-install bootmode normal", 30).splitlines()[-1:] != ["bootmode normal"]:
             msg = "could not clear the recovery request in misc"
             raise RuntimeError(msg)
-        self.restore_partition("recovery")
-        (self.work / INSTALLED).unlink(missing_ok=True)
-        (self.work / "state.json").unlink(missing_ok=True)
-        print(
-            "PICO OS is starting with fresh data: its first-time setup follows on the headset "
-            "(ADB stays off until developer mode is enabled again)"
-        )
+
+    def maintenance_running(self) -> bool:
+        """Tell whether this computer's maintenance stage 1 answers now, started from recovery and authenticated."""
+        (self.work / "known_hosts").unlink(missing_ok=True)  # stage 1 makes new host keys on every boot
+        command = f"test -e /run/pico4/test-authenticated && grep -qw {PART_MARK}recovery /proc/cmdline && echo ready"
+        try:
+            output = self.ssh(command, 10, check=False)
+        except subprocess.TimeoutExpired:
+            return False
+        return output.strip().splitlines()[-1:] == ["ready"]
 
 
 class DevChecks(hw.Runner):
@@ -1220,6 +1246,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per 
     restore.add_argument(
         "--installed", action="store_true", help="the system is installed, also where this computer did not record it"
     )
+    restore.add_argument(
+        "--only",
+        choices=RESTORE_PARTS,
+        help="one part of an installed system's restore, the headset in stage 1 (recovery: or in fastboot)",
+    )
     restore_part = sub.add_parser("restore-partition")
     restore_part.add_argument("partition", choices=RESTORABLE)
     restore_part.add_argument("--no-reboot", action="store_true")
@@ -1243,7 +1274,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per 
         elif args.command == "support-bundle":
             print(dev.support_bundle(args.output))
         elif args.command == "restore":
-            dev.restore(installed=args.installed)
+            dev.restore(installed=args.installed, only=args.only)
         elif args.command == "restore-partition":
             dev.restore_partition(args.partition, reboot=not args.no_reboot)
         elif args.command == "ssh":

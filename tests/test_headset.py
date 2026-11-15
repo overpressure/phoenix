@@ -1052,6 +1052,14 @@ class DevTests(HeadsetFixture):
         self.assertTrue(steps[5].endswith(" flash recovery " + str(self.root / "dev/restore-recovery.simg")))
         self.assertIn(f"--size {4096 * 4096}", next(t for t in self.texts() if "wipe metadata" in t))
         self.assertFalse((self.root / "dev/installed.json").exists())
+        # One part (the installer's tasks): from the running maintenance system as it is, no fresh boot.
+        self.calls.clear()
+        dev.restore(only="data")
+        self.assertNotIn(["fastboot", "-s", "FB1", "reboot", "recovery"], self.calls)
+        writes = [t.split("; ")[-1].split(" --")[0] for t in self.texts() if "pico4-install" in t]
+        self.assertEqual(
+            writes, ["pico4-install wipe userdata", "pico4-install wipe metadata", "pico4-install bootmode normal"]
+        )
 
     def test_connect_verifies_the_flashed_dev_image(self):
         dev = self.make({"cat /etc/pico4/test-run": "dev-loop\n1234567", "pico4-install hash": "f" * 64})

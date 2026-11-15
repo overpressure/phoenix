@@ -13,10 +13,10 @@ from unittest import mock
 
 from devices.phoenix.tooling import HEADSET, devloop, localconfig
 from devices.phoenix.tooling import install as plan
-from overpressure.api.v1 import doctor, qualcomm, tools
+from overpressure.api.v1 import doctor, qualcomm, tools, usbaccess
 from overpressure.api.v1.doctor import Check
 from overpressure.api.v1.headset import BackupSet
-from overpressure.api.v1.install import Context, Engine, Stage, Task
+from overpressure.api.v1.install import Context, Engine, Stage, Stopped, Task
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -722,25 +722,73 @@ class WorkflowTests(unittest.TestCase):
         stages = self.plan.restore_stages()
         tasks = [t for s in stages for t in s.tasks]
         writes = [t.id for t in tasks if t.writes]
-        self.assertEqual(writes, ["system", "restore-abl"])
+        # Each part its own task, so a retry goes on from the part that failed.
+        self.assertEqual(writes, ["system", "data", "recovery", "restore-abl"])
         ids = [t.id for t in tasks]
         self.assertLess(ids.index("verify-backup"), ids.index("consent"))
-        self.assertLess(ids.index("consent"), ids.index("system"))
+        self.assertLess(ids.index("consent"), ids.index("maintenance"))
+        self.assertLess(ids.index("maintenance"), ids.index("system"))
         self.assertEqual(self.plan.steps["restore-abl"].argv, ("cycle", "--restore-only"))
 
     def test_the_restore_takes_the_installed_path_unless_pico_os_runs(self):
         ctx = mock.Mock()
         ctx.settings.return_value = mock.Mock(adb_serial="SERIAL", tool=mock.Mock(return_value="adb"))
         ctx.output.return_value = "List of devices attached\n"
-        with mock.patch.object(self.plan, "argv", side_effect=lambda _ctx, key: ["python", "dev", key]):
-            self.plan.restore_system(ctx)
+        with mock.patch.object(plan, "AskingDev") as dev:
+            self.plan.restore_maintenance(ctx)
             self.assertEqual(ctx.ask.call_args.args[0].id, "plug-in")
-            self.assertEqual(ctx.run.call_args.args[0][-3:], ["dev", "restore", "--installed"])
+            dev.return_value.recovery.assert_called_once_with()
             ctx.reset_mock()
+            dev.reset_mock()
             ctx.output.return_value = "List of devices attached\nSERIAL\tdevice\n"
-            self.plan.restore_system(ctx)
-        ctx.run.assert_not_called()
+            self.plan.restore_maintenance(ctx)
+        dev.assert_not_called()
         self.assertIn("only its bootloader", ctx.note.call_args.args[0])
+        ctx.remember.assert_called_once_with(plan.PICO_OS_RAN)
+        ctx.recall.return_value, ctx.completed.return_value = plan.PICO_OS_RAN, False
+        self.assertTrue(self.plan.restore_written("system")(ctx))
+
+    def test_each_part_of_the_restore_runs_on_its_own_and_recovery_reaches_fastboot_here(self):
+        ctx = mock.Mock()
+        with (
+            mock.patch.object(self.plan, "argv", side_effect=lambda _ctx, key: ["python", "dev", key]),
+            mock.patch.object(plan, "AskingDev") as dev,
+        ):
+            self.plan.restore_part("system")(ctx)
+            dev.assert_not_called()
+            self.plan.restore_part("recovery")(ctx)
+        dev.return_value.to_fastboot.assert_called_once_with()
+        argvs = [c.args[0] for c in ctx.run.call_args_list]
+        self.assertEqual([a[-3:] for a in argvs], [["--installed", "--only", p] for p in ("system", "recovery")])
+
+    def test_a_wait_that_runs_out_asks_for_a_replug_and_waits_again(self):
+        clock = FakeClock()
+        ctx = mock.Mock(clock=clock)
+        there_at = 200.0  # after the first wait's 180 s
+
+        def probe() -> str:
+            if clock.now < there_at:
+                msg = "not yet"
+                raise RuntimeError(msg)
+            return "SERIAL"
+
+        self.assertEqual(plan.replug_until(ctx, "fastboot mode", 180, probe), "SERIAL")
+        self.assertEqual([c.args[0].id for c in ctx.ask.call_args_list], ["replug"])
+        self.assertIn("fastboot mode", ctx.ask.call_args.args[0].text)
+        # Cancel stops the run (the ask raises Stopped); an error waiting does not cure ends it without an ask.
+        clock.now = 0.0
+        ctx.ask.side_effect = Stopped("declined")
+        with self.assertRaises(Stopped):
+            plan.replug_until(ctx, "fastboot mode", 10, probe)
+        ctx.ask.reset_mock()
+
+        def refused() -> str:
+            msg = "no access"
+            raise usbaccess.NoAccessError(msg)
+
+        with self.assertRaises(usbaccess.NoAccessError):
+            plan.replug_until(ctx, "fastboot mode", 10, refused)
+        ctx.ask.assert_not_called()
 
     def test_the_restore_waits_for_pico_os_s_mcu_check_after_its_setup(self):
         ctx = mock.Mock(clock=FakeClock())

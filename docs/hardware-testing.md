@@ -395,7 +395,7 @@ Settings come from [`.env`](#settings-for-cycle-and-dev). All but `image` and `b
 | `check` | the runner's [stage-2 checks](#userspace-checks) on the installed system; results in `out/dev/check-<time>/`; exit 0 only if all pass |
 | `ssh COMMAND...` | the words as one remote command (up to 600 s), output as text; the remote exit status is not passed on |
 | `reboot` | reboots over SSH, or with `fastboot reboot` from fastboot (no write); waits for another boot ID and connects to what started (the maintenance stage 1 while `misc` holds its request, else the installed system); NCM initialization once after 60 s of silence |
-| `restore` | leaves development mode: with the system installed as in [install.md](install.md#back-to-stock) (`--installed` when this PC did not record the install); otherwise the backup's stock boot image, checked as in `flash`, into `boot`, and up to 300 s for PICO OS. The ABL stays engineering |
+| `restore` | leaves development mode: with the system installed as in [install.md](install.md#back-to-stock) (`--installed` when this PC did not record the install, `--only system|data|recovery` one part of it); otherwise the backup's stock boot image, checked as in `flash`, into `boot`, and up to 300 s for PICO OS. The ABL stays engineering |
 | `release-check [--attended]` | the automated part of [release-checklist.md](release-checklist.md); `--attended` adds what needs someone near |
 | `support-bundle [--output PATH]` | the [support bundle](#support-bundle) |
 
