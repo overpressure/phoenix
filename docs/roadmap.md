@@ -240,8 +240,11 @@ built for the Frame's hardware.
 - The kernel's `step_wise` zones throttle the CPUs from 90 and 95 °C and the GPU from 95 °C.
 - PICO OS's speaker protection is absent: the amplifiers' voltage and current sense is off
   ([userspace.md](userspace.md#audio)).
-- `vrcompositor` dumps core when the session stops ([session.md](session.md)).
-- MPEG-2 ends in a session error from the firmware; H.264, HEVC, VP9 and VP8 decode through Venus.
+- `vrcompositor` dumps core when the session stops, and Steam Link's client `vrlink` when it exits: both in
+  Valve's binaries ([session.md](session.md)).
+- MPEG-2 ends in a session error from the firmware; H.264, HEVC, VP9 and VP8 decode through Venus, but HEVC
+  with B-frames (most encoders' default for files) gives decode errors and drops frames. Steam Link's stream
+  has none.
 - A controller that lies still from the start with a still headset can stay unacquired, as with PICO OS's rules
   ([xr.md](xr.md)).
 - The controllers' battery level goes to SteamVR as a fifth of a full charge per level; that 5 is the top of the
