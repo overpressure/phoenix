@@ -191,6 +191,8 @@ built for the Frame's hardware.
 - **Other hardware.** Speakers and microphone are PipeWire's default sink and source, without xruns under the
   session ([userspace.md](userspace.md#audio)); SteamVR's sound and volume work, the microphone records at PICO
   OS's gain of 12, PICO OS's calibration loads per stream. Battery level and charging reach UPower and SteamVR.
+  Bluetooth runs through `hci_qca` with PICO OS's firmware and the Frame's BlueZ ([kernel.md](kernel.md)): a
+  Nintendo Switch Pro controller pairs.
 - **Onboarding.** From an empty data partition, `pico4-onboarding` runs the first-run setup as SteamVR's scene in
   the room view: language (all 31 of the client's), time zone, Wi-Fi with its password page, controllers and the
   lens distance, in the client's words and fonts; the client then starts in the chosen language. It pairs
@@ -232,8 +234,6 @@ built for the Frame's hardware.
 - Sessions much longer than 10 minutes ([cooling.md](cooling.md)).
 - MangoHud's `mangoapp`, the client's performance overlay: switching it on from the client's menu.
 - PICO OS's head tracker with a covered camera and in a dim room.
-- Bluetooth runs through `hci_qca` with PICO OS's firmware and the Frame's BlueZ ([kernel.md](kernel.md)); a
-  paired device is not tested.
 
 **Limits.**
 
