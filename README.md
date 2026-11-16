@@ -1,125 +1,125 @@
-# PICO 4 (phoenix)
+# PICO 4
 
-The PICO 4's headset module for [overpressure](https://github.com/overpressure/overpressure), with its own
-releases; overpressure's installer downloads it into `devices/phoenix/`. On the original PICO 4 (2022, Snapdragon
-XR2): Valve's Steam Frame kernel with the
-PICO's own drivers and device tree boots a SteamOS-compatible system installed on the headset (system in `super`,
-data in `userdata`, as PICO OS lays them out). It runs Valve's VR session (SteamVR in gamescope) with a Monado
-driver for the headset's lenses, cameras, sensors and controllers. A small Alpine system in `recovery`, on the same
-kernel, builds, installs and rescues it; the way back to PICO OS restores everything from the backup the install
-makes.
+**Linux and Valve's SteamVR on the PICO 4 (2022, Snapdragon XR2), installed with
+[overpressure](https://github.com/overpressure/overpressure).** It replaces PICO OS with a system built on Valve's
+Steam Frame software: SteamVR, the Steam client and its games run on the headset itself, without a PC. The way back
+to PICO OS is part of it.
 
-## Status
-
-| Step | Result |
+| | |
 | --- | --- |
-| 1 Recoverable device | EDL backups, engineering bootloader, unlock, the way back to stock |
-| 2 Maintenance system | Alpine on Valve's kernel in `recovery`, SSH over USB, read-only storage; the headset builds its system there |
-| 3 Graphics | Valve's Mesa (Turnip, OpenGL through zink); both 2160 × 2160 panels at 90 and 72 Hz |
-| 4 System | Holo Core aarch64 with the Steam Frame's systemd and SteamOS services; sound, Wi-Fi, Bluetooth, sleep |
-| 5 XR hardware | IMU, lens correction and IPD, four tracking cameras, 6DoF with PICO OS's tracker on the CDSP, controllers, the colour room view |
-| 6 VR session | SteamVR at 90 fps on the Frame's compositor path; Steam's library through Proton and FEX, Android games through Lepton, Steam Link |
+| **Status** | Beta: for owners who are fine with an early release and can report what they find |
+| **Newest release** | [1.0 beta](https://github.com/overpressure/phoenix/releases) |
+| **Your headset** | The original PICO 4, not the PICO 4 Pro or Ultra; PICO OS global build 5.13.3, 5.13.7 or 5.13.8, not a China build ([why](docs/device-preparation.md#other-pico-os-builds)) |
+| **Your computer** | Windows ✅ · Linux ✅ · macOS ❔ |
+| **Tested on** | 1 headset |
 
-Open work: [the issues](https://github.com/overpressure/phoenix/issues).
+> [!WARNING]
+> Installing erases PICO OS's apps and data, and what is left of the warranty. The installer makes a full backup
+> first: it is your way back, so keep it safe. After going back, PICO OS starts like after a factory reset: you set
+> it up again and download your apps again.
+
+## What works
+
+✅ Works · 🟡 Works, with limits · ❌ Doesn't work yet · ❔ Not tested yet · ➖ Not on this headset
+
+### Display and comfort
+
+| Feature | | Notes |
+| --- | --- | --- |
+| Both displays | ✅ | 2160 × 2160 per eye at 90 or 72 Hz, switchable in SteamVR's settings |
+| Lens distance (IPD) | ✅ | The wheel moves the lenses; the picture follows |
+| Standby when taken off | ✅ | Dark when taken off, back within seconds when put on |
+| Cooling | ✅ | The fan runs as on PICO OS |
+
+### Tracking
+
+| Feature | | Notes |
+| --- | --- | --- |
+| Head tracking (6DoF) | ✅ | PICO OS's own tracker; rooms come back after a restart |
+| Controller tracking | ✅ | |
+| Hand tracking | ❌ | Not available yet ([#37](https://github.com/overpressure/phoenix/issues/37)) |
+| Eye tracking | ➖ | Only the PICO 4 Pro has it |
+| Room setup and boundary | ✅ | Kept across restarts |
+| Passthrough (room view) | ✅ | In colour |
+
+### Controllers
+
+| Feature | | Notes |
+| --- | --- | --- |
+| Buttons, sticks and triggers | ✅ | |
+| Vibration | ✅ | |
+| Battery level | ✅ | In steps of 20 % |
+| Pairing | ✅ | In the first-run setup and in the Overpressure Settings tab |
+
+### Sound
+
+| Feature | | Notes |
+| --- | --- | --- |
+| Speakers and volume | ✅ | Including the volume keys |
+| Microphone | ✅ | |
+| Headphone jack | ➖ | The PICO 4 has none |
+
+### Connections and power
+
+| Feature | | Notes |
+| --- | --- | --- |
+| Wi-Fi | ✅ | Set up in the first-run setup |
+| Bluetooth | ✅ | A Nintendo Switch Pro controller pairs; headphones are not tested yet |
+| Battery and charging | ✅ | Plugged in while off, the lenses show the battery |
+| Sleep | ✅ | |
+| Battery life | ❔ | Not measured yet ([#31](https://github.com/overpressure/phoenix/issues/31)) |
+
+### Games and apps
+
+| Feature | | Notes |
+| --- | --- | --- |
+| Steam store and library | ✅ | Sign in with your Steam account |
+| Linux games | ✅ | |
+| Windows games (Proton) | 🟡 | They run; heavy games are limited by the headset's GPU |
+| Android apps | ✅ | Through Valve's Lepton, as on the Steam Frame |
+| PC VR over Steam Link | ✅ | Picture, sound, tracking and controllers |
+| Video playback | 🟡 | Most videos play; HEVC files with B-frames show errors ([#29](https://github.com/overpressure/phoenix/issues/29)) |
+
+### Installing
+
+| Feature | | Notes |
+| --- | --- | --- |
+| Install | ✅ | From Windows and Linux; macOS is not tested yet ([#33](https://github.com/overpressure/phoenix/issues/33)) |
+| Upgrade to a new release | ✅ | Keeps your data, Wi-Fi, room and Steam sign-in |
+| Back to PICO OS | ✅ | From the backup the install made |
+
+Everything that is still open: [the issues](https://github.com/overpressure/phoenix/issues).
+
+## What you need
+
+- The PICO 4, charged, with PICO OS 5.13.3, 5.13.7 or 5.13.8 (global build).
+- A USB-C cable that carries data, not only power.
+- A computer with Windows, Linux or macOS, an internet connection and about 10 GB free.
+- About half an hour.
 
 ## Install
 
-**Before you start.** Installing erases PICO OS's apps and data and ends what is left of the warranty. Everything
-here has run on **one** headset, the way back to PICO OS included. The tools refuse a headset, firmware or panel
-that isn't verified ([list](docs/device-preparation.md#verified-hardware)): today a PICO OS `global-seko` build
-5.13.3, 5.13.7 or 5.13.8, not a `sek` or China build ([why](docs/device-preparation.md#other-pico-os-builds)).
-You build your own system; the project publishes no image and no vendor file ([docs/distribution.md](docs/distribution.md)).
+1. Download [overpressure](https://github.com/overpressure/overpressure/releases) and unpack it.
+2. Start it: double-click `Install.cmd` on Windows or `Install.command` on macOS, or run `sh install.sh` on Linux.
+3. Accept the disclaimer, choose the PICO 4 and click **Download**.
+4. Click **Install** and follow the window. It checks your computer and the headset, backs the headset up, then
+   installs. In between you switch on developer mode and USB debugging in PICO OS; the headset builds its new
+   system itself, over your computer's internet connection.
+5. When the window says so, unplug the headset and put it on.
 
-**You need** the headset, a USB-C data cable, a computer with Windows, macOS or Linux and its internet connection,
-and about 10 GB free there (the backup is most of it). The headset builds its own system during the install,
-downloading about 2.2 GB through the computer's connection; nothing is built on the computer, and it needs no
-Docker or Podman. On Linux also `python3-tk`
-(or your distribution's equivalent), for a smooth window, and the Android udev rules (Arch `android-udev`, Debian
-`android-udev-rules`), for USB access to the headset ([how it is checked](https://github.com/overpressure/overpressure/blob/main/docs/tool.md#usb-access-on-linux)).
+**Upgrade** installs a newer release and keeps your data. **Restore to stock** brings PICO OS back from the
+backup; wear the headset on the cable through PICO OS's setup, whose first start may update the lens and fan
+controller.
 
-**The installer.** Download [overpressure's release](https://github.com/overpressure/overpressure/releases) and
-unpack it. Double-click `Install.cmd` (Windows) or `Install.command` (macOS), or run `sh install.sh` (Linux).
-Accept the disclaimer and choose the PICO 4: the first time, **Download** fetches this repository's newest stable
-release into `devices/phoenix/` (a beta until there is a stable one; or a preview of `main`, an older release). A
-newer release on the same channel shows on its card as *Update available*. Then **Install**, **Upgrade**
-or **Restore to stock**. Each
-goes on where it stopped when started again, and after a failure says what state the headset is in and what to
-do. The install's four stages:
+## If something goes wrong
 
-| Stage | What happens | Headset |
-| --- | --- | --- |
-| 1 Check this computer | host tools and unlock files (pinned, hash-checked), then what else is missing, with fixes | not needed |
-| 2 Connect your headset | developer mode and USB debugging on, plugged in; the installer checks the headset, firmware and panel before anything is written | in PICO OS |
-| 3 Prepare your headset | one consent, a verified backup to this computer (**your way back: export it**), the engineering bootloader, the unlock, then the maintenance system: made here in a few minutes from the backup's own boot and recovery partitions and Valve's kernel (nothing of PICO OS's is downloaded); also makes this computer's SSH key | EDL, fastboot |
-| 4 Install | Wi-Fi and your own SSH key if you like; the headset builds the SteamOS-compatible system itself, then it goes on and is checked; then "Unplug it and put it on" | on the cable |
+The window says what state the headset is in and what to do next; starting it again goes on where it stopped. If
+the headset doesn't answer, hold its power button for about 10 seconds until PICO OS or the system starts, then
+start the window again. To report a problem, [open an issue](https://github.com/overpressure/phoenix/issues/new/choose)
+and attach the bundle `python -m overpressure dev support-bundle` makes; it leaves out your headset's serial
+numbers.
 
-**Upgrade** puts the downloaded release's maintenance system on the headset, has the headset build that release and installs
-it over yours, keeping your data. **Restore to stock** brings back
-PICO OS and its bootloader from the backup, with a stop for PICO OS's setup and USB debugging in between (wear the
-headset on the cable through that setup: its first start may update the lens and fan controller)
-([docs/install.md](docs/install.md#the-upgrade-and-the-way-back)). *Export backup…* writes the backup into one
-checked file to keep safe; *Import backup…* brings it to another computer.
+## For developers
 
-**In a terminal**, the same: `python -m overpressure headset add phoenix` (`--channel beta|preview`, `--version
-V`; `headset update phoenix` for a newer one), then `python -m overpressure install`, `upgrade`, `restore` and `backup export|import FILE` (and `backup compact` for a backup from an older version)
-([the tool](https://github.com/overpressure/overpressure/blob/main/docs/tool.md#the-installer)); `python -m overpressure steps` lists every step's command. Commands
-that touch the headset ask the disclaimer `y`/`n` first (`--accept-disclaimer` for unattended runs) and refuse on a
-laptop on battery below 30 %.
-
-**Your login.** The headset takes SSH (cable and Wi-Fi) only with a key: this computer's, `out/dev/id_ed25519`, or
-your own, pasted in the install's *Your SSH key* step (or named as `PICO4_SSH_PUBLIC_KEY` in `.env`). No account has a password
-([docs/security.md](docs/security.md)).
-
-**If something goes wrong.** `python -m overpressure dev support-bundle` collects the logs for a bug report, your
-identifiers masked ([docs/hardware-testing.md](docs/hardware-testing.md#support-bundle)); the installer's logs are in
-`out/install/phoenix/`. When the headset does not show up in fastboot mode or its maintenance system, the
-installer asks you to plug the cable in again and goes on waiting. A step that says the headset is in EDL mode but does not
-answer (it answers only right after entering EDL mode): hold the power button for about 10 s until PICO OS starts,
-then start the installer again; it enters EDL mode afresh.
-
-## Documentation
-
-| Document | Contents |
-| --- | --- |
-| [docs/install.md](docs/install.md) | the installed system: layout, boot modes, install, upgrade, the way back |
-| [docs/device-preparation.md](docs/device-preparation.md) | identity, EDL backups, engineering bootloader, unlock, verified hardware |
-| [docs/stage1.md](docs/stage1.md) | the maintenance system |
-| [docs/kernel.md](docs/kernel.md) | Valve's kernel on the PICO 4: its release, the changes in overpressure/linux, building it, the contracts |
-| [docs/graphics.md](docs/graphics.md) | graphics stack and panels |
-| [docs/userspace.md](docs/userspace.md) | the system: packages, build, audio |
-| [docs/xr.md](docs/xr.md) | IMU, Monado driver, lenses, cameras, tracking, controllers |
-| [docs/session.md](docs/session.md) | Valve's VR session: SteamVR, gamescope, Steam, games, Steam Link |
-| [docs/cooling.md](docs/cooling.md) | fan control and thermal policy |
-| [docs/hardware-testing.md](docs/hardware-testing.md) | acceptance runs, development loop, support bundle |
-| [docs/development.md](docs/development.md) | build system, build container, tests, Windows host |
-| [docs/security.md](docs/security.md) | logins, services, what is protected |
-| [docs/distribution.md](docs/distribution.md), [docs/stock-components.md](docs/stock-components.md) | where every file comes from; what is taken from PICO OS |
-| [docs/release-checklist.md](docs/release-checklist.md) | every check of a release image |
-| [docs/research.md](docs/research.md) | background: the PICO 4, the Steam Frame, related projects |
-
-## This repository
-
-A release is a tag `vMAJOR.MINOR[-beta[.N]]` naming `headset.json`'s version ([docs/releasing.md](docs/releasing.md)).
-For development, clone it into an overpressure checkout; commands run from that checkout's root:
-
-```sh
-git clone https://github.com/overpressure/overpressure
-git clone https://github.com/overpressure/phoenix overpressure/devices/phoenix
-```
-
-```text
-headset.json the codename, name, version and the overpressure headset interface it was made for
-env.example  its keys in overpressure's .env
-tooling/     host tooling (Python): its commands, the window's steps, the installer's plans
-kernel/      Valve's kernel: the pinned release of overpressure/linux, its build script, boot images
-initramfs/   the maintenance system's files in the Alpine ramdisk
-userspace/   the system: the pinned release of overpressure/packages (with the adaptation layer), links to PICO OS's files
-src/         C sources outside the packages: the reboot and splash helpers
-scripts/     userspace, system image and kernel builds, the upgrade check, a Windows PC's internet sharing
-prebuilt/    static aarch64 helpers
-tests/       host tests and the QEMU boot tests
-docs/        documentation
-```
-
-Device data and vendor files stay private in `backup/`, `assets/`, `cache/`, `out/` and `.env` at the root of the
-overpressure checkout.
+How it works, how it is built and how it is tested: [docs/](docs/), starting with
+[docs/development.md](docs/development.md).
