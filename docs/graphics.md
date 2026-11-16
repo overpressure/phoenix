@@ -1,6 +1,6 @@
 # Native graphics
 
-Roadmap step 3 ([roadmap.md](roadmap.md)), on Valve's kernel ([kernel.md](kernel.md)):
+Step 3 ([README](../README.md)), on Valve's kernel ([kernel.md](kernel.md)):
 
 | | |
 | --- | --- |

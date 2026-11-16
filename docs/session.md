@@ -1,6 +1,6 @@
 # Valve's VR session
 
-Roadmap step 6 ([roadmap.md](roadmap.md)): the Steam Frame's VR session on the PICO 4, on Valve's
+Step 6 ([README](../README.md)): the Steam Frame's VR session on the PICO 4, on Valve's
 Steam Frame 7.2 kernel.
 
 | | |
@@ -481,7 +481,7 @@ Without it those controllers stay at the origin without input.
 ### Performance and heat
 
 Measured results are in [kernel.md](kernel.md#results) and [cooling.md](cooling.md); open work in
-[roadmap.md](roadmap.md#open-work).
+[the issues](https://github.com/overpressure/phoenix/issues).
 
 ### Steam Link
 
@@ -639,4 +639,4 @@ Current results are in [kernel.md](kernel.md#results).
 
 ## Next steps
 
-See [Open work](roadmap.md#open-work).
+See [the issues](https://github.com/overpressure/phoenix/issues).

@@ -196,8 +196,7 @@ resets the headset.
 
 After a resume Valve's session goes on with 6DoF, both controllers, the cameras, USB and sound. PICO OS
 suspends a headset taken off (screen off after 10 s, suspend after 15 s); here SteamVR's standby follows the
-wear sensor ([session.md](session.md)). Steam can suspend again seconds after a wake
-([roadmap.md](roadmap.md#open-work)).
+wear sensor ([session.md](session.md)). Steam can suspend again seconds after a wake.
 
 Across a suspend the QTimer, which stamps IMU samples and camera frames, runs on while CLOCK_MONOTONIC stands.
 The driver sees that the system slept (CLOCK_BOOTTIME less CLOCK_MONOTONIC grew), maps both clocks anew, drops

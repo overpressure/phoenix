@@ -1,4 +1,4 @@
-# Native XR hardware (roadmap step 5)
+# Native XR hardware (step 5)
 
 The PICO 4's XR hardware under Linux, on Valve's kernel ([kernel.md](kernel.md)). The inventory comes
 from the stock image, kernel and device tree and from read-only observation of PICO OS; no vendor
@@ -897,4 +897,4 @@ otherwise.
 
 ## Next steps
 
-See [Open work](roadmap.md#open-work).
+See [the issues](https://github.com/overpressure/phoenix/issues).

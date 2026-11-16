@@ -20,7 +20,7 @@ makes.
 | 5 XR hardware | IMU, lens correction and IPD, four tracking cameras, 6DoF with PICO OS's tracker on the CDSP, controllers, the colour room view |
 | 6 VR session | SteamVR at 90 fps on the Frame's compositor path; Steam's library through Proton and FEX, Android games through Lepton, Steam Link |
 
-Open work and details: [docs/roadmap.md](docs/roadmap.md).
+Open work: [the issues](https://github.com/overpressure/phoenix/issues).
 
 ## Install
 
@@ -81,7 +81,6 @@ then start the installer again; it enters EDL mode afresh.
 
 | Document | Contents |
 | --- | --- |
-| [docs/roadmap.md](docs/roadmap.md) | status of each step, open work |
 | [docs/install.md](docs/install.md) | the installed system: layout, boot modes, install, upgrade, the way back |
 | [docs/device-preparation.md](docs/device-preparation.md) | identity, EDL backups, engineering bootloader, unlock, verified hardware |
 | [docs/stage1.md](docs/stage1.md) | the maintenance system |

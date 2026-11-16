@@ -544,7 +544,7 @@ class Runner(evidence.Runner):
             self.head_imu(state)
 
     def head_imu(self, state: dict) -> None:
-        """Roadmap step 5: stream the head IMU through the sensor DSP (docs/xr.md)."""
+        """Step 5: stream the head IMU through the sensor DSP (docs/xr.md)."""
         print(">> head IMU: sensor DSP and SSC stream", flush=True)
         for name, command in (
             ("sensors-units", "systemctl status --no-pager -l pico4-slpi pico4-sensorspd"),
@@ -607,7 +607,7 @@ class Runner(evidence.Runner):
         )
 
     def valve_session(self, state: dict) -> None:
-        """Roadmap step 6: Valve's VR session with gamescope and SteamVR on the panels (docs/session.md).
+        """Step 6: Valve's VR session with gamescope and SteamVR on the panels (docs/session.md).
 
         The check runs gamescope-session.target briefly (it heats the headset
         quickly, docs/cooling.md), then returns to the configured session.

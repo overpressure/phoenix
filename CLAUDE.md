@@ -18,8 +18,8 @@ request; a change overpressure's generic code needs lands there first (keeping t
 
 ## Where things stand
 
-The plan and the status of each step are in [docs/roadmap.md](docs/roadmap.md); its "Open work"
-section lists what comes next. Each step has its own document:
+The status of each step is in [README.md](README.md); what comes next is this repository's GitHub issues.
+Each step has its own document:
 
 | Step | Status | Document |
 | --- | --- | --- |
@@ -46,8 +46,7 @@ This repository's GitHub issues; the rules are in overpressure's CLAUDE.md.
 The PICO 4's documents are in `docs/` here, its overview in `README.md` here; overpressure's
 CLAUDE.md has the rules (facts only, no work logs). `python scripts/check-docs.py --repo devices/phoenix`
 checks the links; a link may not leave this repository, so links to overpressure are GitHub URLs. Releasing:
-[docs/releasing.md](docs/releasing.md). Keep the status in docs/roadmap.md and
-README.md current.
+[docs/releasing.md](docs/releasing.md). Keep the status in README.md current.
 
 ## Layout
 

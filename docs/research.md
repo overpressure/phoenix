@@ -1,8 +1,8 @@
 # Background: the PICO 4, the Steam Frame and public projects
 
 Background to the project on the original PICO 4 (2022, codename phoenix), not the PICO 4 Ultra: how it
-compares with Valve's Steam Frame, which public projects help, and Valve's licensing. The plan and its status
-are in [roadmap.md](roadmap.md).
+compares with Valve's Steam Frame, which public projects help, and Valve's licensing. The status of each step
+is in the [README](../README.md).
 
 ## Hardware comparison
 
