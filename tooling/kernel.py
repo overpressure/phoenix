@@ -91,14 +91,22 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def mismatches(folder: Path, pin: Release) -> list[str]:
-    """Return the files in @p folder that are missing or differ from the pin, as messages."""
+#: What a build of the pinned commit gives that the release does not: Valve's configuration signs modules
+#: with a key each build generates and builds into Image.gz, so only the other files match the pin.
+BUILD_DIFFERS = ("Image.gz",)
+
+
+def mismatches(folder: Path, pin: Release, *, built: bool = False) -> list[str]:
+    """Return the files in @p folder that are missing or differ from the pin, as messages.
+
+    @p built: the folder is a build of the pinned commit, whose Image.gz has its own signing key (BUILD_DIFFERS).
+    """
     found = []
     for name, digest in pin.files.items():
         path = folder / name
         if not path.is_file():
             found.append(f"{name}: missing")
-        elif sha256(path) != digest:
+        elif sha256(path) != digest and not (built and name in BUILD_DIFFERS):
             found.append(f"{name}: sha256 {sha256(path)}, pinned {digest}")
     return found
 
@@ -361,17 +369,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = ap.add_subparsers(dest="action")
     sub.add_parser("fetch", help="the pinned release's files into out/kernel (the default)")
-    built = sub.add_parser("build", help="the pinned commit built here, checked against the release")
+    built = sub.add_parser("build", help="the pinned commit built here, its device tree, config and version checked")
     built.add_argument("work", nargs="?", default=WORK, help=f"the build folder in the container (default {WORK})")
     checked = sub.add_parser("check", help="a folder's kernel files against the pin")
     checked.add_argument("folder", type=Path)
+    checked.add_argument(
+        "--built", action="store_true", help="a build of the pinned commit: its Image.gz has its own signing key"
+    )
     sub.add_parser("contracts", help="the names and paths the kernel and this repository share")
     args = ap.parse_args(argv)
     pin = release()
     if args.action == "build":
         return build(args.work, pin)
     if args.action == "check":
-        found = mismatches(args.folder, pin)
+        found = mismatches(args.folder, pin, built=args.built)
         for line in found:
             print(f"error: {line}", file=sys.stderr)
         if not found:

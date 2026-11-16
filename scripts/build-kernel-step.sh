@@ -6,9 +6,11 @@
 #   build-kernel-step.sh [WORKDIR]
 #
 # Fetches the pinned commit of overpressure/linux (its tree without history, about 280 MB) into
-# WORKDIR/tree on a Linux file system, builds it with kernel/build-tree.sh, checks every file against
-# the pin's SHA-256 (python -m overpressure --device phoenix kernel check) and only then puts them in
-# out/kernel. A file that differs fails the step: the build image or the tree is not the release's.
+# WORKDIR/tree on a Linux file system, builds it with kernel/build-tree.sh, checks its device tree, config
+# and version against the pin's SHA-256 (python -m overpressure --device phoenix kernel check --built) and
+# only then puts the files in out/kernel. A file that differs fails the step: the build image or the tree is
+# not the release's. Image.gz differs from the release's by its module-signing key, which Valve's
+# configuration generates in each build.
 # Runs in the build container (python -m overpressure container run).
 set -euo pipefail
 [ $# -le 1 ] || { sed -n '3,12p' "$0" >&2; exit 2; }
@@ -28,7 +30,7 @@ if [ "$(git -C "$tree" rev-parse HEAD 2>/dev/null)" != "$commit" ]; then
 	git -C "$tree" checkout -q --detach FETCH_HEAD
 fi
 bash "$here/../kernel/build-tree.sh" "$tree" "$work" "$work/out"
-(cd "$repo" && python3 -m overpressure --device phoenix kernel check "$work/out")
+(cd "$repo" && python3 -m overpressure --device phoenix kernel check --built "$work/out")
 mkdir -p "$repo/out/kernel"
 for f in Image.gz sm8250-pico4-phoenix.dtb version config build.json; do
 	install -m 0644 "$work/out/$f" "$repo/out/kernel/$f"

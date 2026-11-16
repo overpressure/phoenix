@@ -17,13 +17,15 @@
 # build.json's camera_table says which: "none" (the driver needs none), "empty" or the table's hash.
 #
 # uname -v names the tree's commit (#<12 hex digits>) and carries the commit's time, not the
-# build's: the same commit and camera table give the same kernel on any host.
+# build's. The same commit and camera table give the same device tree, config and version with the amd64
+# build image on any host; Image.gz differs in each build by the module-signing key Valve's configuration
+# generates and builds in.
 #
 # Runs in the build container (python -m overpressure container run), cross compiling with
 # aarch64-linux-gnu-gcc. Incremental: a second run rebuilds only what changed. With CCACHE_DIR set, the
 # compiler runs through ccache (the build image's), which keeps compiled objects in that folder for the next
-# build, also from another checkout: CI's check builds use it, a release builds without (its two builds are
-# the test that the kernel is reproducible). ccache gives the objects the compiler would: the same kernel.
+# build, also from another checkout: CI's check and push builds use it, a tag's own build does not. ccache
+# gives the objects the compiler would.
 set -euo pipefail
 
 DTB=sm8250-pico4-phoenix

@@ -90,6 +90,15 @@ class FetchTests(unittest.TestCase):
         self.assertTrue(found[0].startswith("Image.gz: sha256 "))
         self.assertFalse(kernel.current(self.out, self.pin))
 
+    def test_a_build_of_the_pinned_commit_differs_only_in_its_image(self):
+        # Each build signs modules with its own key, which Image.gz carries: the other files match the pin.
+        self.out.mkdir()
+        (self.out / "Image.gz").write_bytes(b"its own signing key")
+        (self.out / "version").write_bytes(self.files["version"])
+        self.assertEqual(kernel.mismatches(self.out, self.pin, built=True), [])
+        (self.out / "version").write_bytes(b"another release")
+        self.assertTrue(kernel.mismatches(self.out, self.pin, built=True)[0].startswith("version: sha256 "))
+
 
 class ContractTests(unittest.TestCase):
     def setUp(self) -> None:

@@ -29,7 +29,7 @@ As shipped:
 
 | File | Purpose |
 | --- | --- |
-| [release.json](../kernel/release.json) | the pin: overpressure/linux's tag (`phoenix/7.2-1`), its commit, the build image it was built with, and the SHA-256 of `Image.gz`, the device tree, `config` and `version` |
+| [release.json](../kernel/release.json) | the pin: overpressure/linux's tag (`phoenix/7.2-4`), its commit, the build image it was built with, and the SHA-256 of `Image.gz`, the device tree, `config` and `version` |
 | [tooling/kernel.py](../tooling/kernel.py) | `kernel fetch` (the installer's step: the release's files into `out/kernel`), `kernel build` (the pinned commit built here in the release's build image, [below](#building-it-yourself)), `kernel check DIR`, `kernel contracts` ([below](#contracts)) |
 | [build-tree.sh](../kernel/build-tree.sh) | a checkout of overpressure/linux's `phoenix/7.2` to `Image.gz`, the device tree, `config`, `version` and `build.json` (release, commit, banner, camera table, the tooling's commit, the build image, hashes); `uname -v` names the commit. That repository's CI builds each change with it once, through ccache when `CCACHE_DIR` is set (its check builds), and each tag twice on two machines without it, and releases a tag whose builds agree |
 | [imx471_mode.py](../kernel/imx471_mode.py) | the RGB camera's register table, from the camera module in the stock vendor image: the file the driver loads |
@@ -277,15 +277,17 @@ The installer downloads the pinned release. `kernel build` builds its commit ins
 names, and accepts the result only if every file equals the release's:
 
 ```sh
-python -m overpressure --device phoenix kernel build   # the commit's tree (280 MB, no history), built, checked
+python -m overpressure --device phoenix kernel build   # the commit's tree (280 MB, no history), built; its DTB, config, version checked
 python -m overpressure dev boot-image                   # out/kernel/valve-boot.img, the installed system's boot image
 ```
 
-The same commit gives the same `Image.gz` in any work folder and on any host: `uname -v` names the commit and carries
-its time (such as `#e05939d36466 SMP PREEMPT Thu Nov 12 08:35:14 UTC 2026`), `pahole` encodes BTF in one thread (its
-threads order the type names differently each time), and `-ffile-prefix-map` maps the folders away in the debug
-information, which the build ID hashes. Only overpressure/linux's CI builds: every tag twice on two machines, released
-only when both agree. This repository's CI downloads the pinned release on every push and checks it against the pin.
+`uname -v` names the commit and carries its time (such as `#e05939d36466 SMP PREEMPT Thu Nov 12 08:35:14 UTC 2026`),
+not the build's. Valve's configuration signs modules with a key each build generates and builds into `Image.gz`, so
+two builds of a commit never give the same `Image.gz`; the device tree, `config` and `version` are the same with the
+build image's amd64 variant on any host (its arm64 variant compiles with the native gcc). A release is the kernel
+overpressure/linux's CI built in the push build of the tagged commit. `kernel build` builds the pinned commit here and
+checks its device tree, `config` and `version` against the pin. This repository's CI downloads the pinned release on
+every push and checks it against the pin.
 
 ## Contracts
 
