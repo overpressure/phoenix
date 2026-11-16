@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest import mock
 
+from devices.phoenix import tooling
 from devices.phoenix.tooling import HEADSET, devloop, localconfig
 from devices.phoenix.tooling import install as plan
 from overpressure.api.v1 import doctor, qualcomm, tools, usbaccess
@@ -450,6 +451,25 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("device unlock", self.commands())
         # It is in fastboot already: no restart into the bootloader that adb could not send anyway.
         self.assertFalse(any(" ".join(c).endswith("reboot bootloader") for c in self.captured))
+
+    def test_fastboot_that_leaves_out_a_device_it_may_not_read_stops_the_unlock_too(self):
+        # fastboot does not list a device it may not even open read-only; the bus still shows it (Linux).
+        self.listing("fastboot", lambda: "")
+        with mock.patch.object(
+            usbaccess, "denied", lambda mode: [Path("/dev/bus/usb/001/006")] if mode.product == "d00d" else []
+        ):
+            ui = self.run_stages(("connect", "prepare"), self.yes("plug-in", "consent"))
+        finished = ui.finished()
+        self.assertEqual((finished["status"], finished["task"]), ("failed", "unlock"))
+        self.assertIn("may not use the headset in fastboot mode", finished["error"])
+
+    def test_a_listing_is_unusable_only_without_a_usable_device(self):
+        with mock.patch.object(usbaccess, "denied", return_value=[Path("/dev/bus/usb/001/006")]):
+            self.assertTrue(plan.unusable("", tooling.FASTBOOT_MODE))
+            self.assertFalse(plan.unusable(f"{FASTBOOT}\tfastboot\n", tooling.FASTBOOT_MODE))
+        self.assertTrue(plan.unusable(f"{FASTBOOT}\tno permissions; see [x]\n", tooling.FASTBOOT_MODE))
+        with mock.patch.object(usbaccess, "denied", return_value=[]):
+            self.assertFalse(plan.unusable("", tooling.FASTBOOT_MODE))
 
     def test_edl_without_access_stops_the_backup_before_edl_ng_runs(self):
         self.plan.edl_denied = lambda: True

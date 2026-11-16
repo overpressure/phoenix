@@ -4,15 +4,14 @@
 (`4.19.81-perf+`) and device trees byte for byte, with the ramdisk replaced by Alpine Linux 3.24 and the
 project's init. In `recovery`, as the maintenance environment where the installed system is built, written and
 rescued, it runs on Valve's kernel instead ([below](#in-recovery-valves-kernel)); the stock kernel stays in the
-acceptance runner's boot image. Over USB-C it offers NCM networking with SSH, telnet and a status page, and a
-read-only log drive. Every disk and partition is read-only, except what `pico4-install` writes on purpose
+acceptance runner's boot image. Over USB-C it offers NCM networking with SSH, telnet and a status page. Every disk and partition is read-only, except what `pico4-install` writes on purpose
 ([install.md](install.md)). With no PC using it, it returns to fastboot by itself.
 
 | | |
 | --- | --- |
 | Build | `python -m overpressure build --firmware 5.13.7-global-seko` → `out/pico4-stage1-<firmware>.img` |
 | Into `recovery` | `python -m overpressure dev image`, `dev flash` ([hardware-testing.md](hardware-testing.md)) |
-| Connect | `ssh root@172.16.42.1`, <http://172.16.42.1/>, or the `PICO4LOGS` drive |
+| Connect | `ssh root@172.16.42.1` or <http://172.16.42.1/> |
 | Code | [tooling/image.py](../tooling/image.py) on [overpressure/stage1.py](https://github.com/overpressure/overpressure/blob/main/overpressure/stage1.py); [initramfs/](../initramfs/) |
 
 The installed system (stage 2, [userspace.md](userspace.md)) starts without it: its boot image has no ramdisk
@@ -45,7 +44,7 @@ A panic reboots after 5 s (`panic=5`) into stage 1 again (the bootloader message
 | --- | --- |
 | Kernel and device trees | the stock image's, byte for byte, with every other header field (load addresses, page size, OS version, patch level) |
 | Kernel command line | the stock one plus `printk.devkmsg=on` (the init's `/dev/kmsg` lines are not rate-limited), `rng_core.default_quality=1000` (the hardware RNG credits entropy, so dropbear's first host key cannot block) and `console=none` (the tree's UART console at 115200 baud delayed `/init` from 1.0 s to 14 s; `dmesg` and pstore keep every message) |
-| Ramdisk | Alpine 3.24.2 aarch64: the minirootfs, the packages of `PACKAGES` in [tooling/image.py](../tooling/image.py) (BusyBox extras, dropbear, an SFTP server, mtools, e2fsprogs for the data partition, zstd for the compressed system image, OpenSSL for fast SHA-256, curl and GNU tar for the headset's own build, exploration tools), the [initramfs/](../initramfs/) overlay and `pico4-reboot` |
+| Ramdisk | Alpine 3.24.2 aarch64: the minirootfs, the packages of `PACKAGES` in [tooling/image.py](../tooling/image.py) (BusyBox extras, dropbear, an SFTP server, e2fsprogs for the data partition, zstd for the compressed system image, OpenSSL for fast SHA-256, curl and GNU tar for the headset's own build, exploration tools), the [initramfs/](../initramfs/) overlay and `pico4-reboot` |
 | PID 1 | `pico4-init`, which runs `/etc/inittab` like busybox init ([PID 1](#pid-1)) |
 
 Over the USB-C cable:
@@ -53,7 +52,6 @@ Over the USB-C cable:
 | Function | What it offers |
 | --- | --- |
 | Network (CDC NCM) | the headset at `172.16.42.1/24`; DHCP gives the PC `172.16.42.2`, no router or DNS, so the PC keeps its internet route. SSH with SFTP, telnet, HTTP |
-| Log drive (mass storage) | read-only FAT drive `PICO4LOGS` with the boot logs and the hardware report, readable without a network driver |
 | Serial shell (CDC ACM) | only on kernels with ACM; the stock kernel has none |
 
 ## Prerequisites
@@ -73,7 +71,7 @@ python -m overpressure hwtest preflight        # the newest rootfs tar in out/, 
 ```
 
 It runs the image's own binaries (BusyBox, the DHCP, telnet and web servers, dropbear and host-key
-generation, mtools, the other tools) on the stock kernel from `adb shell`, without root, through the image's
+generation, the other tools) on the stock kernel from `adb shell`, without root, through the image's
 musl loader. It prints what stage 1 relies on (USB device controller, LED names, DRM and backlight devices,
 CPU governors and idle state, pstore, kernel options) and the fingerprint and OEM state for `match`. It uses
 a directory under `/data/local/tmp` and removes it; results go to `out/hardware-<id>/`; a failure exits
@@ -212,7 +210,6 @@ About 20–40 s after boot the headset answers on the USB link:
 | Telnet | `telnet 172.16.42.1` |
 | Browser: status, logs, report, probe and reboot buttons | <http://172.16.42.1/> |
 | Copy files (SFTP) | `scp root@172.16.42.1:/run/pico4/report.tar.gz .` |
-| Logs without network | the USB drive `PICO4LOGS` |
 | Serial shell, kernels with CDC ACM | the gadget's serial port (`/dev/ttyACM0` on Linux); any login name, no password |
 
 dropbear runs with `-R` (host keys generated at the first connection, new every boot), `-B` (empty root
@@ -234,16 +231,12 @@ The web server is BusyBox `httpd` on port 80 (`/srv/www`):
 | `POST /cgi-bin/probe` | rerun `pico4-probe` |
 | `POST /cgi-bin/reboot`, body `target=android`, `bootloader` or `recovery` | reboot after 2 s |
 
-The log drive is a 32 MiB FAT image in RAM, read-only and removable: `README.txt`, `boot.log` (what `/init`
-and the USB setup did), `dmesg.txt`, `cmdline.txt`, `build-info.json`, `report.tar.gz` once the probe ran,
-`svc-*.log`, `usb.state`, `usb.link` and `pstore/` (the previous boot's kernel logs). It is rebuilt after the
-probe and swapped in as a media change; eject and replug it to see the newer files.
-
 The USB device is a composite gadget `1d6b:0104` (class `EF/02/01` with interface association descriptors for
 Windows), product `PICO 4 Linux`, serial `androidboot.serialno` (normally the fastboot serial; the ADB serial
 can differ). The network function is the first of `pico4.usbnet` the kernel has; its MAC addresses are locally
 administered and derived from the serial, so the PC sees the same adapter every boot. If the controller rejects
-the set of functions, the setup binds again without the serial function, then without the log drive.
+the set of functions, the setup binds again without the serial function. The gadget carries no drive: a host
+re-reads a drive whose medium changes, and on Linux that kept udev from setting up the network.
 
 ## What happens during boot
 
@@ -252,11 +245,11 @@ the set of functions, the setup binds again without the serial function, then wi
 | 1 | [/init](../initramfs/init) mounts proc, sysfs, `/run`, `/tmp`; fills `/dev` with `mdev` (no devtmpfs on the stock kernel), kept running for hotplug; mounts devpts, configfs, pstore, debugfs | |
 | 2 | every disk and partition becomes read-only (`blockdev --setro`) as it appears; `/dev/block/by-name/*` links as on Android | blue |
 | 3 | modules of the stock ramdisk's `modules.load` (none in current firmware) | |
-| 4 | USB gadget via configfs: NCM, log drive, ACM if the kernel has it | amber once bound |
+| 4 | USB gadget via configfs: NCM, ACM if the kernel has it | amber once bound |
 | 5 | `usb0` = `172.16.42.1/24`; `udhcpd` gives the PC `172.16.42.2` | green when a PC configures it |
 | 6 | CPU power management as PICO OS's post-boot script: governor `schedutil`, deep idle states after 30 s, Qualcomm crash-dump mode off | |
 | 7 | `pico4-init` becomes PID 1 and starts `udhcpd`, `telnetd`, `dropbear`, `httpd`, the serial getty, the USB link watcher and the recovery watchdog | |
-| 8 | `pico4-probe` collects a hardware inventory 15 s after the USB setup and refreshes the log drive | |
+| 8 | `pico4-probe` collects a hardware inventory 15 s after the USB setup | |
 
 Steps 4 to 8 run concurrently. The stock kernel boots with `performance` and deep idle disabled
 (`lpm_levels.sleep_disabled=1`); without step 6 every core stays at its maximum clock. Firmware requests fall
@@ -271,8 +264,8 @@ Every step is logged to the kernel log (lines start with `pico4:`), `/run/pico4/
 
 [pico4-init](../initramfs/usr/libexec/pico4/pico4-init) runs the `::respawn:` and `::shutdown:` entries of
 [/etc/inittab](../initramfs/etc/inittab) like busybox init, but its stop signals reach only user processes,
-never kernel threads: busybox init's `kill(-1)` kills the USB mass-storage function's kernel thread, the PC
-resets the composite device and the NCM link is lost. Each service runs in its own respawn loop through
+never kernel threads: busybox init's `kill(-1)` also reaches kernel threads that accept signals, and the USB
+link must outlive every stop. Each service runs in its own respawn loop through
 [svc](../initramfs/usr/libexec/pico4/svc), which waits for its prerequisites and rate-limits restarts.
 SIGTERM to PID 1 stops and reboots; SIGUSR1 and SIGUSR2 stop, then halt or power off.
 
@@ -307,7 +300,6 @@ A bare `pico4.NAME` means `pico4.NAME=1`. [lib.sh](../initramfs/usr/libexec/pico
 | --- | --- | --- |
 | `pico4.usbnet=` | `ncm,rndis,ecm` | network functions to try, in order; the stock kernel has only NCM |
 | `pico4.usbserial=` | `acm` | serial shell function (absent from the stock kernel); `gser` needs a host driver, `none` disables it |
-| `pico4.logdisk=` | `1` | read-only USB log drive |
 | `pico4.autoreboot=` | `300` | seconds without a usable connection before rebooting into fastboot; `0` = never |
 | `pico4.usbkick=` | `20` | seconds of silence on a configured link before a software re-plug (at most 2); `0` = never |
 | `pico4.ip=`, `pico4.host_ip=` | `172.16.42.1`, `172.16.42.2` | addresses on the USB link (/24) |
@@ -322,7 +314,6 @@ A bare `pico4.NAME` means `pico4.NAME=1`. [lib.sh](../initramfs/usr/libexec/pico
 | `pico4.probe_delay=` | `15` | seconds between the USB setup and the automatic probe |
 | `pico4.lpm_delay=` | `30` | seconds before the idle states are enabled |
 | `pico4.udc_timeout=` | `60` | seconds to wait for a USB device controller |
-| `pico4.logdisk_mb=` | `32` | size of the log drive in MiB |
 
 For the test harnesses: `pico4.selftest=1` (the [QEMU self-test](#qemu-self-test); `pico4.selftest_hostdelay=N`
 keeps the PC side silent for N s, `pico4.selftest_poweroff=0` keeps the VM on; the runner refuses such
@@ -355,14 +346,12 @@ banner starts with `#`, and `pico4-reboot` refuses unknown words.
 * **"PICO 4 Linux" appears but no network adapter (Windows).** Windows 11's in-box `UsbNcm.sys` should load
   for CDC NCM ([Microsoft](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/supported-usb-classes));
   if not: Device Manager, *Update driver → Browse my computer → Let me pick → Network adapters → Microsoft →
-  UsbNcm Host Device*. Windows 10 has no NCM driver and the stock kernel no RNDIS: use the log drive, Windows 11,
-  Linux, or a Linux VM with USB passthrough.
+  UsbNcm Host Device*. Windows 10 has no NCM driver and the stock kernel no RNDIS: use Windows 11, Linux, or a Linux VM with USB passthrough.
 * **An NCM adapter, but no DHCP or SSH, and `Wrong NDP SIGN` in the kernel log.** The stock kernel needs one CDC
   request through UsbDk after every stage-1 boot; the runner and `dev connect` send it
   ([hardware-testing.md](hardware-testing.md#windows-ncm-initialization)). Leave the adapter on DHCP.
-* **No network, but a PICO4LOGS drive.** `boot.log` on it shows what the USB setup did.
 * **Nothing appears on the PC.** After 5 minutes the watchdog reboots into fastboot. The next stage-1 boot shows
-  the previous boot's logs from pstore (`pstore/` on the log drive, `/cgi-bin/log?pstore`); under PICO OS they
+  the previous boot's logs from pstore (`/cgi-bin/log?pstore`); under PICO OS they
   are in `/sys/fs/pstore/console-ramoops*` and `pmsg-ramoops*` (root only). Every stage-1 line starts with `pico4`.
 * **`check-unlocked` fails although the bootloader is unlocked.** The stock ABL reports `DeviceUnlocked=true`,
   which the tools refuse; stage the engineering ABL ([device-preparation.md](device-preparation.md)).
@@ -437,8 +426,8 @@ Further arguments are kernel arguments: `pico4.usbserial=none` gives the stock k
 `out/qemu-report/`. `make qemu-stage1` runs it for the Makefile's firmware. It checks: `/dev` by mdev, the gadget
 bound and addressed; the PC side's enumeration, the controller state and a DHCP lease of `172.16.42.2`; SSH,
 telnet and HTTP, root login with the empty password, the status page and boot log; the `by-name` links, a
-read-only partition and a refused write; the log drive from the PC side; a login shell on ACM; the hardware
-report over HTTP; with 35 s of silence two re-plugs, after which DHCP, the log drive and the serial shell work.
+read-only partition and a refused write; a login shell on ACM; the hardware
+report over HTTP; with 35 s of silence two re-plugs, after which DHCP and the serial shell work.
 
 ### On the headset
 

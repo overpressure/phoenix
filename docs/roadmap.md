@@ -87,7 +87,7 @@ verified; a hard reset then starts PICO OS. The cause is not known.
   backup ([tooling/image.py](../tooling/image.py); [tooling/firmware.json](../tooling/firmware.json) lists the
   verified builds).
 - USB-C carries the debugging: an NCM link (headset 172.16.42.1; DHCP gives the PC an address without gateway or
-  DNS), SSH, telnet, a web page with logs and a hardware report, and a read-only log drive. No serial console:
+  DNS), SSH, telnet and a web page with logs and a hardware report. No serial console:
   the stock kernel has no ACM function.
 - Every physical block device is read-only; the root file system is in RAM.
 - The stock kernel rejects Windows' NCM packets (`Wrong NDP SIGN`) until the host sends CDC `SET_CRC_MODE(0)`;

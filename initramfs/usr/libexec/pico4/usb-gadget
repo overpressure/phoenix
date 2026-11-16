@@ -8,8 +8,6 @@
 # Functions, first one the kernel provides wins (pico4.usbnet / usbserial):
 #   network : ncm (built into the stock PICO kernel), rndis, ecm
 #   serial  : acm (not in the stock PICO kernel), gser only on request
-#   logdisk : read-only FAT drive with boot logs + hardware report, so the
-#             logs are reachable even if the PC has no driver for the network
 . /usr/libexec/pico4/lib.sh
 
 G=/sys/kernel/config/usb_gadget/pico4
@@ -103,19 +101,6 @@ setup() {
 		log "USB: no network function available"
 	fi
 
-	# -- read-only log drive -------------------------------------------------
-	ms_fn=""
-	if [ "$(stage1_arg logdisk 1)" = 1 ] && "$P4_LIB/logdisk" build && mkdir "$G/functions/mass_storage.0" 2>/dev/null; then
-		lun=$G/functions/mass_storage.0/lun.0
-		write 1 "$lun/removable"
-		write 1 "$lun/ro"
-		write 0 "$lun/cdrom" 2>/dev/null
-		write 0 "$lun/nofua" 2>/dev/null
-		if write "$P4_RUN/logdisk.img" "$lun/file"; then
-			link_fn mass_storage.0 && ms_fn=mass_storage.0
-		fi
-	fi
-
 	# -- serial shell -------------------------------------------------------------
 	ser_fn=""
 	for f in $(stage1_arg usbserial acm | tr , ' '); do
@@ -135,23 +120,19 @@ setup() {
 		ln -s "$C" "$G/os_desc/" 2>/dev/null
 	fi
 
-	# Bind. If the controller rejects the combination, drop extras one by one.
+	# Bind. If the controller rejects the combination, drop the serial function.
 	if ! bind; then
-		log "USB: bind with [$net_fn $ms_fn $ser_fn] failed, retrying without serial"
+		log "USB: bind with [$net_fn $ser_fn] failed, retrying without serial"
 		[ -n "$ser_fn" ] && unlink_fn "$ser_fn" && ser_fn=""
 		if ! bind; then
-			log "USB: retrying without the log drive"
-			[ -n "$ms_fn" ] && unlink_fn "$ms_fn" && ms_fn=""
-			if ! bind; then
-				log "USB: binding the gadget to $UDC failed"
-				echo "bind-failed" > "$P4_RUN/usb.state"
-				led error
-				touch "$P4_RUN/usb.done"
-				return 1
-			fi
+			log "USB: binding the gadget to $UDC failed"
+			echo "bind-failed" > "$P4_RUN/usb.state"
+			led error
+			touch "$P4_RUN/usb.done"
+			return 1
 		fi
 	fi
-	log "USB: gadget bound to $UDC with [${net_fn:-no network} ${ms_fn} ${ser_fn}] serial=$serial"
+	log "USB: gadget bound to $UDC with [${net_fn:-no network} ${ser_fn}] serial=$serial"
 	echo bound > "$P4_RUN/usb.state"
 	led waiting
 

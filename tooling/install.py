@@ -239,6 +239,17 @@ def usb_seen(modes: Sequence[usbaccess.UsbMode] = USB_MODES) -> str:
     return "devices on USB: " + ", ".join(found)
 
 
+def unusable(output: str, mode: usbaccess.UsbMode) -> bool:
+    """Tell whether adb's or fastboot's listing (@p output) leaves out a device of @p mode this user may not use.
+
+    A device the tool may open read-only is listed as "no permissions"; one it may not even read is not listed
+    at all, so the USB bus is asked too (Linux: before udev grants it, or without a rule).
+    """
+    return usbaccess.listing_denied(output) or (
+        not device_rows(output, ("device", "fastboot")) and bool(usbaccess.denied(mode))
+    )
+
+
 def replug_until(ctx: Context, what: str, seconds: float, operation: Callable[[], T]) -> T:
     """Wait as until() does; when @p seconds run out, ask the owner to plug the headset in again, then wait anew.
 
@@ -465,8 +476,9 @@ class Plan:
 
         def one() -> str:
             output = ctx.output([adb, "devices"], 30, check=False)
-            denial.see(usbaccess.listing_denied(output), lambda: usbaccess.message(ADB_MODE, USB_MODES))
-            if usbaccess.listing_denied(output):
+            blocked = unusable(output, ADB_MODE)
+            denial.see(blocked, lambda: usbaccess.message(ADB_MODE, USB_MODES))
+            if blocked:
                 msg = "the headset is there, but not usable yet"  # udev grants it a moment late
                 raise RuntimeError(msg)
             rows = device_rows(output)
@@ -682,7 +694,7 @@ class Plan:
 
         def listed() -> dict[str, str]:
             output = ctx.output([fastboot, "devices"], 30, check=False)
-            denial.see(usbaccess.listing_denied(output), lambda: usbaccess.message(FASTBOOT_MODE, USB_MODES))
+            denial.see(unusable(output, FASTBOOT_MODE), lambda: usbaccess.message(FASTBOOT_MODE, USB_MODES))
             # "SERIAL no permissions ...": in fastboot, but not usable yet (udev grants it a moment late).
             return device_rows(output, ("fastboot", "no"))
 

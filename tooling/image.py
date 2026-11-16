@@ -49,7 +49,6 @@ PACKAGES = [
     "dropbear",
     "dropbear-scp",
     "openssh-sftp-server",  # ssh/scp/sftp (Windows has an ssh client)
-    "mtools",  # builds the read-only FAT "log drive" exposed over USB
     "zstd",  # pico4-install write --zstd: the system image arrives compressed
     "openssl",  # pico4-install: SHA-256 with the CPU's instructions (BusyBox's is 42 MB/s)
     "kmod",

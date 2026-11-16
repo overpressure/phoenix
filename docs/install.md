@@ -331,10 +331,10 @@ that task. On Linux the task's log says what the USB bus holds of each of the he
 headset that is not on the bus from one that is but which adb or fastboot does not list yet.
 
 From a running system the way into fastboot is a restart over SSH. The installer first waits up to 60 s for the
-headset to answer there; one that does not is not restarted, and the task stops with what to check. On Linux the
-usual reason is udev's watch on the headset's log drive: its loop keeps udev busy, so the USB network never comes
-up (NetworkManager waits for udev). The message, like `python -m overpressure doctor`, then gives the rule that
-turns the watch off for the headset's drives (`OPTIONS+="nowatch"` for `1d6b:0104` "PICO 4 Linux").
+headset to answer there; one that does not is not restarted, and the task stops with what to check (on Linux
+also `python -m overpressure doctor`). A headset already in fastboot that fastboot does not list, while the USB
+bus holds it and this user may not open it yet, is waited for while udev grants it; one it never grants stops the
+task with the udev fix, as a "no permissions" listing does, instead of asking for a replug.
 
 ### The backup as one file
 

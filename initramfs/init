@@ -9,7 +9,7 @@
 #
 #   1. pseudo filesystems, /dev from devtmpfs or mdev (the stock kernel has no devtmpfs)
 #   2. logging to kmsg/pstore, status LED, CPU power management
-#   3. USB gadget: NCM network 172.16.42.1 (+ read-only log drive)
+#   3. USB gadget: NCM network 172.16.42.1
 #   4. hand over to pico4-init, which keeps telnetd/sshd/httpd running
 
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin

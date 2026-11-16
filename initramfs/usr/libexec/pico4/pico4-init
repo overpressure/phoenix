@@ -4,10 +4,8 @@
 #
 # Runs the ::respawn: and ::shutdown: entries of /etc/inittab like busybox
 # init, with one deliberate difference: stopping signals user processes only.
-# busybox init stops everything with kill(-1), which also reaches the kernel's
-# USB mass-storage thread (f_mass_storage accepts SIGTERM/SIGKILL and exits).
-# The PC then resets the composite USB device and the NCM network dies, which
-# cut the USB link on the headset.
+# busybox init stops everything with kill(-1), which also reaches kernel threads
+# that accept signals; the USB link must outlive every stop.
 #
 #   SIGTERM  stop, reboot            SIGUSR1 / SIGUSR2  stop, halt / power off
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin

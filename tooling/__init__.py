@@ -38,13 +38,10 @@ if TYPE_CHECKING:
     from overpressure.api.v1.install import Stage
 
 #: The PICO 4 on USB, as the host's tools open it (checked on this unit): PICO OS with USB debugging,
-#: the bootloader's fastboot and EDL. Its maintenance system and the installed system are a USB network,
-#: which no tool opens, and a log drive, whose udev watch must be off: the drive changes under it, and the
-#: watch's loop keeps a Linux host's udev, and with it the network, from ever setting up the link.
+#: the bootloader's fastboot and EDL. Its maintenance system and the installed system are a USB network.
 ADB_MODE = UsbMode("PICO OS with USB debugging", "2d40", "00b7")
 FASTBOOT_MODE = UsbMode("fastboot mode", "18d1", "d00d")
-LINUX_MODE = UsbMode("Linux", "1d6b", "0104", access=False, storage=True, label="PICO 4 Linux")
-USB_MODES = (ADB_MODE, FASTBOOT_MODE, qualcomm.EDL_MODE, LINUX_MODE)
+USB_MODES = (ADB_MODE, FASTBOOT_MODE, qualcomm.EDL_MODE)
 #: The way out of a stale EDL session: the power button ends EDL mode, and the next attempt enters it afresh.
 EDL_RESTART = (
     "Hold the power button for about 10 s until the headset restarts, keep the cable in, then run the step "

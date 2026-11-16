@@ -8,7 +8,7 @@
 # out; run those tools by hand if you need them.
 #
 # Output: /run/pico4/report/ and /run/pico4/report.tar.gz, also on
-# http://172.16.42.1/ and on the USB log drive.
+# http://172.16.42.1/.
 . /usr/libexec/pico4/lib.sh
 
 OUT=$P4_RUN/report
@@ -179,7 +179,6 @@ done
 tar -czf "$P4_RUN/report.tar.gz.new" -C "$P4_RUN" report && mv -f "$P4_RUN/report.tar.gz.new" "$P4_RUN/report.tar.gz"
 touch "$P4_RUN/probe.done"
 step "done, $(du -sk "$OUT" | cut -f1) KiB in $OUT"
-"$P4_LIB/logdisk" refresh
 
 [ "$1" = --boot ] || cat "$OUT/summary.txt"
 exit 0

@@ -138,14 +138,10 @@ class PicoDoctorTests(unittest.TestCase):
             (checks.settings_checks, checks.tool_checks, checks.ncm_checks, checks.usb_checks),
         )
 
-    def test_linux_checks_usb_access_to_its_three_modes_and_its_drive(self):
+    def test_linux_checks_usb_access_to_its_three_modes(self):
         self.assertEqual(checks.usb_checks(FakeHost("win32")), [])  # only Linux needs a rule
-        modes = HEADSET.usb_modes()
         self.assertEqual(
-            [m.name for m in modes if m.access], ["PICO OS with USB debugging", "fastboot mode", "EDL mode"]
-        )
-        self.assertEqual(
-            [(m.vendor, m.product, m.label) for m in modes if m.storage], [("1d6b", "0104", "PICO 4 Linux")]
+            [m.name for m in HEADSET.usb_modes()], ["PICO OS with USB debugging", "fastboot mode", "EDL mode"]
         )
 
 

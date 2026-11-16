@@ -62,7 +62,7 @@ README.md current.
   ([the interface](https://github.com/overpressure/overpressure/blob/main/docs/adding-a-headset.md#the-headset-interface)).
 - `initramfs/`: stage 1, the maintenance environment in `recovery` and the base of test images;
   `pico4-install` is the installer's only writer. `pico4-init` is PID 1, not busybox init: busybox's
-  `kill(-1)` killed the f_mass_storage kernel thread and with it the USB link.
+  `kill(-1)` also reaches kernel threads that accept signals.
 - `kernel/`: Valve's kernel: `release.json` (the pinned release of overpressure/linux: tag, commit,
   build image, file hashes), `build-tree.sh` (builds a checkout of it), `imx471_mode.py` (the RGB
   camera's table for the assets), `recovery_image.py` for its boot images (`--direct --boot`: the

@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING
 from unittest.mock import patch
 
-from devices.phoenix import tooling
 from devices.phoenix.tooling import cycle, devloop, localconfig
 from overpressure.api.v1 import REPO, progress, qualcomm
 from overpressure.api.v1.localconfig import parse
@@ -715,16 +714,36 @@ class DevTests(HeadsetFixture):
         dev.to_fastboot()
         self.assertTrue(self.fastboot_listed)
 
-    def test_on_linux_the_error_names_the_nowatch_rule_this_computer_lacks(self):
-        rules = self.root / "rules.d"
-        rules.mkdir()
-        text = devloop.unanswered((rules,), linux=True)
-        self.assertIn("keeps its USB network down. Run: printf", text)
-        self.assertIn('OPTIONS+="nowatch"', text)
-        self.assertIn('ATTRS{product}=="PICO 4 Linux"', text)
-        (rules / "70-overpressure.rules").write_text(tooling.LINUX_MODE.storage_rule() + "\n", encoding="utf-8")
-        self.assertIn("python -m overpressure doctor", devloop.unanswered((rules,), linux=True))
-        self.assertNotIn("doctor", devloop.unanswered((rules,), linux=False))
+    def test_on_linux_the_error_points_to_the_doctor(self):
+        self.assertIn("python -m overpressure doctor", devloop.unanswered(linux=True))
+        self.assertNotIn("doctor", devloop.unanswered(linux=False))
+
+    def test_a_headset_in_fastboot_that_udev_grants_late_is_waited_for_not_restarted(self):
+        # Linux: fastboot leaves out a device it may not read; the bus holds it until udev grants it.
+        self.fastboot_listed = False
+        grants = iter([[Path("/dev/bus/usb/001/006")]] * 3)
+
+        def denied(_mode: object) -> list[Path]:
+            found = next(grants, [])
+            if not found:
+                self.fastboot_listed = True
+            return found
+
+        dev = self.make()
+        with patch.object(devloop.usbaccess, "denied", denied):
+            dev.to_fastboot()
+        self.assertTrue(self.fastboot_listed)
+        self.assertFalse(any("reboot" in t or "echo reachable" in t for t in self.texts()))
+
+    def test_a_headset_in_fastboot_that_stays_denied_stops_with_the_fix(self):
+        self.fastboot_listed = False
+        dev = self.make()
+        with (
+            patch.object(devloop.usbaccess, "denied", lambda _mode: [Path("/dev/bus/usb/001/006")]),
+            self.assertRaisesRegex(devloop.usbaccess.NoAccessError, "in fastboot mode over USB"),
+        ):
+            dev.to_fastboot()
+        self.assertFalse(any("reboot" in t for t in self.texts()))
 
     def test_which_system_runs_by_its_first_process(self):
         self.assertTrue(self.make({"cat /proc/1/comm": "systemd\n"}).installed_running())

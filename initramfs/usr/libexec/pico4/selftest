@@ -26,13 +26,6 @@ host_netif() {
 	done
 	return 1
 }
-host_disk() {
-	local b
-	for b in /sys/block/sd*; do
-		[ -e "$b" ] && grep -q "Gadget" "$b/device/model" 2>/dev/null && echo "${b##*/}" && return 0
-	done
-	return 1
-}
 
 wait_for "$P4_RUN/usb.done" 90 || bad "USB setup did not finish"
 . "$P4_RUN/net.env"
@@ -106,18 +99,6 @@ if [ -b "$dev" ]; then
 	check "Android-style /dev/block/bootdevice/by-name path" [ -b /dev/block/bootdevice/by-name/stage1_test ]
 else
 	bad "no /dev/block/by-name/stage1_test (attach the test disk)"
-fi
-
-# The read-only log drive, seen from the PC side.
-i=0
-until disk=$(host_disk) || [ "$i" -ge 20 ]; do sleep 1; i=$((i + 1)); done
-if [ -n "$disk" ]; then
-	mkdir -p /mnt/logdisk
-	check "PC can mount the log drive (/dev/$disk)" mount -t vfat -o ro "/dev/$disk" /mnt/logdisk
-	check "log drive has boot.log" [ -s /mnt/logdisk/boot.log ]
-	umount /mnt/logdisk 2>/dev/null
-else
-	[ "$(stage1_arg logdisk 1)" = 1 ] && bad "log drive not seen by the PC side"
 fi
 
 # Shell over USB serial (only kernels with CDC-ACM; not the stock PICO one).

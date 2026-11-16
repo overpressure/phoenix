@@ -63,13 +63,11 @@ from overpressure.api.v1.fastboot import NOT_IN_FASTBOOT
 from overpressure.api.v1.fastboot import flash as flash_image
 from overpressure.api.v1.headset import manifest
 
-from . import USB_MODES, device, localconfig, stockfiles
+from . import FASTBOOT_MODE, USB_MODES, device, localconfig, stockfiles
 from . import hardware_test as hw
 from .cycle import Headset, run
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from overpressure.api.v1.process import Timing
 
 ROOT = REPO
@@ -314,8 +312,7 @@ class Dev(Headset):
         """Return once the headset's own system answers over SSH, for a restart through it.
 
         A restart sent to a headset that does not answer is lost, and the wait for what comes next would run
-        out without a word on why: raise UnreachableError, which says what to check, and on Linux names the
-        udev rule this computer lacks for the headset's network.
+        out without a word on why: raise UnreachableError, which says what to check.
         """
         end = self.clock.monotonic() + seconds
         while not self.answers():
@@ -465,8 +462,23 @@ class Dev(Headset):
     def to_fastboot(self) -> None:
         """From PICO OS (ADB, once it is through with the MCU), stage 1 or stage 2 (SSH) into the bootloader."""
         fastboot = self.s.tool("fastboot")
+        denial = usbaccess.Denial(self.clock)
+
+        def ready() -> None:
+            listed = self.s.fastboot_serial in self.run([fastboot, "devices"], 30, check=False)
+            # fastboot leaves out a device it may not even read: Linux before udev grants it, or without a rule.
+            denial.see(
+                not listed and bool(usbaccess.denied(FASTBOOT_MODE)),
+                lambda: usbaccess.message(FASTBOOT_MODE, USB_MODES),
+            )
+            if not listed:
+                raise RuntimeError(NOT_IN_FASTBOOT)
+
         self.release_adb()
         if self.s.fastboot_serial in self.run([fastboot, "devices"], 30, check=False):
+            return
+        if usbaccess.denied(FASTBOOT_MODE):  # in fastboot already, not usable yet
+            self.until("fastboot", 180, ready)
             return
         pico_os = f"{self.s.adb_serial}\tdevice" in self.run([self.s.tool("adb"), "devices"], 30, check=False)
         # That look started the adb server again, which on Linux holds the headset in fastboot.
@@ -478,11 +490,6 @@ class Dev(Headset):
         else:
             self.reach()
             self.ssh_reboot("systemctl reboot --reboot-argument=bootloader 2>/dev/null || pico4-reboot bootloader")
-
-        def ready() -> None:
-            if self.s.fastboot_serial not in self.run([fastboot, "devices"], 30, check=False):
-                raise RuntimeError(NOT_IN_FASTBOOT)
-
         self.until("fastboot", 180, ready)
 
     def check_boot_partition(self, image: Path, name: str = "boot") -> None:
@@ -1245,21 +1252,15 @@ class UnreachableError(RuntimeError, process.Final):
     """The headset answers over USB neither in PICO OS, in fastboot nor in its own system; the message says why."""
 
 
-def unanswered(dirs: Sequence[Path] = usbaccess.RULE_DIRS, *, linux: bool | None = None) -> str:
+def unanswered(*, linux: bool | None = None) -> str:
     """Return why the headset cannot be restarted into fastboot, and what to check, in the owner's words."""
     text = (
         f"The headset answers neither in PICO OS, in fastboot nor in its own system (SSH to {HOST}), so it cannot "
         "be restarted into fastboot. Check that it is on and plugged in, then try again."
     )
-    if not (sys.platform == "linux" if linux is None else linux):
-        return text
-    watched = usbaccess.watched_modes(USB_MODES, usbaccess.rule_files(dirs))
-    if watched:
-        fix = usbaccess.fix([], watched=watched)
-        return (
-            f"{text} This computer's udev watches the headset's log drive, which keeps its USB network down. Run: {fix}"
-        )
-    return f"{text} python -m overpressure doctor names what this computer lacks."
+    if sys.platform == "linux" if linux is None else linux:
+        text += " python -m overpressure doctor names what this computer lacks for the headset's USB link."
+    return text
 
 
 def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per command word

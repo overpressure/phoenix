@@ -202,7 +202,7 @@ stage 1 by hand.
   system**: on a working link it stalls UsbDk and leaves the host's NCM and storage drivers in an error
   state. `dev installed` never sends it; `dev reboot` sends it once when nothing has answered for 60 s.
 - The Windows adapter stays on DHCP; the helper changes no IP, DNS, route or firewall settings. UsbDk briefly
-  disconnects the composite gadget, log drive included: leave that drive alone meanwhile.
+  disconnects the composite gadget.
 - Tested with Windows 11, UsbDk 1.0.22, PyUSB 1.3.1 and libusb-package 1.0.30.0 on PICO OS 5.13.7
   ([libusb's UsbDk backend](https://github.com/libusb/libusb/wiki/Windows)).
 

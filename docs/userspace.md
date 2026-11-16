@@ -131,7 +131,7 @@ preinit   proc, sys, /run; the boot indication; devnode sweep (every block devic
           userdata writable, at /data; /etc overlay, /var /home /root binds; machine-id;
           exec systemd (charger mode: --unit=pico4-charger.target)
 systemd   257.7: udev devnode rules, read-only sweep, pico4-usb-gadget (USB NCM 172.16.42.1,
-          log drive, ACM), systemd-networkd (DHCP for the PC), pico4-wlan-probe, sshd
+          ACM), systemd-networkd (DHCP for the PC), pico4-wlan-probe, sshd
 ```
 
 [`preinit`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/preinit) runs as PID 1 until it executes systemd;
@@ -159,9 +159,7 @@ What the system keeps:
   persistent on the data partition, up to 1 GiB (Valve's `persistent-store.conf` and `system-max-use.conf`,
   steamos-customizations-deckard), so earlier boots' journals stay for the support bundle; the image's
   `50-pico4.conf` only forwards warnings to the kernel log. `pico4-userspace-netdiag` writes USB link samples 20, 60 and 150 s after boot
-  to pstore (pmsg). A timer rewrites the USB log drive with the journal, kernel log, unit and network state 45 s
-  after boot and every 2 minutes, at idle CPU and I/O priority. The journal goes last, in the room the 32 MiB
-  drive has left: a boot with a session outgrows it within the hour, and then the drive holds its newest lines.
+  to pstore (pmsg).
 - **Access.** sshd takes the keys `dev install` wrote to the data partition, on USB and Wi-Fi; its host keys come
   from the first boot and stay in the `/etc` overlay ([security.md](security.md)).
 
@@ -281,7 +279,7 @@ JSON, exit status 0 when it passed. It waits up to 180 s for the boot to settle,
 - `/dev` the kernel's devtmpfs with a node for every kernel device, and a populated udev database;
 - the root read-only from `super`, `/data` on `userdata` the only writable partition;
 - D-Bus, logind's seat0 and sshd;
-- the USB link as `pico4-usb-gadget` recorded it (interface, MAC, address) and the log drive's mass-storage thread;
+- the USB link as `pico4-usb-gadget` recorded it (interface, MAC, address);
 - the session user logged in with its session target active, Monado's socket listening, the XR device nodes
   accessible to the session user ([session.md](session.md));
 - `steamos-customizations-deckard`, `steamos-manager`, gamescope, PipeWire and `deckard-mesa-linux-aarch64` installed;
