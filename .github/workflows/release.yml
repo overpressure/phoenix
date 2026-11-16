@@ -1,8 +1,10 @@
 # A release from its tag (docs/releasing.md): a pushed tag vMAJOR.MINOR[-beta[.N]] that names headset.json's
-# version runs every CI check on the tagged commit (skipped when its tree passed on main already), then makes
-# the GitHub release overpressure downloads (python -m overpressure headset add phoenix): the tag's own
-# message and the changelog section as its notes, the source zip (git archive: headset.json carries the
-# commit and its time) and its checksum. No image, package or vendor file is attached (docs/distribution.md).
+# version runs every CI check on the tagged commit (skipped when its tree passed against the same overpressure
+# already), then makes the GitHub release overpressure downloads (python -m overpressure headset add phoenix):
+# the tag's first line as its title, the tag's own words and the changelog since the release before as its
+# notes (overpressure's scripts/release.py, as overpressure's own release), the source zip (git archive:
+# headset.json carries the commit and its time) and its checksum. No image, package or vendor file is
+# attached (docs/distribution.md).
 name: Release
 on:
   push:
@@ -36,19 +38,16 @@ jobs:
         run: git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
       - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
         with:
-          version: "0.9.26"
+          version: "0.13.4" # overpressure's start scripts'
+      # overpressure's release tooling: the tag check, the notes and the private-data scan.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: overpressure/overpressure
+          path: .overpressure
       - name: The tag names headset.json's version
         id: version
         run: |
-          kind=$(python3 - "$GITHUB_REF_NAME" <<'EOF'
-          import json, re, sys
-          tag = sys.argv[1]
-          version = json.load(open("headset.json"))["version"]
-          if not re.fullmatch(r"v\d+\.\d+(-beta(\.[1-9]\d*)?)?", tag) or tag != "v" + version:
-              sys.exit(f"{tag} is not v{version} (headset.json), or not vMAJOR.MINOR[-beta[.N]]")
-          print("prerelease" if "-beta" in tag else "release")
-          EOF
-          )
+          kind=$(python3 .overpressure/scripts/release.py check "$GITHUB_REF_NAME" --version-file headset.json)
           echo "kind=$kind" >> "$GITHUB_OUTPUT"
           echo "name=phoenix-${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
       - name: Annotated, on main
@@ -56,14 +55,16 @@ jobs:
           [ "$(git cat-file -t "$GITHUB_REF_NAME")" = tag ] || { echo "::error::$GITHUB_REF_NAME is not annotated: git tag -a"; exit 1; }
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::$GITHUB_REF_NAME is not on main"; exit 1; }
       - name: Notes and changelog
+        id: notes
         run: |
-          {
-            git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME"
-            echo
-            uvx git-cliff@2.14.2 --latest --strip header
-          } > notes.md
-          uvx git-cliff@2.14.2 --output CHANGELOG.md
+          title=$(python3 .overpressure/scripts/release.py notes "$GITHUB_REF_NAME" --title "PICO 4")
+          echo "title=$title" >> "$GITHUB_OUTPUT"
           cat notes.md
+      # The tag's own words are published as they are: nothing private in them (the history scan reads commits).
+      - name: Nothing private in the notes
+        run: |
+          mkdir -p published && cp notes.md CHANGELOG.md published/
+          python3 .overpressure/scripts/check-private.py --files published/notes.md published/CHANGELOG.md
       - name: The source zip
         run: |
           name=${{ steps.version.outputs.name }}
@@ -73,10 +74,11 @@ jobs:
       - name: The release
         env:
           GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ steps.notes.outputs.title }}
         run: |
           name=${{ steps.version.outputs.name }}
           flag=""
           [ "${{ steps.version.outputs.kind }}" = prerelease ] && flag=--prerelease
           gh release create "$GITHUB_REF_NAME" $flag --verify-tag \
-            --title "PICO 4 ${GITHUB_REF_NAME#v}" --notes-file notes.md \
+            --title "$TITLE" --notes-file notes.md \
             "$name.zip" "$name.zip.sha256"

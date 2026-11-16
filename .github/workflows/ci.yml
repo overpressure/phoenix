@@ -1,7 +1,8 @@
 # Every pull request, every push to main, and every release before it is made (release.yml): the PICO 4's
 # tooling dropped into overpressure's main (devices/phoenix), as an owner's computer has it. Nothing here
-# needs vendor files or a headset. One run per content: a tree that passed once (a pull request's) is not
-# tested again when it lands on main or is tagged; its checks are skipped, which counts as passed.
+# needs vendor files or a headset. One run per content: a tree that passed once against overpressure's main of
+# the time (a pull request's) is not tested again when it lands on main or is tagged; its checks are skipped.
+# The job ci is the one required check: it passes only when every check passed or was skipped for that reason.
 name: CI
 on:
   push:
@@ -13,8 +14,8 @@ permissions:
   contents: read
 
 jobs:
-  # Whether this tree passed in an earlier run of this repository (never a fork's): the artifact its last
-  # job leaves.
+  # Whether this tree passed against overpressure's main as it is now, in an earlier run of this repository
+  # (never a fork's): the artifact its last job leaves. The checks below test that commit of overpressure's.
   tree:
     runs-on: ubuntu-latest
     permissions:
@@ -23,11 +24,19 @@ jobs:
     outputs:
       passed: ${{ steps.earlier.outputs.id != '' }}
       marker: ${{ steps.tree.outputs.marker }}
+      overpressure: ${{ steps.tree.outputs.overpressure }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: The tree
+      - name: The tree, and overpressure's main it is tested against
         id: tree
-        run: echo "marker=ci-passed-$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          main=$(gh api repos/overpressure/overpressure/commits/main --jq '.sha + " " + .commit.tree.sha')
+          commit=${main% *} main_tree=${main#* }
+          [ -n "$commit" ] && [ -n "$main_tree" ] && [ "$commit" != "$main_tree" ]
+          echo "overpressure=$commit" >> "$GITHUB_OUTPUT"
+          echo "marker=ci-passed-$(git rev-parse 'HEAD^{tree}')-$main_tree" >> "$GITHUB_OUTPUT"
       - name: An earlier pass
         id: earlier
         env:
@@ -52,6 +61,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: overpressure/overpressure
+          ref: ${{ needs.tree.outputs.overpressure }}
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           path: devices/phoenix
@@ -60,9 +70,31 @@ jobs:
           version: "0.9.26"
           python-version: "3.12"
       - run: uv sync --locked
+      # As overpressure's own CI loads each headset (its headsets job): a refused one would never show.
+      - name: It loads
+        shell: bash
+        run: |
+          found=$(uv run python -m overpressure devices)
+          echo "$found"
+          ! grep -q refused <<< "$found"
       - run: uv run python -m unittest discover -t . -s devices/phoenix/tests
         env:
           PYTHONIOENCODING: utf-8
+      - name: The PowerShell scripts parse
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $failed = $false
+          foreach ($script in Get-ChildItem devices/phoenix/scripts/*.ps1) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$tokens, [ref]$errors)
+            foreach ($e in $errors) {
+              Write-Output "$($script.Name):$($e.Extent.StartLineNumber): $($e.Message)"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
 
   lint:
     needs: tree
@@ -72,6 +104,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: overpressure/overpressure
+          ref: ${{ needs.tree.outputs.overpressure }}
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           path: devices/phoenix
@@ -94,15 +127,17 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: overpressure/overpressure
+          ref: ${{ needs.tree.outputs.overpressure }}
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           path: devices/phoenix
       - name: Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends shellcheck
+          sudo apt-get install -y --no-install-recommends shellcheck dash
+      # Stage 1 runs on BusyBox ash: dash is the closest shell here.
       - name: Shell tests
-        run: bash devices/phoenix/tests/test_recovery_policy.sh
+        run: dash devices/phoenix/tests/test_recovery_policy.sh
       - name: Shellcheck
         run: python3 scripts/run-shellcheck.py --repo devices/phoenix
       - name: C tests
@@ -116,6 +151,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: overpressure/overpressure
+          ref: ${{ needs.tree.outputs.overpressure }}
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           path: devices/phoenix
@@ -124,6 +160,17 @@ jobs:
         run: python3 scripts/check-docs.py --repo devices/phoenix
       - name: Private data, in every commit
         run: python3 scripts/check-private.py --repo devices/phoenix --history
+      - name: The workflows (actionlint, pinned by its release's SHA-256)
+        env:
+          VERSION: 1.7.12
+          SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          release="https://github.com/rhysd/actionlint/releases/download/v$VERSION"
+          curl -fsSL -o "$archive" "$release/actionlint_${VERSION}_linux_amd64.tar.gz"
+          echo "$SHA256  $archive" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          cd devices/phoenix && "$RUNNER_TEMP/actionlint" -color
       - name: The pinned kernel release, downloaded and checked against the pin
         run: python3 -m overpressure --device phoenix kernel fetch
       - name: What the pinned kernel and this repository share (contracts)
@@ -141,3 +188,28 @@ jobs:
           name: ${{ needs.tree.outputs.marker }}
           path: passed.txt
           retention-days: 90
+
+  # The one required check. A failed or cancelled tree job fails it; any other check counts only when it passed,
+  # or was skipped because this tree passed before (the per-tree reuse above).
+  ci:
+    needs: [tree, tests, lint, shell-and-c, repository, passed]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every check passed or was reused
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          REUSED: ${{ needs.tree.outputs.passed }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, sys
+          needs = json.loads(os.environ["NEEDS"])
+          reused = os.environ["REUSED"] == "true"
+          bad = []
+          for job, state in needs.items():
+              result = state["result"]
+              fine = result == "success" or (job != "tree" and result == "skipped" and reused)
+              print(f"{job}: {result}" + ("" if fine else "  <- fails the gate"))
+              bad += [] if fine else [job]
+          sys.exit(1 if bad else 0)
+          EOF

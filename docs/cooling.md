@@ -7,9 +7,8 @@
 | Code | [`pico4-fan`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-power/pico4-fan) and its unit, [`battery-guard`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-power/battery-guard) (overpressure/packages' `pico4-power`), [`vr-performance`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-session/vr-performance), the trips in [the device tree](https://github.com/overpressure/linux/blob/phoenix/7.2/arch/arm64/boot/dts/qcom/sm8250-pico4-phoenix.dts) |
 | State | The MCU acknowledges duties and reports the fan's speed; Valve's 30 s session check peaks at 65.5 °C, about 10 minutes of a worn game at 75.6 °C ([kernel.md](kernel.md#results)). The limit for the hottest zone is 90 °C |
 
-Without fan control the 30 s session check went from 47 °C to 86 °C. PICO OS's early table is the default; that it
-holds 10 minutes of a rendering session below 80 °C rests on one run (peak zone 79.5 °C,
-[Verified results](#verified-results)). Sessions much beyond 10 minutes are unmeasured.
+PICO OS's early table is the default. About 10 minutes of a worn game stay below 80 °C (75.6 °C,
+[kernel.md](kernel.md#results)); sessions much beyond 10 minutes are unmeasured.
 
 ## How PICO OS cools the PICO 4
 
@@ -149,7 +148,7 @@ The development headset is a standard PICO 4 of the late batch: control type 1, 
   and uses Monado's default IPD after waiting a second for it.
 - **The table.** PICO OS's early table on every headset by default: Valve's GPU-bound session heats the headset more
   than PICO OS's apps, and the early table runs the fan at least as fast at every temperature
-  ([Verified results](#verified-results)). `PICO4_FAN_PROFILE=auto` picks the table by batch as PICO OS does, from
+  ([PICO OS's policy](#pico-oss-policy)). `PICO4_FAN_PROFILE=auto` picks the table by batch as PICO OS does, from
   `/mnt/vendor/persist/falcon/sn` ([userspace.md](userspace.md#the-headsets-own-data)), and uses early without it. The
   MCU cannot tell the batch: GetFanInfo reports only duty, RPM and whether the fan runs.
 - **Stopping.** The fan keeps its last duty when the service stops.
@@ -306,10 +305,9 @@ daemon's hottest CPU/GPU mean.
 | GetFanInfo at 0, 30, 45 and 60 % | `00 0000 … 00`, `1e d312 … 01`, `2d 131b … 01`, `3c 0e23 … 01`: duty, RPM (4,819, 6,931, 8,974) and running; no fan identity |
 | Duty against RPM (`pico4-fan sweep`, 10–100 %) | 10 and 20 %: 3,650 and 3,670 rpm (the fan's lowest speed); 30 %: 5,265; 40 %: 6,770; 50 %: 8,160; 60 %: 9,470; 70 %: 10,740; 80 %: 11,940; 90 %: 13,070; 100 %: 14,150 rpm |
 | `pico4-userspace-check` and `dev check` | pass with the duty acknowledged (30 %, about 5,080 rpm, no MCU error); a SetFanSpeed error fails the check and names it; Monado reads the IPD through the shared port lock |
-| Valve's 30 s session check, installed system | hottest zone 65.5 °C, 90.03 commits/s; without fan control (stock kernel) the check went from 47.1 to 85.7 °C |
-| Valve's session for 10 minutes at 90 fps, late table (stock kernel) | fan at 30 %, then 35 % (5,160–6,090 rpm); hottest CPU/GPU mean 61.8–73.5 °C in minutes 5–10, peak zone 77.5 °C; 31 gaps above 100 ms |
-| The same with the early table (stock kernel) | fan at 45 % from the first minute (7,540–7,650 rpm); hottest mean 65.6–72.1 °C in minutes 5–10, peak zone 79.5 °C (from a warmer start); 8 gaps above 100 ms |
-| Idle session with PICO OS's tracker, still, 3 minutes each without, with and again without the VR CPU limits (stock kernel) | hottest zone mean 59.7, 59.4 and 59.4 °C; peaks 75.6, 60.8 and 70.9 °C (the limits cap the boosts); big-core clock 921, 1,047 (the hint's floor) and 938 MHz; the tracker lost no pose and stayed within 1.1 mm |
+| Valve's 30 s session check, installed system | hottest zone 65.5 °C, 90.03 commits/s |
+| Valve's session for 10 minutes out of standby, head tracker on, no game, on a table | hottest zone 53 °C at 30 % fan ([kernel.md](kernel.md#results)) |
+| A worn game for about 10 minutes (Beat Saber through Proton and FEX) | hottest zone 75.6 °C, GPU at 587 MHz ([kernel.md](kernel.md#results)) |
 | Build: [test_fan.py](https://github.com/overpressure/packages/blob/main/phoenix/pico4-power/test_fan.py) | frames against the stock bytes and the allowlist, replies, both tables and their hysteresis, boost and failsafe, means and timing, retries, the state file, zone selection, profile choice, the batch rule on synthetic serial numbers; a UART transaction over a pty on Linux; the power-off with a silent MCU or stalled fan, and none with a cooling fan, below the limit or after the MCU answers again |
 | Build: [test_battery_guard.py](https://github.com/overpressure/packages/blob/main/phoenix/pico4-power/test_battery_guard.py) | PICO OS's levels and delay, screen on and off, charging, an unreadable battery |
 | Host: [tests/test_userspace.py](../tests/test_userspace.py), [tests/test_hardware.py](../tests/test_hardware.py) | the userspace check's `fan` object and the session check's `fan.before`/`fan.after_run`, through the runner into `result.json` |

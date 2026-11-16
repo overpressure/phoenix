@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Unlicense
+# shellcheck shell=dash
 # Return a recovery reason, or nothing while stage 1 can keep running.
 # Arguments: uptime, connect deadline, test deadline, test mode, reachable, acknowledged,
 # and the uptime of the host's last contact (0 or empty: none). The test deadline (the

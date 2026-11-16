@@ -3,7 +3,7 @@
 Every release image goes through all of this ([releasing.md](releasing.md) says when), on the
 release's own image, from a fresh boot. `python -m overpressure dev release-check` runs the automated part and
 writes `out/release/<time>/result.json`; `--attended` adds what needs someone near. The worn part is a person's.
-Attach the results to the release.
+Put the results in the tag's message.
 
 ## Automated
 
@@ -22,7 +22,7 @@ Attach the results to the release.
 | --- | --- | --- |
 | A login without a key | refused from another machine, on USB and on Wi-Fi, for root and `steamos` | 2 min |
 | Boot without the PC | power button, no cable: session starts, tracked | 1 min |
-| Charger mode | power off with the cable in: lenses dark; held 2 s, it starts the system | 1 min |
+| Charger mode | power off with the cable in: the battery in both lenses for about 4 s at the start and on a short press, then dark; held 2 s, it starts the system | 1 min |
 | Unfinished boots | `systemctl set-default multi-user.target`, two reboots: the third boot starts the maintenance stage 1; `dev normal`, `systemctl set-default graphical.target`, a reboot: the system starts | 3 min |
 | A hang | PID 1 stopped with ptrace (no watchdog pings): the headset restarts within 40 s, and the system starts again | 2 min |
 | The buttons' way out | from the powered-off headset, both volume buttons while connecting USB: EDL answers | 1 min |

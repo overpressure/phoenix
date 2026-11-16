@@ -85,7 +85,7 @@ images, Wi-Fi and Bluetooth firmware from its `modem`, `dsp` and `bluetooth` par
 tracker and libraries, sensor and audio configuration from its backup's `super`
 ([install.md](install.md#pico-oss-files)); `persist`. Only on 5.13.7 `global-seko` have they run; on the other
 accepted builds they are that build's, untested. The stock recovery under the maintenance stage 1 comes from the
-5.13.7 `global-seko` package. The headset's own build also stays in what runs before the kernel and is never
+headset's own backup (its `recovery` partition). The headset's own build also stays in what runs before the kernel and is never
 written: the boot chain (XBL and its configuration, AOP,
 TrustZone and its libraries, the hypervisor, devcfg, the serial engines' firmware, the UEFI volume) and the board
 overlay in `dtbo`. The ABL is not among them: the install replaces it with the engineering ABL.

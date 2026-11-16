@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Unlicense
+# shellcheck shell=dash
 # PICO 4 Linux shell environment (all login shells: ssh, telnet, serial)
 
 # Someone reached the shell, so the USB link works: never auto-reboot.

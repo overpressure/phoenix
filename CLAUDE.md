@@ -81,8 +81,10 @@ README.md current.
   tag there and the pin here.
 - `src/`: the project's C sources outside the packages (`reboot/`, `splash/`). `pico4-slamd`, which
   runs PICO OS's head tracker (libSlam) in a bionic root, is a package of overpressure/packages.
-- `scripts/`: `build-userspace.sh`, `build-system-image.sh`, `build-kernel-step.sh`,
-  `windows-share-internet.ps1` and the on-headset preflight. The image holds no file of PICO OS's, only links
+- `scripts/`: `build-userspace.sh`, `build-system-image.sh`, `build-kernel-step.sh`, `build-on-headset.sh` (the
+  headset's own build), `upgrade-check.sh` (the weekly build on Valve's newest packages), `c-tests.sh`,
+  `check-package-lock.py`, `upstream.py`, `windows-share-internet.ps1` and the on-headset preflight
+  (`preflight-device.sh`). The image holds no file of PICO OS's, only links
   (`userspace/stock-links.txt`) to the data partition's copy, which `dev install` writes from the headset's backup,
   and to PICO OS's modem, dsp and bluetooth partitions, mounted read-only at boot (docs/install.md#pico-oss-files).
   The headset's own factory data is not extracted: the image links to persist, mounted read-only at boot
@@ -101,7 +103,8 @@ runs the same steps):
 
 ```sh
 python -m unittest discover -t . -s devices/phoenix/tests   # host tests, seconds, no hardware
-uv run ruff check devices/phoenix && uv run ty check devices/phoenix   # lint and types (not run on ".")
+uv run ruff format --check devices/phoenix && uv run ruff check devices/phoenix && uv run ty check devices/phoenix
+                                                         # formatting, lint and types (make lint: also overpressure's)
 bash devices/phoenix/tests/test_recovery_policy.sh       # stage-1 recovery policy
 bash devices/phoenix/scripts/c-tests.sh                  # the C tests of src/
 python -m overpressure build --firmware 5.13.7-global-seko   # stage-1 image -> out/, from the backup's boot
@@ -148,7 +151,7 @@ python -m overpressure cycle --restore-only              # verified stock boot a
   where it is the reference. Its tags never move; this repository pins one in `kernel/release.json`,
   and `kernel contracts` checks the names both sides share. A new boot image goes through
   `dev boot-image` and `dev install`.
-  - systemd stays at 257.x, pinned with `IgnorePkg` on the device (the Frame's version).
+- **systemd 257.x.** systemd stays at the Frame's version, pinned with `IgnorePkg` on the device.
 - **Storage stays read-only, except the installed system's data.** Every physical block device
   is switched read-only in both stages; only the installed system's data partition (userdata,
   ext4 `pico4-data`) is mounted writable. Partitions are written only through the explicit,
@@ -222,7 +225,7 @@ passed.
   in a panic; both reboot the headset by themselves. Run decoder experiments that may crash it with the user near.
 - **Windows NCM.** Valve's kernel takes Windows 11's NCM driver as it is: neither the installed system nor
   the maintenance stage 1 needs an initialization, and running it on a working link disturbs it. Only a stage 1
-  on the stock kernel (the acceptance runner's, a dev image older than `recovery_kernel: valve` in
+  on the stock kernel (the acceptance runner's, or a dev image without `recovery_kernel: valve` in
   `out/dev/dev-image.json`) needs `overpressure/windows_ncm.py` (UsbDk) after each boot; the dev loop and the
   runner send it only there.
 - Binary files from the device: use `ssh` directly; `dev ssh` decodes output as text.

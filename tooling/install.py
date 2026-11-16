@@ -73,6 +73,10 @@ PROVIDED = {
     "identity",
     "EDL backup",
 }
+#: What the installer does not use, so the doctor's checks for it do not count: the system is built on the
+#: headset (the build container is for builds on this computer), and every stage 1 it starts runs on Valve's
+#: kernel, which takes Windows' NCM driver as it is (the initialization is the acceptance runner's alone).
+NOT_INSTALLED = {doctor.BUILDS, checks.STOCK_KERNEL_LINK}
 #: The connection file the installer writes on the headset (one, replaced by the next install).
 WIFI_FILE = "/etc/NetworkManager/system-connections/overpressure-wifi.nmconnection"
 WIFI_COMMAND = f"install -D -m 600 /dev/stdin {WIFI_FILE} && nmcli connection reload"
@@ -438,8 +442,7 @@ class Plan:
 
     def check_computer(self, ctx: Context) -> None:
         """Run the doctor's checks; what the installer does not provide itself and fails stops the run."""
-        # The system is built on the headset: the build container is for builds on this computer only.
-        found = [c for c in self.computer() if c.name not in PROVIDED and c.needed_for != doctor.BUILDS]
+        found = [c for c in self.computer() if c.name not in PROVIDED and c.needed_for not in NOT_INSTALLED]
         for check in found:
             ctx.log(f"{check.status}: {check.name} ({check.needed_for}): {check.detail}")
             if check.status == doctor.WARNING:

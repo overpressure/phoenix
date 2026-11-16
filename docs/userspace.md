@@ -331,7 +331,7 @@ pwsh -File devices/phoenix/scripts/windows-share-internet.ps1 -Off       # shari
 
 [`windows-share-internet.ps1`](../scripts/windows-share-internet.ps1) turns off any existing sharing (ICS shares one
 connection per PC), sets `ScopeAddress` and shares the default route's adapter (or `-Internet NAME`). Sharing survives
-the headset's reboots and the stage 1 NCM initialization. ICS's DNS proxy does not answer EDNS0, so
+the headset's reboots and the NCM initialization of a stage 1 on the stock kernel. ICS's DNS proxy does not answer EDNS0, so
 `systemd-resolved` falls back to plain UDP only about 30 s after boot; lookups are quick after that.
 
 ## Wi-Fi

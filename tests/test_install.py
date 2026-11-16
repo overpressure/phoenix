@@ -13,6 +13,7 @@ from unittest import mock
 
 from devices.phoenix import tooling
 from devices.phoenix.tooling import HEADSET, devloop, localconfig
+from devices.phoenix.tooling import doctor as checks
 from devices.phoenix.tooling import install as plan
 from overpressure.api.v1 import doctor, qualcomm, tools, usbaccess
 from overpressure.api.v1.doctor import Check
@@ -626,6 +627,8 @@ class PlanTests(unittest.TestCase):
                 "python -m overpressure container pull",
             ),
             Check("git config", "build", doctor.WARNING, "none", "git config"),
+            # Every stage 1 the installer starts runs on Valve's kernel: no NCM initialization, no UsbDk.
+            Check("NCM Python and UsbDk", checks.STOCK_KERNEL_LINK, doctor.MISSING, "no UsbDk", "winget"),
         ]
         ui = self.run_stages(("computer",), {})
         doctor_task = [e for e in ui.events if e["event"] == "task" and e["task"] == "doctor"]
@@ -636,6 +639,7 @@ class PlanTests(unittest.TestCase):
         self.assertIn("warning: git config (build): none", logged)
         self.assertFalse(any("PICO4_ADB_SERIAL" in line for line in logged))
         self.assertFalse(any("build container" in line for line in logged))  # the headset builds the system
+        self.assertFalse(any("UsbDk" in line for line in logged))
         self.checks.append(Check("ssh", doctor.HEADSET, doctor.MISSING, "not on PATH", "OpenSSH"))
         (self.root / "out" / "install" / "phoenix" / "state.json").unlink()  # a fresh start: the doctor runs again
         ui = self.run_stages(("computer",), {})

@@ -116,7 +116,12 @@ class PicoDoctorTests(unittest.TestCase):
         tools = by_name(checks.tool_checks(host, s))
         self.assertEqual((tools["adb"].status, tools["fastboot"].status), (doctor.OK, doctor.MISSING))
         self.assertEqual(checks.ncm_checks(host, s)[0].status, doctor.OK)
-        self.assertEqual(checks.ncm_checks(FakeHost(platform="win32"), s)[0].status, doctor.MISSING)
+        # Only the acceptance runner's stage 1 on the stock kernel needs the link's initialization (and UsbDk):
+        # what is missing is optional, and needed for that alone, which the installer leaves out.
+        missing = checks.ncm_checks(FakeHost(platform="win32"), s)
+        self.assertEqual(missing[0].status, doctor.OPTIONAL)
+        self.assertEqual(doctor.failed(missing), [])
+        self.assertEqual({c.needed_for for c in [*missing, *checks.ncm_checks(host, s)]}, {checks.STOCK_KERNEL_LINK})
         self.assertIn("UsbDk", checks.ncm_checks(host, self.settings())[0].fix)
         self.assertEqual(checks.ncm_checks(FakeHost(platform="linux"), s), [])
 

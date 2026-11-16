@@ -37,9 +37,9 @@ tooling/          the PICO 4's host tooling (Python): python -m overpressure COM
   ledmodel.py, aimgrip.py, leverarm.py, controllermodel.py   controller data from PICO OS's libraries
 initramfs/        stage 1: files added to the Alpine ramdisk (pico4-init, services, pico4-install)
 userspace/        stage 2: the SteamOS-compatible userspace
-  packages.json     the release of overpressure/packages the image is built from (its definition and packages)
-  rootfs/           the adaptation layer (preinit, units, udev rules, PAM, session, device tools, checks)
-  session/          the session user's SteamVR configuration
+  packages.json     the release of overpressure/packages the image is built from: its definition, the
+                    project's packages and the adaptation layer (its pico4-* packages)
+  stock-links.txt   the image's links to PICO OS's files on the data partition and its partitions
 kernel/           the pinned release of overpressure/linux (release.json), build-tree.sh, imx471_mode.py,
                   recovery_image.py
 src/              C sources outside the packages: reboot/ (pico4-reboot), splash/ (pico4-splash)
@@ -131,7 +131,7 @@ keep `assets/` private.
 | `stock-slam` | Compute DSP image, the tracker's bionic root, DSP modules and process shells | modem, system, vendor, dsp |
 
 Each folder has a `manifest.json` (schema 2: the firmware, the sources by path prefix, every file's SHA-256),
-which `build-userspace.sh` reads. Files keep the image's permissions and modification times where the host's
+which `stock-files --assets` reads. Files keep the image's permissions and modification times where the host's
 file system has them, not its ownership. On Windows they carry no POSIX modes (the bind mount shows 0777 or
 0755), so the userspace build installs them as 0644 files and 0755 directories, programs as 0755 explicitly.
 
@@ -189,8 +189,8 @@ Each step is skipped when its inputs did not change:
    hotfix repository and the Holo Core preview; reinstalled when the package list or `pacman.conf` changes, and
    with `--refresh`.
 4. **Image root.** An overlay on the base root: the project packages that differ from the base root's, the
-   files stage 1 shares (its recovery policy, `pico4-reboot`, `pico4-splash`), the session user, the private
-   assets and the SteamVR files from `pico4-session` in the user's home. The adaptation layer is the project's
+   files stage 1 shares (its recovery policy, `pico4-reboot`, `pico4-splash`), the session user and the
+   SteamVR files from `pico4-session` in the user's home. The adaptation layer is the project's
    packages (`pico4-base`, `-power`, `-audio`, `-xr`, `-session`, `-checks`); their units are enabled as their
    presets (`usr/lib/systemd/system-preset/50-pico4-*.preset`) name them, the Frame's units the image does not
    use are masked.
@@ -228,7 +228,7 @@ python -m overpressure container run -- bash devices/phoenix/scripts/upgrade-che
 
 | Part | What it does | Fails when |
 | --- | --- | --- |
-| Userspace | `build-userspace.sh --refresh --update-lock` in its own build root, without the asset folders; [`upstream.py lock-diff`](../scripts/upstream.py) lists every package that moved since the pinned `packages.lock`, the session's packages first | a project package does not build, a patch does not apply, or a dependency stays unresolved |
+| Userspace | `build-userspace.sh --refresh --update-lock` in its own build root; [`upstream.py lock-diff`](../scripts/upstream.py) lists every package that moved since the pinned `packages.lock`, the session's packages first | a project package does not build, a patch does not apply, or a dependency stays unresolved |
 
 `out/upgrade-check/upgrade-check.md` is the summary; the CI run's page shows it. A moved package that still
 builds fails nothing: whether the session runs on it is the headset's check before a release.
@@ -238,8 +238,8 @@ builds fails nothing: whether the session runs on it is the headset's check befo
 | Level | Command | Takes |
 | --- | --- | --- |
 | Host tests: protocols, validators, the installer, runner, cycle and dev loop against fakes | `python -m unittest discover -t . -s devices/phoenix/tests` (`python -m unittest`: with the generic tests) | seconds |
-| Formatting, lint and types (CI runs them; `make lint` on `.` skips this folder) | `uv run ruff format --check devices/phoenix`, `uv run ruff check devices/phoenix`, `uv run ty check devices/phoenix` | seconds |
-| Stage-1 recovery policy | `bash devices/phoenix/tests/test_recovery_policy.sh` | seconds |
+| Formatting, lint and types (CI runs them; `make lint` runs them here and in every headset in `devices/`) | `uv run ruff format --check devices/phoenix`, `uv run ruff check devices/phoenix`, `uv run ty check devices/phoenix` | seconds |
+| Stage-1 recovery policy (CI runs it under dash, the closest to BusyBox ash) | `bash devices/phoenix/tests/test_recovery_policy.sh` | seconds |
 | The host tests and every shell test above | `make test` (on Linux) | seconds |
 | The same on any host, in the build container, as root | `python -m overpressure container run -- make test` (`make container-test`) | as `make test`, once the image is built |
 | C tests of this repository's own sources (CI runs them) | `bash devices/phoenix/scripts/c-tests.sh` (a C compiler) | seconds |
@@ -248,13 +248,18 @@ builds fails nothing: whether the session runs on it is the headset's check befo
 | On the headset: the integration test | `python -m overpressure dev install` and `dev check`, on the installed system | minutes; [hardware-testing.md](hardware-testing.md) |
 | Optional: stage 1 on a QEMU test kernel (from `tests/qemu/build-test-kernel.sh`) | `devices/phoenix/tests/qemu/run-selftest.sh` (`make qemu-stage1`) | about 3 min |
 
+CI ([ci.yml](../.github/workflows/ci.yml)) also loads the headset as overpressure's own CI does
+(`python -m overpressure devices`), parses the PowerShell scripts on Windows and checks the workflows with a
+pinned actionlint. Its job `ci` is the one required check: it passes when every check passed, or was skipped
+because the same tree passed before against the same tree of overpressure's `main`.
+
 New behaviour gets host tests with fakes for hardware and golden data for protocols. The packages' tests (the
 driver's C protocol tests, the controller tracker's C++ tests) run inside their builds in overpressure/packages.
 
 ## From a change to the headset
 
-The headset stays in development mode: the engineering ABL, the dev image in `recovery` on the stock kernel and
-the installed system on Valve's kernel ([hardware-testing.md](hardware-testing.md#development-mode),
+The headset stays in development mode: the engineering ABL, the dev image in `recovery` and the installed system,
+both on Valve's kernel ([hardware-testing.md](hardware-testing.md#development-mode),
 [install.md](install.md)). Commands that touch the headset ask the disclaimer first; `--accept-disclaimer` (or
 `OVERPRESSURE_ACCEPT_DISCLAIMER=1`) accepts it for an unattended run.
 

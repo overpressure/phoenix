@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Unlicense
+# shellcheck shell=dash
 # Shared helpers for the PICO 4 Linux scripts (sourced, busybox ash).
 
+# The settings are for the scripts that source this file (SC2034: unused here).
+# shellcheck disable=SC2034
 P4_RUN=/run/pico4
 P4_LOG=$P4_RUN/boot.log
 P4_LIB=/usr/libexec/pico4

@@ -258,7 +258,8 @@ class Phoenix(Headset):
                 "Connect to stage 1",
                 "Headset",
                 ("dev", "connect"),
-                "The USB network link (Windows: NCM initialization) and the stage-1 login.",
+                "The stage-1 login over the USB network link (on Windows the NCM initialization, for a stage 1 on "
+                "the stock kernel only).",
             ),
             Step(
                 "recovery",

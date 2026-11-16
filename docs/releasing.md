@@ -24,8 +24,9 @@ a new minor or major comes after the overpressure release that brings it. The im
    [README](../README.md#install), with the package lock on, in a new build root: a second such build gives the
    same archive and system image ([userspace.md](userspace.md#reproducible-builds)). Run the
    [checklist](release-checklist.md) on that image.
-4. **The tag.** An annotated tag on that commit of `main`: its first line the title, the rest the release's own
-   words, the checklist's results and what is known not to work. Then push it.
+4. **The tag.** An annotated tag on that commit of `main`: its first line the release's title, the rest the
+   release's own words, the checklist's results and what is known not to work. Then push it. The first beta of a
+   version is `-beta`, the next `-beta.2` (`-beta.1` is refused: it would name the first again).
 
    ```sh
    git tag -a v1.0-beta -F tag-message.md
@@ -36,18 +37,27 @@ a new minor or major comes after the overpressure release that brings it. The im
    - runs every check of [ci.yml](../.github/workflows/ci.yml) on the tagged commit, unless the same tree passed
      already (on its pull request or on `main`);
    - refuses a tag that is not annotated, not on `main`, or names another version than `headset.json`;
-   - writes the notes: the tag's own words, then the changelog's section of this release (git-cliff,
-     [cliff.toml](../cliff.toml));
+   - writes the notes and the zip's `CHANGELOG.md` with overpressure's `scripts/release.py notes`, from the
+     conventional commits (git-cliff, [cliff.toml](../cliff.toml)): the changelog starts at the first release,
+     whose notes are its tag's own words; a beta's notes list what changed since the release before it, a stable
+     release's what changed since the stable release before it (or the first release), its betas included. Both
+     are scanned for private data before anything is published;
    - makes the zip with `git archive`: the tagged tree under `phoenix-VERSION/`, with `CHANGELOG.md`, and
      `headset.json`'s commit and date filled in (`export-subst`, [.gitattributes](../.gitattributes)); and its
      SHA-256;
-   - creates the GitHub release with the notes, the zip and its checksum, as a pre-release for a beta.
+   - creates the GitHub release titled by the tag's first line, with the notes, the zip and its checksum, as a
+     pre-release for a beta.
 
    No image, package or vendor file is attached ([distribution.md](distribution.md)): everything is built on the
    owner's computer or the headset.
 
 A failed check stops the release before anything is published. Fix it on `main`, then delete the tag
-(`git push origin :refs/tags/v1.0-beta` and `git tag -d v1.0-beta`) and tag the fixed commit.
+(`git push origin :refs/tags/v1.0-beta` and `git tag -d v1.0-beta`) and tag the fixed commit. Only a tag that never
+got a release is deleted: a published version never moves.
+
+Between releases `headset.json` keeps the version of the release before; a preview of `main` is told apart by
+its commit, which `headset.json` carries in a download (export-subst) and the image reports in
+`/usr/share/pico4/version`.
 
 ## Moving to new upstream versions
 

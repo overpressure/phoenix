@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: Unlicense
 """The PICO 4's checks for python -m overpressure doctor.
 
-They cover its settings and private files, the tools that talk to it and the Windows USB link.
+They cover its settings and private files, the tools that talk to it and, on Windows, the NCM
+initialization that only a stage 1 on the stock kernel needs (the acceptance runner's): Valve's kernel
+takes Windows' NCM driver as it is, so the installer leaves that check out, and it is optional here.
 Its builds' Linux side (the userspace, the system image and the kernel) runs in the build
 container, which overpressure.doctor checks for every headset. PICO OS's files come from the
 headset's own backup at the install (tooling/stockfiles.py): no extracted assets are needed. What
@@ -15,10 +17,11 @@ manifest anyway.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING, Callable
 
 from overpressure.api.v1 import REPO, backup, doctor
-from overpressure.api.v1.doctor import HEADSET, MISSING, OK, WARNING, Check, Host
+from overpressure.api.v1.doctor import HEADSET, MISSING, OK, OPTIONAL, WARNING, Check, Host
 
 from . import FIRMWARE, USB_MODES, device, localconfig
 
@@ -30,6 +33,8 @@ if TYPE_CHECKING:
 EDL = "EDL (development mode, way back)"
 FIRMWARE_VERSION = FIRMWARE.split("-")[0]
 BACKUP_FIX = "python -m overpressure device backup (docs/device-preparation.md)"
+#: What the Windows NCM initialization is needed for: the acceptance runner's stage 1 on the stock kernel alone.
+STOCK_KERNEL_LINK = "the USB link of a stage 1 on the stock kernel on Windows (acceptance runner)"
 
 
 def settings_checks(host: Host, settings: Settings | None = None, root: Path = REPO) -> list[Check]:
@@ -91,10 +96,18 @@ def tool_checks(host: Host, settings: Settings | None = None) -> list[Check]:
 
 
 def ncm_checks(host: Host, settings: Settings | None = None) -> list[Check]:
-    """Windows only: the Python with pyusb and libusb-package, and UsbDk behind it."""
+    """Windows only: the Python with pyusb and libusb-package, and UsbDk behind it.
+
+    Only the acceptance runner's stage 1 on the stock kernel needs them, so what is missing is optional.
+    """
     if host.platform != "win32":
         return []
-    return doctor.ncm_checks(host, settings or localconfig.load())
+    return [
+        dataclasses.replace(
+            check, needed_for=STOCK_KERNEL_LINK, status=OPTIONAL if check.status == MISSING else check.status
+        )
+        for check in doctor.ncm_checks(host, settings or localconfig.load())
+    ]
 
 
 def usb_checks(host: Host) -> list[Check]:

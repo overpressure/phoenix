@@ -29,9 +29,10 @@ so every acceptance boot writes `boot` and restores it.
   start from PICO OS with USB debugging authorized, `dev flash` from PICO OS or development mode, the other
   `dev` commands from development mode. `adb reboot edl` works from PICO OS and EDL needs no buttons.
 - **Host**: Python 3.9+, `adb`, `fastboot` and edl-ng (`python -m overpressure tools` fetches them), OpenSSH
-  (`ssh`, `ssh-keygen`), a USB network driver for the NCM link and a route to 172.16.42.1; on Windows the
-  [NCM initialization](#windows-ncm-initialization) for stage 1. The tools install no drivers and change no
-  host network settings.
+  (`ssh`, `ssh-keygen`), a USB network driver for the NCM link and a route to 172.16.42.1; on Windows, for a
+  stage 1 on the stock kernel (`hwtest flash-run`, `cycle`), the
+  [NCM initialization](#windows-ncm-initialization). The tools install no drivers and change no host network
+  settings.
 - **Images** ([development.md](development.md)): `out/pico4-stage1-<firmware>.img` from
   `python -m overpressure build --firmware <firmware>` (the entry `python -m overpressure match` finds); for
   the installed system, the images in [install.md](install.md#install-and-update).
@@ -179,12 +180,13 @@ known-hosts changes are involved.
 
 ### Windows NCM initialization
 
-On the stock kernel (PICO OS 5.13.7: the maintenance stage 1 and the runner's images), the NCM function
+On the stock kernel (PICO OS 5.13.7: the runner's images), the NCM function
 rejects Windows' NCM packets with `Wrong NDP SIGN` in its kernel log: no DHCP, SSH or HTTP. Sending the CDC
 request `SET_CRC_MODE(0)` through UsbDk, then releasing the device to Windows 11's in-box UsbNcm driver, fixes
 all three without a kernel change: the 4.19 `f_ncm` recomputes the NDP signature on every CDC class request
 to its control interface, and Windows' driver sends none. The stock kernel has no RNDIS, ECM or EEM function
-to use instead. Valve's kernel (the installed system) takes Windows 11's driver as it is.
+to use instead. Valve's kernel (the installed system and the maintenance stage 1) takes Windows 11's driver
+as it is.
 
 [overpressure/windows_ncm.py](https://github.com/overpressure/overpressure/blob/main/overpressure/windows_ncm.py) does it; `--windows-ncm-python` (runner) or
 `PICO4_NCM_PYTHON` (cycle, dev loop) enables it. Install [UsbDk](https://github.com/daynix/UsbDk/releases)
@@ -198,9 +200,10 @@ stage 1 by hand.
   CDC NCM control interface; anything else gets no request and cannot pass. It always releases the handle.
 - The runner retries it within `--boot-timeout` until it succeeds once (`windows_ncm` in `result.json`).
   Every call is bounded: a Windows driver open or close can stall.
-- It runs once per stage-1 boot (`dev connect`, `dev recovery`, the runner) and **never on the installed
-  system**: on a working link it stalls UsbDk and leaves the host's NCM and storage drivers in an error
-  state. `dev installed` never sends it; `dev reboot` sends it once when nothing has answered for 60 s.
+- It runs once per boot of a stage 1 on the stock kernel (the runner's) and **never on Valve's kernel**: on
+  a working link it stalls UsbDk and leaves the host's NCM driver in an error state. The dev loop sends it
+  only for a dev image without `recovery_kernel: valve` in `out/dev/dev-image.json` (`dev connect`,
+  `dev recovery`; `dev reboot` once when nothing has answered for 60 s); `dev installed` never sends it.
 - The Windows adapter stays on DHCP; the helper changes no IP, DNS, route or firewall settings. UsbDk briefly
   disconnects the composite gadget.
 - Tested with Windows 11, UsbDk 1.0.22, PyUSB 1.3.1 and libusb-package 1.0.30.0 on PICO OS 5.13.7
@@ -388,13 +391,13 @@ Settings come from [`.env`](#settings-for-cycle-and-dev). All but `image` and `b
 | Command | Effect |
 | --- | --- |
 | `stage-abl` | engineering ABL through EDL with readback, then PICO OS (cycle step 1); logs in `out/dev/stage-abl-<time>/` |
-| `image` | builds `out/dev/dev-boot.img` and `dev-recovery.img` from `out/pico4-stage1-<PICO4_FIRMWARE>.img`: a runner image with the run identifier `dev-loop`, the dev key and long deadlines ([install.md](install.md#boot-images)) |
+| `image` | builds `out/dev/dev-boot.img` (stage 1 on the stock kernel) and `dev-recovery.img` (the maintenance stage 1 on Valve's kernel) from `out/pico4-stage1-<PICO4_FIRMWARE>.img`: a runner image with the run identifier `dev-loop`, the dev key and long deadlines ([install.md](install.md#boot-images)) |
 | `boot-image` | builds `out/kernel/valve-boot.img`, the installed system's boot image, from Valve's kernel and the header of `dev-recovery.img` (`recovery_image.py --direct --boot`) |
 | `flash` | to fastboot (from PICO OS by ADB, from stage 1 or 2 by SSH; up to 180 s), the partition checks of `flash-run` (unlocked, one non-slotted partition of the backed-up size, an image that fits), the OEM authorization, the dev image into `recovery`, then starts it |
-| `connect` | forgets the old host key, runs the NCM initialization when there is an NCM Python (up to 120 s) and logs in within 120 s; the endpoint must report `dev-loop` and the SoC ID of `PICO4_IDENTITY` (this clears the connection deadline); the partition stage 1 came from must hash (`pico4-install hash`) to `dev-boot.img` or `dev-recovery.img` |
+| `connect` | forgets the old host key, runs the NCM initialization only for a stage 1 on the stock kernel with an NCM Python (up to 120 s) and logs in within 120 s; the endpoint must report `dev-loop` and the SoC ID of `PICO4_IDENTITY` (this clears the connection deadline); the partition stage 1 came from must hash (`pico4-install hash`) to `dev-boot.img` or `dev-recovery.img` |
 | `check` | the runner's [stage-2 checks](#userspace-checks) on the installed system; results in `out/dev/check-<time>/`; exit 0 only if all pass |
 | `ssh COMMAND...` | the words as one remote command (up to 600 s), output as text; the remote exit status is not passed on |
-| `reboot` | reboots over SSH, or with `fastboot reboot` from fastboot (no write); waits for another boot ID and connects to what started (the maintenance stage 1 while `misc` holds its request, else the installed system); NCM initialization once after 60 s of silence |
+| `reboot` | reboots over SSH, or with `fastboot reboot` from fastboot (no write); waits for another boot ID and connects to what started (the maintenance stage 1 while `misc` holds its request, else the installed system); for a stage 1 on the stock kernel, the NCM initialization once after 60 s of silence |
 | `restore` | leaves development mode: with the system installed as in [install.md](install.md#back-to-stock) (`--installed` when this PC did not record the install, `--only system|data|recovery` one part of it); otherwise the backup's stock boot image, checked as in `flash`, into `boot`, and up to 300 s for PICO OS. The ABL stays engineering |
 | `release-check [--attended]` | the automated part of [release-checklist.md](release-checklist.md); `--attended` adds what needs someone near |
 | `support-bundle [--output PATH]` | the [support bundle](#support-bundle) |

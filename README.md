@@ -114,8 +114,8 @@ env.example  its keys in overpressure's .env
 tooling/     host tooling (Python): its commands, the window's steps, the installer's plans
 kernel/      Valve's kernel: the pinned release of overpressure/linux, its build script, boot images
 initramfs/   the maintenance system's files in the Alpine ramdisk
-userspace/   the system: the pinned release of overpressure/packages, adaptation layer, SteamVR configuration
-src/         C sources outside the packages: the tracker's host, the reboot and splash helpers
+userspace/   the system: the pinned release of overpressure/packages (with the adaptation layer), links to PICO OS's files
+src/         C sources outside the packages: the reboot and splash helpers
 scripts/     userspace, system image and kernel builds, the upgrade check, a Windows PC's internet sharing
 prebuilt/    static aarch64 helpers
 tests/       host tests and the QEMU boot tests

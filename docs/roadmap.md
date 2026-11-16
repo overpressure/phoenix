@@ -8,8 +8,8 @@ Snapdragon XR2), on Valve's kernel from the Steam Frame with the PICO's own driv
 the installer (`python -m overpressure install|upgrade|restore`, [install.md](install.md#the-installer)); the
 headset builds its own system ([install.md](install.md#built-on-the-headset)), so the owner's computer builds
 nothing and downloads nothing of PICO OS's.
-Open: the rest of the direct boot's checks (the power key in charger mode, a boot without the PC, `dev check`
-with the controllers), a power press after a long sleep, and the checks under [Open work](#open-work).
+Open: the rest of the direct boot's checks (a boot without the PC, `dev check` with the controllers), a power
+press after a long sleep, and the checks under [Open work](#open-work).
 Background: [research.md](research.md).
 
 ## Status
@@ -77,28 +77,29 @@ verified; a hard reset then starts PICO OS. The cause is not known.
 
 ### 2. Minimal Linux
 
-**Goal.** A minimal initramfs on the PICO kernel with USB debugging: a Linux shell, not yet a VR interface.
+**Goal.** A minimal initramfs with USB debugging: a Linux shell, not yet a VR interface.
 
 **Status.**
 
-- The maintenance stage-1 image is a standard Android boot image: the stock kernel and DTBs byte for byte, the
-  ramdisk replaced by Alpine Linux 3.24 (aarch64) with `pico4-init` as PID 1.
-  `python -m overpressure build --firmware <build>` builds it from the headset's own boot partition in its EDL
-  backup ([tooling/image.py](../tooling/image.py); [tooling/firmware.json](../tooling/firmware.json) lists the
-  verified builds).
+- Stage 1 is the maintenance system in `recovery`: an Android boot image with Valve's kernel and device tree and
+  a ramdisk of Alpine Linux 3.24 (aarch64) with `pico4-init` as PID 1, where the headset builds, writes and
+  rescues its system. `python -m overpressure build --firmware <build>` builds its stock form, the stock kernel
+  and DTBs byte for byte, from the headset's own boot partition in its EDL backup
+  ([tooling/image.py](../tooling/image.py); [tooling/firmware.json](../tooling/firmware.json) lists the
+  verified builds); `dev image` puts Valve's kernel in for `recovery` ([stage1.md](stage1.md#in-recovery-valves-kernel)).
 - USB-C carries the debugging: an NCM link (headset 172.16.42.1; DHCP gives the PC an address without gateway or
-  DNS), SSH, telnet and a web page with logs and a hardware report. No serial console:
-  the stock kernel has no ACM function.
+  DNS), SSH, telnet and a web page with logs and a hardware report. No serial console.
 - Every physical block device is read-only; the root file system is in RAM.
-- The stock kernel rejects Windows' NCM packets (`Wrong NDP SIGN`) until the host sends CDC `SET_CRC_MODE(0)`;
-  [overpressure/windows_ncm.py](https://github.com/overpressure/overpressure/blob/main/overpressure/windows_ncm.py) sends it through UsbDk after each stage-1
-  boot. Valve's kernel needs no such request.
+- Valve's kernel takes Windows 11's NCM driver as it is. The stock form, the acceptance runner's, rejects Windows'
+  NCM packets (`Wrong NDP SIGN`) until the host sends CDC `SET_CRC_MODE(0)`;
+  [overpressure/windows_ncm.py](https://github.com/overpressure/overpressure/blob/main/overpressure/windows_ncm.py)
+  sends it through UsbDk after each boot of it.
 - A watchdog returns the headset to fastboot after 5 minutes without usable USB traffic or a login; test runs
   add a connection deadline and a maximum runtime. A kernel panic reboots instead of leaving the headset in
   Qualcomm's crash-dump mode.
-- `python -m overpressure hwtest flash-run` writes the image to `boot`, checks a per-run SSH identity, the stock
-  kernel, an ARM64 root shell, read-only storage (all 99 physical block entries) and the HTTP diagnostics, then
-  flashes stock boot back and waits for PICO OS; the tested headset passes it, including the Windows NCM
+- `python -m overpressure hwtest flash-run` writes the stock form to `boot`, checks a per-run SSH identity, the
+  stock kernel, an ARM64 root shell, read-only storage (all 99 physical block entries) and the HTTP diagnostics,
+  then flashes stock boot back and waits for PICO OS; the tested headset passes it, including the Windows NCM
   initialization, and an unusable USB link still returns it to PICO OS without a button press.
 
 **Limits.** A kernel hard hang or a loss of host power can still need physical or EDL recovery. Windows 10 has
@@ -205,9 +206,9 @@ built for the Frame's hardware.
 
 **Open.**
 
-- The direct boot's remaining checks: the power key held 2 s in charger mode, a boot without the PC, `dev check`
-  with both controllers connected ([install.md](install.md#open-work)). Verified: preinit to the graphical
-  target in 9.7 to 11.0 s, charger mode up to the key, the Wi-Fi re-probe, the keys on the data partition, a
+- The direct boot's remaining checks: a boot without the PC and `dev check` with both controllers connected
+  ([install.md](install.md#open-work)). Verified: preinit to the graphical target in 9.7 to 11.0 s, charger
+  mode with the power key held 2 s starting the system, the Wi-Fi re-probe, the keys on the data partition, a
   stopped PID 1 restarting the headset after 33 s, and the maintenance stage 1 after two boots in a row that
   never reached the graphical target.
 - A short power press after more than an hour asleep. After an RTC wake from 3 h asleep, with the cable in,
@@ -217,9 +218,9 @@ built for the Frame's hardware.
 **Not verified.**
 
 - On the headset: a restore from an imported backup on another computer, `dev restore` interrupted part way
-  ([install.md](install.md#an-interrupted-restore)), and a panic in the maintenance stage 1 on Valve's kernel. The
-  installer's restore, install from PICO OS and upgrade ran on the command line with that stage 1; the window ran
-  the restore with the stage 1 on the stock kernel.
+  ([install.md](install.md#an-interrupted-restore)), a panic in the maintenance stage 1 on Valve's kernel, and the
+  window's install, upgrade and restore with that stage 1: the command line ran all three with it, the window
+  the restore with a stage 1 on the stock kernel.
 - A second headset: everything ran on one unit ([device-preparation.md](device-preparation.md#verified-hardware)).
 - Linux and macOS as the host: the host tests cover both, but no headset was installed from either (Windows
   installed it); the SSH proxy the headset's build downloads through (`ssh -R`), the Python assets extraction and

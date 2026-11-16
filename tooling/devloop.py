@@ -11,14 +11,20 @@ Settings come from .env (devices/phoenix/tooling/localconfig.py); the SSH key, i
 results live in out/dev/.
 
   python -m overpressure dev stage-abl         engineering ABL through EDL, then PICO OS
-  python -m overpressure dev image             the dev image and the install boot image in out/dev/
+  python -m overpressure dev image             in out/dev/: the dev image for recovery (stage 1 on Valve's
+                                               kernel) and the runner's boot image (stage 1 on the stock kernel)
+  python -m overpressure dev boot-image        the installed system's boot image, out/kernel/valve-boot.img
   python -m overpressure dev flash             write the dev image to recovery (fastboot) and start it
-  python -m overpressure dev connect           Windows NCM initialization and stage-1 login
+  python -m overpressure dev connect           stage-1 login (the Windows NCM initialization only for a stage 1
+                                               on the stock kernel)
   python -m overpressure dev recovery          into the maintenance stage 1, until dev normal
   python -m overpressure dev install [SYSTEM]  boot, super and data from it; starts the installed system
+                                               (--on-headset: the headset builds the system image itself)
   python -m overpressure dev normal            from the maintenance stage 1 into the installed system
   python -m overpressure dev installed         connect to the running installed system
   python -m overpressure dev check             the acceptance checks on the installed system
+  python -m overpressure dev release-check     the automated part of docs/release-checklist.md
+  python -m overpressure dev support-bundle    logs for a bug report, identifiers masked
   python -m overpressure dev ssh COMMAND...    run a command on the headset
   python -m overpressure dev reboot            what misc and boot select, also from fastboot
   python -m overpressure dev restore           leave development mode: PICO OS from the backup
@@ -179,10 +185,10 @@ def source_date_epoch() -> int:
 
 #: The share of an install's progress its partition writes stand for; the short steps after them have the rest.
 INSTALL_WRITES = 0.9
-#: Seconds without an answer after a reboot before the Windows NCM initialization (the maintenance
-#: stage 1 needs it; it disturbs a working link).
+#: Seconds without an answer after a reboot before the Windows NCM initialization (only a stage 1 on the
+#: stock kernel needs it; it disturbs a working link).
 NCM_RETRY_SECONDS = 60
-#: The battery as the maintenance stage 1's stock kernel shows it.
+#: The battery as the maintenance stage 1 and the installed system (Valve's kernel) show it.
 BATTERY = "/sys/class/power_supply/battery"
 #: Below this charge an install or a restore starts only on a charging battery: a headset that
 #: switches off halfway is recoverable (it starts the maintenance stage 1 again), the write is lost.
@@ -576,7 +582,7 @@ class Dev(Headset):
     def stage1_ncm(self) -> Path | None:
         """Return the Windows NCM initialization's Python when the maintenance stage 1 needs it, else None.
 
-        Only the stock kernel needs it (dev images before stage 1 moved to Valve's kernel); Valve's
+        Only the stock kernel needs it (a dev image without recovery_kernel "valve" in its record); Valve's
         kernel takes Windows 11's NCM driver as it is, and the initialization disturbs a working link.
         """
         record = self.work / "dev-image.json"
@@ -902,7 +908,7 @@ class Dev(Headset):
         """Wait for the installed system's systemd, reached over the USB link.
 
         Valve's kernel takes Windows' NCM driver as it is: no NCM initialization, which would
-        disturb the working link (only the maintenance stage 1's stock kernel needs it). With
+        disturb the working link (only a stage 1 on the stock kernel needs it). With
         @p previous_boot, the boot of that ID does not count: it is the one going down.
         """
 
@@ -1281,7 +1287,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per 
         "installed",
     ):
         sub.add_parser(name)
-    sub.add_parser("boot-image", help="out/kernel/valve-boot.img from out/kernel, out/dev and the assets")
+    sub.add_parser("boot-image", help="out/kernel/valve-boot.img from out/kernel, out/dev and the backup's recovery")
     release = sub.add_parser("release-check", help="the automated part of docs/release-checklist.md")
     release.add_argument("--attended", action="store_true", help="also what needs someone near: tones, a suspend")
     bundle = sub.add_parser("support-bundle", help="logs for a bug report, identifiers masked, into out/support")

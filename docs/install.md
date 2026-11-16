@@ -83,7 +83,7 @@ its DSPs, video codec and wireless chip. The image holds none of them, only link
   kernel's firmware path and binds the copy's tracker root (`system`, `vendor`) and the `dsp` partition's
   process shells into `/usr/lib/pico4-stock-slam`, read-only, so that it looks the same to every process.
   The drivers that probe while the kernel starts (Wi-Fi, Bluetooth, the video codec) are probed again later
-  by their units, and the DSPs start from `remoteproc-boot`, as before; the GPU loads its firmware at the
+  by their units, and the DSPs start from `remoteproc-boot`; the GPU loads its firmware at the
   first open of its node, which the splash makes after the copy is there.
 - **The tracker.** `pico4-slamd` links against stand-ins of bionic's `libc.so`, `libm.so` and `libdl.so`
   ([`bionic-stubs.c`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-slamd/bionic-stubs.c)): the build needs no file of PICO's.
@@ -154,7 +154,8 @@ Under systemd:
   `/run/pico4/usb-link.env`. systemd-networkd gives `usb0` `172.16.42.1/24` and one DHCP lease, `172.16.42.2`,
   without router, DNS or NTP, so the PC keeps its own internet route
   ([`50-pico4-usb.network`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/50-pico4-usb.network)). The Frame's own
-  gadget units stay masked. Windows 11's in-box NCM driver works as it is: only the maintenance stage 1 needs the
+  gadget units stay masked. Windows 11's in-box NCM driver works as it is, as with the maintenance stage 1: only
+  the acceptance runner's stage 1 on the stock kernel needs the
   [NCM initialization](hardware-testing.md#windows-ncm-initialization).
 - **Wi-Fi.** ath11k probes the QCA6390 before the system image is mounted and fails without its firmware;
   `pico4-wlan-probe.service` binds it again once `/usr/lib/firmware` holds it, before NetworkManager, and waits
@@ -265,7 +266,6 @@ files the image shares; about 1 MB) goes over SSH, and
 
 The archive is the same, byte for byte, from all three and from the build container (one commit, one pin). An
 installed system built this way passes `dev check` (90.03 commits/s) with the tracker from its package.
-| From an empty build folder, maintenance stage 1 on the stock kernel, no fan | stopped at 88.8 °C while compressing the image | 88.8 °C |
 
 ## The installer
 
@@ -459,12 +459,11 @@ it. This follows from the order and the boot rules; it was not tried with a pull
 
 ## Open work
 
-1. **The way back.** Not run on the headset: a restore interrupted part way ([above](#an-interrupted-restore)),
-   the upgrade, and a restore from an imported backup on another computer.
+1. **The way back.** Not run on the headset: a restore interrupted part way ([above](#an-interrupted-restore))
+   and a restore from an imported backup on another computer.
 2. **Integrity.** The system image is checked when written, not at boot (no dm-verity).
-3. **The direct boot.** Still to run: the power key held 2 s in charger mode, the lenses dark there (by eye), a
-   boot without the PC, and `dev check` with both controllers connected.
-4. **The installer.** The whole path from PICO OS, with the headset's first build after the format, and a new backup: the LUNs from `printgpt`, and the Wi-Fi
-   keyfile on the installed system (WPA2; a WPA3-only network may need `key-mgmt=sae`).
+3. **The direct boot.** Still to run: a boot without the PC, and `dev check` with both controllers connected.
+4. **The installer.** The Wi-Fi keyfile on the installed system (WPA2; a WPA3-only network may need
+   `key-mgmt=sae`).
 5. **The boot indication in the lenses.** Tested on the host (the drawing also on aarch64 under QEMU); still to
    see: the picture in both lenses and the bar carrying on when `pico4-splash.service` takes over.

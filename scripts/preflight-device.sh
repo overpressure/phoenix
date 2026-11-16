@@ -79,7 +79,7 @@ echo "lpm sleep_disabled: $(cat /sys/module/lpm_levels/parameters/sleep_disabled
 echo "cpufreq governors: $(cat /sys/devices/system/cpu/cpufreq/policy*/scaling_governor 2>&1 | tr '\n' ' ')"
 echo "pstore: $(ls /sys/fs/pstore 2>&1 | tr '\n' ' ')"
 if zcat /proc/config.gz >/dev/null 2>&1; then
-	echo "kernel config: $(zcat /proc/config.gz | grep -E '^(# )?CONFIG_(DEVTMPFS|USB_CONFIGFS_NCM|USB_CONFIGFS_MASS_STORAGE|RD_GZIP)[ =]' | tr '\n' ' ')"
+	echo "kernel config: $(zcat /proc/config.gz | grep -E '^(# )?CONFIG_(DEVTMPFS|USB_CONFIGFS_NCM|RD_GZIP)[ =]' | tr '\n' ' ')"
 else
 	echo "kernel config: /proc/config.gz not readable as shell"
 fi

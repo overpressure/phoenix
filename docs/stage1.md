@@ -1,11 +1,13 @@
 # Stage 1: the bootable Linux image
 
-**TL;DR.** Stage 1 is an Android boot image for the original PICO 4 (A8110, *phoenix*): the stock kernel
-(`4.19.81-perf+`) and device trees byte for byte, with the ramdisk replaced by Alpine Linux 3.24 and the
-project's init. In `recovery`, as the maintenance environment where the installed system is built, written and
-rescued, it runs on Valve's kernel instead ([below](#in-recovery-valves-kernel)); the stock kernel stays in the
-acceptance runner's boot image. Over USB-C it offers NCM networking with SSH, telnet and a status page. Every disk and partition is read-only, except what `pico4-install` writes on purpose
-([install.md](install.md)). With no PC using it, it returns to fastboot by itself.
+**TL;DR.** Stage 1 is the maintenance system in `recovery` of the original PICO 4 (A8110, *phoenix*), where
+the installed system is built, written and rescued: an Android boot image with Valve's kernel and device tree
+([below](#in-recovery-valves-kernel)) and a ramdisk of Alpine Linux 3.24 with the project's init. `build` makes
+its stock form, the stock kernel (`4.19.81-perf+`) and device trees byte for byte with that ramdisk, which is
+the acceptance runner's boot image; `dev image` puts Valve's kernel in for `recovery`. Over USB-C it offers NCM
+networking with SSH, telnet and a status page. Every disk and partition is read-only, except what
+`pico4-install` writes on purpose ([install.md](install.md)). With no PC using it, it returns to fastboot by
+itself.
 
 | | |
 | --- | --- |
@@ -25,7 +27,7 @@ device tree from `out/kernel` (so `kernel fetch` comes first), the stock `recove
 partition with the stock vbmeta behind it; `dev-image.json` records `recovery_kernel: valve`. The kernel is the
 installed system's, so the headset builds its system on the same kernel wherever it builds it
 ([install.md](install.md#built-on-the-headset)), with the fan's MCU on `ttyHS1`; Windows 11 takes its USB link
-without the NCM initialization, which the dev loop then no longer sends.
+without the NCM initialization, and the dev loop sends it none.
 
 | Check on Valve's kernel | Result |
 | --- | --- |
@@ -236,7 +238,7 @@ Windows), product `PICO 4 Linux`, serial `androidboot.serialno` (normally the fa
 can differ). The network function is the first of `pico4.usbnet` the kernel has; its MAC addresses are locally
 administered and derived from the serial, so the PC sees the same adapter every boot. If the controller rejects
 the set of functions, the setup binds again without the serial function. The gadget carries no drive: a host
-re-reads a drive whose medium changes, and on Linux that kept udev from setting up the network.
+re-reads a drive whose medium changes, which on Linux keeps udev from setting up the network.
 
 ## What happens during boot
 
@@ -347,8 +349,8 @@ banner starts with `#`, and `pico4-reboot` refuses unknown words.
   for CDC NCM ([Microsoft](https://learn.microsoft.com/en-us/windows-hardware/drivers/usbcon/supported-usb-classes));
   if not: Device Manager, *Update driver → Browse my computer → Let me pick → Network adapters → Microsoft →
   UsbNcm Host Device*. Windows 10 has no NCM driver and the stock kernel no RNDIS: use Windows 11, Linux, or a Linux VM with USB passthrough.
-* **An NCM adapter, but no DHCP or SSH, and `Wrong NDP SIGN` in the kernel log.** The stock kernel needs one CDC
-  request through UsbDk after every stage-1 boot; the runner and `dev connect` send it
+* **An NCM adapter, but no DHCP or SSH, and `Wrong NDP SIGN` in the kernel log.** Only the stock kernel (the
+  runner's stage 1) shows it: it needs one CDC request through UsbDk after every boot, which the runner sends
   ([hardware-testing.md](hardware-testing.md#windows-ncm-initialization)). Leave the adapter on DHCP.
 * **Nothing appears on the PC.** After 5 minutes the watchdog reboots into fastboot. The next stage-1 boot shows
   the previous boot's logs from pstore (`/cgi-bin/log?pstore`); under PICO OS they
