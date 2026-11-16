@@ -31,7 +31,7 @@ As shipped:
 | --- | --- |
 | [release.json](../kernel/release.json) | the pin: overpressure/linux's tag (`phoenix/7.2-1`), its commit, the build image it was built with, and the SHA-256 of `Image.gz`, the device tree, `config` and `version` |
 | [tooling/kernel.py](../tooling/kernel.py) | `kernel fetch` (the installer's step: the release's files into `out/kernel`), `kernel build` (the pinned commit built here in the release's build image, [below](#building-it-yourself)), `kernel check DIR`, `kernel contracts` ([below](#contracts)) |
-| [build-tree.sh](../kernel/build-tree.sh) | a checkout of overpressure/linux's `phoenix/7.2` to `Image.gz`, the device tree, `config`, `version` and `build.json` (release, commit, banner, camera table, the tooling's commit, the build image, hashes); `uname -v` names the commit. That repository's CI builds each branch with it once, each tag twice on two machines, and releases a tag whose builds agree |
+| [build-tree.sh](../kernel/build-tree.sh) | a checkout of overpressure/linux's `phoenix/7.2` to `Image.gz`, the device tree, `config`, `version` and `build.json` (release, commit, banner, camera table, the tooling's commit, the build image, hashes); `uname -v` names the commit. That repository's CI builds each change with it once, through ccache when `CCACHE_DIR` is set (its check builds), and each tag twice on two machines without it, and releases a tag whose builds agree |
 | [imx471_mode.py](../kernel/imx471_mode.py) | the RGB camera's register table, from the camera module in the stock vendor image: the file the driver loads |
 | [recovery_image.py](../kernel/recovery_image.py) | boot images with Valve's kernel ([A one-shot test boot](#a-one-shot-test-boot)) |
 
@@ -237,8 +237,10 @@ Every change moves up the layers by pull request, merged with a merge commit; no
 `sm8650-7.2` branch through the [evlaV mirror](https://github.com/evlaV/deckard-linux-no-oopsies). Whenever a branch
 moves, the Layers workflow opens a pull request from it into the layer built on it (`valve/7.2` into `common/7.2`, then
 `common/7.2` into `sm8250/7.2`, then `sm8250/7.2` into `phoenix/7.2`); a pull request into a headset's branch is built
-with its merge, and a conflict is resolved in the pull request. Rulesets let the layers change only by such pull
-requests, with a passing build, and `valve/7.2` only move forward. A release is a tag `phoenix/7.2-N` that never moves;
+with its merge, a pull request into a layer without a headset (`common/7.2`, `sm8250/7.2`) is built merged into
+`phoenix/7.2`, and a conflict is resolved in the pull request. The Layers workflow starts its own pull requests'
+builds. Rulesets let the layers change only by such pull requests whose `ci` check passed, and `valve/7.2` only move
+forward ([the repository's README](https://github.com/overpressure/linux/tree/phoenix/7.2/.github)). A release is a tag `phoenix/7.2-N` that never moves;
 this repository pins one.
 
 ## Valve's Mesa

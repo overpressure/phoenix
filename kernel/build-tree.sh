@@ -20,7 +20,10 @@
 # build's: the same commit and camera table give the same kernel on any host.
 #
 # Runs in the build container (python -m overpressure container run), cross compiling with
-# aarch64-linux-gnu-gcc. Incremental: a second run rebuilds only what changed.
+# aarch64-linux-gnu-gcc. Incremental: a second run rebuilds only what changed. With CCACHE_DIR set, the
+# compiler runs through ccache (the build image's), which keeps compiled objects in that folder for the next
+# build, also from another checkout: CI's check builds use it, a release builds without (its two builds are
+# the test that the kernel is reproducible). ccache gives the objects the compiler would: the same kernel.
 set -euo pipefail
 
 DTB=sm8250-pico4-phoenix
@@ -60,6 +63,18 @@ make=(make -C "$tree" O="$work/build" ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu
 	# it: without the prefixes the same commit in another folder gives another kernel.
 	KCFLAGS="-ffile-prefix-map=$tree/= -ffile-prefix-map=$work/="
 	KAFLAGS="-ffile-prefix-map=$tree/= -ffile-prefix-map=$work/=")
+if [ -n "${CCACHE_DIR:-}" ]; then
+	if command -v ccache >/dev/null; then
+		make+=(CC="ccache aarch64-linux-gnu-gcc")
+		# A compiler of the same name but other contents is another compiler; 3 GB hold a kernel's objects.
+		export CCACHE_COMPILERCHECK=content CCACHE_MAXSIZE=${CCACHE_MAXSIZE:-3G}
+		mkdir -p "$CCACHE_DIR"
+		ccache --zero-stats >/dev/null
+	else
+		echo "CCACHE_DIR is set, but this build image has no ccache: building without it" >&2
+		unset CCACHE_DIR
+	fi
+fi
 config=$work/build/.config
 mkdir -p "$work/build"
 # The configuration starts from Valve's each time, so a changed fragment never stacks.
@@ -88,6 +103,7 @@ install -m 644 "$work/build/arch/arm64/boot/Image.gz" "$out/Image.gz"
 install -m 644 "$work/build/arch/arm64/boot/dts/qcom/$DTB.dtb" "$out/$DTB.dtb"
 install -m 644 "$config" "$out/config"
 "${make[@]}" -s kernelrelease > "$out/version"
+[ -z "${CCACHE_DIR:-}" ] || ccache --show-stats | grep -iE 'hits|misses|cache size' >&2 || true
 
 sum() { sha256sum "$out/$1" | cut -d' ' -f1; }
 # The tooling's own commit; a worktree's repository is at OVERPRESSURE_GIT_DIR in the build
