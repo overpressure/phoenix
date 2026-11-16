@@ -222,9 +222,9 @@ built for the Frame's hardware.
   window's install, upgrade and restore with that stage 1: the command line ran all three with it, the window
   the restore with a stage 1 on the stock kernel.
 - A second headset: everything ran on one unit ([device-preparation.md](device-preparation.md#verified-hardware)).
-- Linux and macOS as the host: the host tests cover both, but no headset was installed from either (Windows
-  installed it); the SSH proxy the headset's build downloads through (`ssh -R`), the Python assets extraction and
-  EDL device counting through pyusb are not run on a Mac.
+- macOS as the host: the host tests cover it, but no headset was installed from a Mac (Windows and Linux installed
+  it from PICO OS); the SSH proxy the headset's build downloads through (`ssh -R`), the Python assets extraction
+  and EDL device counting through pyusb are not run on a Mac.
 - The first-run setup's failure page (a refused password, a network out of range) worn: drawn and host-tested
   only. Its texts in the 30 languages besides English are machine-assisted and not reviewed. The screen reader's
   voice choice in the client's settings is not tried.
