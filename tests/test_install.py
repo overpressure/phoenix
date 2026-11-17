@@ -828,7 +828,8 @@ class WorkflowTests(unittest.TestCase):
     def test_the_installer_writes_a_fastboot_serial_it_learns_to_env(self):
         ctx = mock.Mock()
         ctx.settings.return_value = localconfig.Settings(adb_serial=ADB, fastboot_serial="", edl_serial=EDL)
-        dev = plan.AskingDev(ctx, Path("/nowhere"))
+        with tempfile.TemporaryDirectory() as folder:
+            dev = plan.AskingDev(ctx, Path(folder, "dev"))  # the dev loop makes its work folder
         dev.learn_fastboot_serial(FASTBOOT)
         self.assertEqual(dev.s.fastboot_serial, FASTBOOT)
         ctx.set_setting.assert_called_once_with(plan.KEY("fastboot_serial"), FASTBOOT)
