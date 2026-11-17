@@ -797,7 +797,7 @@ class WorkflowTests(unittest.TestCase):
         tasks = [t for s in stages for t in s.tasks]
         writes = [t.id for t in tasks if t.writes]
         # Each part its own task, so a retry goes on from the part that failed.
-        self.assertEqual(writes, ["system", "data", "recovery", "restore-abl"])
+        self.assertEqual(writes, ["system", "data", "recovery", "bootloader-first", "restore-abl"])
         ids = [t.id for t in tasks]
         self.assertLess(ids.index("verify-backup"), ids.index("consent"))
         self.assertLess(ids.index("consent"), ids.index("maintenance"))
@@ -828,7 +828,7 @@ class WorkflowTests(unittest.TestCase):
         ctx.settings.return_value = mock.Mock(adb_serial="SERIAL", tool=mock.Mock(return_value="adb"))
         ctx.output.return_value = "List of devices attached\n"  # in its bootloader, not in PICO OS
         with tempfile.TemporaryDirectory() as folder:
-            restore = plan.Plan(HEADSET, root=Path(folder), computer=list)
+            restore = plan.Plan(HEADSET, root=Path(folder), computer=list, edl_count=lambda: 0)
             record = Path(folder, "out", "install", HEADSET.info.codename, "state.json")
             record.parent.mkdir(parents=True)
 
@@ -836,7 +836,10 @@ class WorkflowTests(unittest.TestCase):
                 record.write_text(json.dumps({"schema": 1, "tasks": tasks, **more}), encoding="utf-8")
 
             stopped({"backup": {"status": "done"}, "stage-abl": {"status": "failed"}})
-            with mock.patch.object(plan, "AskingDev") as dev:
+            with (
+                mock.patch.object(plan, "AskingDev") as dev,
+                mock.patch.object(restore, "back_in_fastboot", return_value=False),  # PICO OS starts
+            ):
                 restore.restore_maintenance(ctx)
             dev.return_value.start_from_fastboot.assert_called_once_with()
             dev.return_value.recovery.assert_not_called()
@@ -854,6 +857,89 @@ class WorkflowTests(unittest.TestCase):
                     restore.restore_maintenance(ctx)
                 dev.return_value.recovery.assert_called_once_with()
                 ctx.remember.assert_called_once_with("")
+
+    def stuck_restore(self, folder: str, edl: list[int]) -> plan.Plan:
+        """Return a restore on this computer after an install that stopped early; @p edl[0] counts EDL devices."""
+        restore = plan.Plan(HEADSET, root=Path(folder), computer=list, edl_count=lambda: edl[0])
+        record = Path(folder, "out", "install", HEADSET.info.codename, "state.json")
+        record.parent.mkdir(parents=True)
+        tasks = {"backup": {"status": "done"}, "stage-abl": {"status": "failed"}}
+        record.write_text(json.dumps({"schema": 1, "tasks": tasks}), encoding="utf-8")
+        return restore
+
+    def test_a_headset_that_boots_back_into_fastboot_gets_its_stock_bootloader_first_from_edl(self):
+        # #39: after an early stop every start ends in fastboot, so PICO OS's setup would wait for ever.
+        ctx = mock.Mock()
+        ctx.clock = FakeClock()
+        ctx.settings.return_value = mock.Mock(adb_serial="SERIAL", tool=mock.Mock(return_value="adb"))
+        ctx.output.return_value = "List of devices attached\n"
+        edl = [0]
+        with tempfile.TemporaryDirectory() as folder:
+            restore = self.stuck_restore(folder, edl)
+            with (
+                mock.patch.object(plan, "AskingDev") as dev,
+                mock.patch.object(restore, "back_in_fastboot", return_value=True),
+            ):
+                restore.restore_maintenance(ctx)
+            ctx.remember.assert_called_once_with(plan.PICO_OS_STUCK)
+            self.assertEqual(ctx.note.call_args.args[0], plan.STUCK)
+            dev.return_value.recovery.assert_not_called()
+            ctx.recall.side_effect = lambda task: plan.PICO_OS_STUCK if task == "maintenance" else ""
+            ctx.completed.return_value = False
+            tasks = {t.id: t for s in restore.restore_stages() for t in s.tasks}
+
+            def done(task: str) -> bool:
+                check = tasks[task].done
+                assert check is not None
+                return check(ctx)
+
+            # The system's writes stay skipped; the bootloader goes first, the last stage needs no second write.
+            self.assertTrue(all(done(t) for t in ("maintenance", "system", "data", "recovery")))
+            self.assertFalse(done("bootloader-first"))
+            self.assertFalse(done("restore-abl"))
+
+            ctx.ask.side_effect = lambda ask: edl.__setitem__(0, 1) if ask.id == "edl" else None
+            order: list[str] = []
+            ctx.remember.side_effect = lambda choice: order.append(f"remember {choice}")
+            with mock.patch.object(restore, "run_step", side_effect=lambda _ctx, key: order.append(key)):
+                tasks["bootloader-first"].run(ctx)
+            self.assertEqual(ctx.ask.call_args.args[0].id, "edl")
+            self.assertEqual(order, ["restore-abl", f"remember {plan.BOOTLOADER_WRITTEN}"])
+            ctx.recall.side_effect = lambda task: {
+                "maintenance": plan.PICO_OS_STUCK,
+                "bootloader-first": "written",
+            }.get(task, "")
+            self.assertTrue(done("restore-abl"))
+
+            # A headset the owner put into EDL already counts as stuck, without starting it.
+            ctx.reset_mock(side_effect=True)
+            ctx.clock = FakeClock()
+            edl[0] = 1
+            with mock.patch.object(plan, "AskingDev") as dev:
+                restore.restore_maintenance(ctx)
+            dev.return_value.start_from_fastboot.assert_not_called()
+            ctx.remember.assert_called_once_with(plan.PICO_OS_STUCK)
+
+    def test_a_headset_is_stuck_when_it_comes_back_to_fastboot_and_starts_when_pico_os_answers(self):
+        ctx = mock.Mock()
+        ctx.clock = FakeClock()
+        restore = plan.Plan(HEADSET, root=Path("/nowhere"), computer=list, edl_count=lambda: 0)
+        dev = mock.Mock()
+
+        def answers(fastboot: list[bool], adb: list[bool]) -> bool:
+            dev.fastboot_listed.side_effect = iter(fastboot)
+            with mock.patch.object(restore, "pico_os_running", side_effect=iter(adb)):
+                return restore.back_in_fastboot(ctx, dev)
+
+        # It leaves fastboot, then shows up there again: it cannot start PICO OS.
+        self.assertTrue(answers([True, False, False, True], [False, False]))
+        # It leaves fastboot, then PICO OS answers on adb.
+        self.assertFalse(answers([False, False], [False, True]))
+        # It never leaves fastboot.
+        self.assertTrue(answers([True] * 100, []))
+        # Neither comes (PICO OS's setup, USB debugging not on yet): it starts.
+        self.assertFalse(answers([False] * 100, [False] * 100))
+        dev.release_adb.assert_called()  # before each look: an adb server can hold it in fastboot
 
     def test_the_installer_writes_a_fastboot_serial_it_learns_to_env(self):
         ctx = mock.Mock()

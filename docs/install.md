@@ -319,6 +319,14 @@ the others' recorded progress (the install starts afresh after a restore).
 | Restore | Set PICO OS up | an action ask: PICO OS's first-time setup worn and on the cable (its first start may update the lens and fan MCU), developer mode and USB debugging; exactly one `adb devices` entry, written to `PICO4_ADB_SERIAL`; then the wait for PICO OS's MCU check ([cooling.md](cooling.md#an-mcu-that-answers-f1)) | PICO OS |
 | Restore | Stock bootloader | `cycle --restore-only`: stock boot verified, stock ABL written back; then "Back on PICO OS". The bootloader stays unlocked | PICO OS |
 
+**After an install that stopped early.** When this computer's install record shows a stop before the maintenance
+system was written, and no install ever finished, PICO OS's own system, boot and recovery are still on the headset:
+the restore skips their writes and starts the headset from fastboot (learning its fastboot serial when `.env` has none).
+A headset that comes back to fastboot within two minutes instead of starting PICO OS, or one already in EDL, gets
+its stock bootloader first: *Stock bootloader first* asks the owner into EDL by hand (powered off, both volume
+buttons while plugging in USB) and runs `cycle --restore-only` from there, which checks the headset and its boot
+partition against the backup, writes the stock ABL and waits for PICO OS. The last stage then has nothing left to write.
+
 ### A headset that does not show up
 
 The installer waits for the headset in a new USB mode itself (fastboot, the maintenance stage 1), not in a child

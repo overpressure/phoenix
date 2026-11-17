@@ -171,6 +171,26 @@ OWNER_KEY = "owner-key.pub"
 WIFI_JOIN, WIFI_SKIP = "join", "skip"
 #: What the restore's maintenance task records when PICO OS ran already: its writes are not needed.
 PICO_OS_RAN = "pico-os"
+#: What it records when the headset, after an install that stopped early, cannot start PICO OS and comes back to
+#: its bootloader: its writes are not needed either, but the stock bootloader goes back first, from EDL mode.
+PICO_OS_STUCK = "pico-os-stuck"
+#: What the stock bootloader's first write records once it is done: the restore's last stage needs no second one.
+BOOTLOADER_WRITTEN = "written"
+#: How long a headset started from fastboot has to leave it, then to come back if it cannot start PICO OS.
+LEAVE_FASTBOOT_SECONDS, BACK_IN_FASTBOOT_SECONDS = 30, 120
+#: How long the owner has to bring the headset into EDL mode by hand.
+EDL_SECONDS = 180
+STUCK = (
+    "The headset does not start PICO OS: it comes back to its bootloader. Its stock bootloader goes back from your "
+    "backup first, through EDL mode; then PICO OS starts."
+)
+EDL_BY_HAND = Ask(
+    "edl",
+    "action",
+    "Put the headset into EDL mode",
+    "Choose Power off in the menu on the headset (the volume buttons move, the power button chooses). Unplug the "
+    "USB cable, then hold both volume buttons and plug the cable back in. The lenses stay dark. Then press Done.",
+)
 #: A restore after an install that stopped before the maintenance system (Plan.install_stopped_early).
 STOPPED_EARLY = (
     "The install stopped before it replaced anything of PICO OS: its system is still on the headset. Only the "
@@ -856,11 +876,57 @@ class Plan:
             return
         if self.install_stopped_early():
             ctx.note(STOPPED_EARLY)
-            ctx.remember(PICO_OS_RAN)
-            AskingDev(ctx, self.work).start_from_fastboot()
+            dev = AskingDev(ctx, self.work)
+            stuck = self.edl_count() == 1 or (dev.start_from_fastboot() and self.back_in_fastboot(ctx, dev))
+            ctx.remember(PICO_OS_STUCK if stuck else PICO_OS_RAN)
+            if stuck:
+                ctx.note(STUCK)
             return
         ctx.remember("")
         AskingDev(ctx, self.work).recovery()
+
+    def back_in_fastboot(self, ctx: Context, dev: devloop.Dev) -> bool:
+        """Tell whether the headset, started from fastboot, comes back to it instead of starting PICO OS.
+
+        It leaves fastboot to start; within BACK_IN_FASTBOOT_SECONDS it is back there (it cannot start PICO OS),
+        or PICO OS answers on adb, or neither (PICO OS's setup, without USB debugging yet): then it starts.
+        """
+
+        def listed() -> bool:
+            dev.release_adb()  # Linux: an adb server can hold the headset in fastboot, which then is not listed
+            return dev.fastboot_listed()
+
+        until = ctx.clock.monotonic() + LEAVE_FASTBOOT_SECONDS
+        while listed():
+            if ctx.clock.monotonic() >= until:
+                return True  # it never left
+            ctx.clock.sleep(2)
+        until = ctx.clock.monotonic() + BACK_IN_FASTBOOT_SECONDS
+        while ctx.clock.monotonic() < until:
+            ctx.clock.sleep(5)
+            if self.pico_os_running(ctx):
+                return False
+            if listed():
+                return True
+        return False
+
+    def bootloader_first(self, ctx: Context) -> None:
+        """Write the stock bootloader from EDL mode, which the owner enters by hand, then wait for PICO OS.
+
+        The restore's stock bootloader step (cycle --restore-only) starts from EDL when the headset is the one EDL
+        device there: it checks the headset and its boot partition, writes the stock bootloader and starts PICO OS.
+        """
+        if self.edl_count() != 1:
+            ctx.ask(EDL_BY_HAND)
+
+            def in_edl() -> None:
+                if self.edl_count() != 1:
+                    msg = "the headset is not the one device in EDL mode"
+                    raise RuntimeError(msg)
+
+            replug_until(ctx, "EDL mode", EDL_SECONDS, in_edl)
+        self.run_step(ctx, "restore-abl")
+        ctx.remember(BOOTLOADER_WRITTEN)
 
     def install_stopped_early(self) -> bool:
         """Tell whether this computer's install stopped before it wrote the maintenance system, and none finished.
@@ -888,8 +954,8 @@ class Plan:
         return not (isinstance(flash, dict) and flash.get("status") in install.COMPLETE)
 
     def maintenance_done(self, ctx: Context) -> bool:
-        """Tell whether the restore needs no maintenance system (it is done, or PICO OS ran) or one runs now."""
-        if ctx.completed("recovery") or ctx.recall("maintenance") == PICO_OS_RAN:
+        """Tell whether the restore needs no maintenance system (done, or PICO OS's system is there) or one runs."""
+        if ctx.completed("recovery") or ctx.recall("maintenance") in (PICO_OS_RAN, PICO_OS_STUCK):
             return True
         return devloop.Dev(ctx.settings(Settings), self.work).maintenance_running()
 
@@ -930,7 +996,7 @@ class Plan:
     @staticmethod
     def restore_written(part: str) -> Callable[[Context], bool]:
         """Return the done check of the restore's @p part: written in an earlier run, or not needed (PICO OS ran)."""
-        return lambda ctx: ctx.completed(part) or ctx.recall("maintenance") == PICO_OS_RAN
+        return lambda ctx: ctx.completed(part) or ctx.recall("maintenance") in (PICO_OS_RAN, PICO_OS_STUCK)
 
     def restore_stages(self) -> tuple[Stage, ...]:
         """Return the way back to stock: the backup checked, PICO OS's system, its setup, the stock bootloader."""
@@ -998,6 +1064,16 @@ class Plan:
                         where="The headset is in its maintenance system or its bootloader, or PICO OS is starting. "
                         + written,
                     ),
+                    Task(
+                        "bootloader-first",
+                        "Stock bootloader first",
+                        self.bootloader_first,
+                        "about 10 min",
+                        writes=True,
+                        done=lambda ctx: ctx.recall("maintenance") != PICO_OS_STUCK,
+                        where="The headset is in EDL mode or starting PICO OS; its bootloader may still be the "
+                        "engineering one. " + written,
+                    ),
                 ),
             ),
             Stage(
@@ -1024,6 +1100,7 @@ class Plan:
                         "restore-abl",
                         "Stock bootloader",
                         "about 10 min",
+                        done=lambda ctx: ctx.recall("bootloader-first") == BOOTLOADER_WRITTEN,
                         where="PICO OS runs; its bootloader may still be the engineering one. " + written,
                     ),
                     Task("restored", "Back on PICO OS", lambda ctx: ctx.note(RESTORED), ""),
