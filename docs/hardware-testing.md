@@ -443,3 +443,9 @@ pstore, failed units, the coredumps' list, Steam's and SteamVR's logs, packages,
 network state. It works with the session down. Serials (the SoC's also in hex), MAC and IP addresses, Steam
 IDs, account and network names are masked; Steam's config and login data and the network connections are not
 read. It is plain text and the command lists its files: read it before sending it.
+
+What an owner sends is the window's *Save logs…* (`python -m overpressure support-bundle FILE`): one zip with
+the installer's logs, this computer's system and, from the PICO 4 (`support_files` in
+[tooling/\_\_init\_\_.py](../tooling/__init__.py)), the dev loop's state and the text files of its three newest
+`stage-abl-*` and `check-*` runs, plus this archive when the installed system answers over SSH. Nothing else of
+`out/dev` goes in: it also holds this computer's SSH key, PICO OS's files and images.

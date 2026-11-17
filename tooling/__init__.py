@@ -12,6 +12,7 @@ shares with other headsets come from the overpressure package.
 
 from __future__ import annotations
 
+import subprocess
 from typing import TYPE_CHECKING, Callable
 
 from overpressure.api.v1 import backup, qualcomm
@@ -463,5 +464,46 @@ class Phoenix(Headset):
         base.update(values)
         print("Saved in .env: " + ", ".join(sorted(values)))
 
+    def support_files(self, folder: Path) -> None:
+        """Add the dev loop's logs of its newest steps, and the headset's own bundle when its installed system answers.
+
+        Only the dev loop's state and the text files of the named runs go in (SUPPORT_RUNS): out/dev also holds
+        this computer's SSH key, PICO OS's files and images. overpressure masks the serials in the text files; the
+        headset's bundle (pico4-support-bundle) masks its own.
+        """
+        import shutil  # noqa: PLC0415  # only here
+
+        from . import devloop, localconfig  # noqa: PLC0415  # they import this package's modules: circular otherwise
+
+        work = devloop.WORK
+        for name in ("state.json", "dev-image.json"):
+            if (work / name).is_file():
+                shutil.copy2(work / name, folder / name)
+        for prefix in SUPPORT_RUNS:
+            runs = sorted(p for p in work.glob(prefix + "*") if p.is_dir())[-SUPPORT_NEWEST:]
+            for path in (p for run in runs for p in sorted(run.rglob("*"))):
+                if path.is_file() and path.suffix in SUPPORT_SUFFIXES and path.stat().st_size <= SUPPORT_LARGEST:
+                    target = folder / "dev" / path.relative_to(work)
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(path, target)
+        dev = devloop.Dev(localconfig.load(), work)
+        try:
+            if dev.installed_running():
+                dev.support_bundle(folder / "headset-bundle.tar.gz")
+            else:
+                (folder / "headset-bundle.txt").write_text(NO_HEADSET_BUNDLE, encoding="utf-8")
+        except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+            (folder / "headset-bundle.txt").write_text(f"The headset's own bundle failed: {exc}\n", encoding="utf-8")
+
+
+#: What a bug report takes from out/dev: the newest runs of these dev loop steps, their text files up to a size.
+SUPPORT_RUNS = ("stage-abl-", "check-")
+SUPPORT_NEWEST = 3
+SUPPORT_SUFFIXES = (".log", ".json", ".txt")
+SUPPORT_LARGEST = 2 << 20
+NO_HEADSET_BUNDLE = (
+    "The installed system did not answer over SSH, so the headset's own logs are not in here: with the system "
+    "running and the cable in, save the logs again.\n"
+)
 
 HEADSET = Phoenix()

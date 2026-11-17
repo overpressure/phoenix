@@ -41,9 +41,10 @@ body:
   - type: textarea
     id: bundle
     attributes:
-      label: Support bundle
+      label: Logs
       description: >-
-        Attach the archive from `python -m overpressure dev support-bundle`. Identifiers are masked; it is plain text,
-        so read it before attaching it. If the headset cannot be reached, say so.
+        Attach the file Save logs… on the PICO 4's page in the window saves (in a terminal:
+        `python -m overpressure support-bundle FILE`). It holds the installer's logs, and the headset's own when its
+        system runs; serial numbers are masked. Read it before attaching it.
     validations:
       required: true

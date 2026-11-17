@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING
 from unittest.mock import patch
 
-from devices.phoenix.tooling import cycle, devloop, localconfig
+from devices.phoenix.tooling import HEADSET, cycle, devloop, localconfig
 from overpressure.api.v1 import REPO, progress, qualcomm
 from overpressure.api.v1.localconfig import parse
 
@@ -1225,6 +1225,37 @@ class DevTests(HeadsetFixture):
         (Path(self.settings.backup) / "lun4/boot.bin").write_bytes(b"changed")
         with self.assertRaisesRegex(RuntimeError, "differs"):
             self.make().restore()
+
+
+class SupportFilesTests(unittest.TestCase):
+    """The PICO 4's part of the logs for a bug report: the dev loop's step logs, never its key or images."""
+
+    def test_only_the_newest_steps_text_files_and_the_state_go_in(self):
+        with tempfile.TemporaryDirectory() as folder:
+            work, out = Path(folder, "dev"), Path(folder, "bundle")
+            out.mkdir()
+            for run in ("stage-abl-20260101-000000", "stage-abl-20260102-000000", "check-20260103-000000"):
+                (work / run).mkdir(parents=True)
+                (work / run / "stage-abl.log").write_text("log\n", encoding="utf-8")
+                (work / run / "readback.bin").write_bytes(b"\0" * 16)
+            for name in ("state.json", "id_ed25519", "id_ed25519.pub", "rootfs.tar", "dev-boot.img"):
+                (work / name).write_text("x", encoding="utf-8")
+            with (
+                patch.object(devloop, "WORK", work),
+                patch.object(devloop.Dev, "installed_running", return_value=False),
+                patch("devices.phoenix.tooling.SUPPORT_NEWEST", 1),
+            ):
+                HEADSET.support_files(out)
+            found = sorted(p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file())
+        self.assertEqual(
+            found,
+            [
+                "dev/check-20260103-000000/stage-abl.log",
+                "dev/stage-abl-20260102-000000/stage-abl.log",
+                "headset-bundle.txt",
+                "state.json",
+            ],
+        )
 
 
 if __name__ == "__main__":

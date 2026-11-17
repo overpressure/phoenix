@@ -115,9 +115,9 @@ controller.
 
 The window says what state the headset is in and what to do next; starting it again goes on where it stopped. If
 the headset doesn't answer, hold its power button for about 10 seconds until PICO OS or the system starts, then
-start the window again. To report a problem, [open an issue](https://github.com/overpressure/phoenix/issues/new/choose)
-and attach the bundle `python -m overpressure dev support-bundle` makes; it leaves out your headset's serial
-numbers.
+start the window again. To report a problem, click **Save logs…** on the PICO 4's page in the window and attach
+the file to [an issue](https://github.com/overpressure/phoenix/issues/new/choose); it leaves out your headset's
+serial numbers.
 
 ## For developers
 
