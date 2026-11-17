@@ -44,7 +44,7 @@ import sys
 import uuid
 from typing import TYPE_CHECKING, Callable, ClassVar, TypeVar
 
-from overpressure.api.v1 import REPO, android, doctor, qualcomm, runner, ssh, tools, usbaccess
+from overpressure.api.v1 import REPO, android, doctor, install, qualcomm, runner, ssh, tools, usbaccess
 from overpressure.api.v1 import backup as backups
 from overpressure.api.v1.install import Ask, Context, Failed, Field, NoBackup, Stage, Task
 from overpressure.api.v1.process import Final, until
@@ -171,6 +171,11 @@ OWNER_KEY = "owner-key.pub"
 WIFI_JOIN, WIFI_SKIP = "join", "skip"
 #: What the restore's maintenance task records when PICO OS ran already: its writes are not needed.
 PICO_OS_RAN = "pico-os"
+#: A restore after an install that stopped before the maintenance system (Plan.install_stopped_early).
+STOPPED_EARLY = (
+    "The install stopped before it replaced anything of PICO OS: its system is still on the headset. Only the "
+    "bootloader goes back. If the headset waits in its bootloader, it starts PICO OS now."
+)
 READY = (
     "Unplug the headset and put it on. Sign in to Steam, pair the controllers and set up your room in the "
     "headset. If you skipped Wi-Fi, join a network in its settings first. The installer can upgrade the "
@@ -288,6 +293,11 @@ class AskingDev(devloop.Dev):
     def until(self, name: str, seconds: float, operation: Callable[[], T]) -> T:
         """Wait as replug_until() does."""
         return replug_until(self.ctx, self.WAITS.get(name, name), seconds, operation)
+
+    def learn_fastboot_serial(self, serial: str) -> None:
+        """Take the one device in fastboot as the headset, and write its serial to .env as the unlock does."""
+        super().learn_fastboot_serial(serial)
+        self.ctx.set_setting(KEY("fastboot_serial"), serial)
 
 
 def device_rows(output: str, states: Sequence[str] = ("device", "unauthorized", "offline")) -> dict[str, str]:
@@ -844,8 +854,38 @@ class Plan:
             ctx.note("PICO OS runs on the headset already: only its bootloader is left.")
             ctx.remember(PICO_OS_RAN)
             return
+        if self.install_stopped_early():
+            ctx.note(STOPPED_EARLY)
+            ctx.remember(PICO_OS_RAN)
+            AskingDev(ctx, self.work).start_from_fastboot()
+            return
         ctx.remember("")
         AskingDev(ctx, self.work).recovery()
+
+    def install_stopped_early(self) -> bool:
+        """Tell whether this computer's install stopped before it wrote the maintenance system, and none finished.
+
+        Then the headset still has PICO OS's own system, boot and recovery: the engineering bootloader and the
+        unlock are all an install wrote before that step. Without such a record the headset is taken to carry
+        the installed system, as one another computer installed would.
+        """
+        records = self.root / "out" / "install"
+        codename = self.headset.info.codename
+        if install.installed_release(codename, records):
+            return False
+        try:
+            state = json.loads(
+                (install.workflow_folder(records, codename, install.INSTALL) / install.STATE).read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, ValueError):
+            return False
+        tasks = state.get("tasks") if isinstance(state, dict) else None
+        if not isinstance(tasks, dict) or not tasks:
+            return False
+        flash = tasks.get("flash")
+        return not (isinstance(flash, dict) and flash.get("status") in install.COMPLETE)
 
     def maintenance_done(self, ctx: Context) -> bool:
         """Tell whether the restore needs no maintenance system (it is done, or PICO OS ran) or one runs now."""

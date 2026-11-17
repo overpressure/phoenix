@@ -743,7 +743,39 @@ class DevTests(HeadsetFixture):
             self.assertRaisesRegex(devloop.usbaccess.NoAccessError, "in fastboot mode over USB"),
         ):
             dev.to_fastboot()
-        self.assertFalse(any("reboot" in t for t in self.texts()))
+
+    def test_fastboot_finds_the_headset_by_its_whole_serial(self):
+        # Part of a serial is no match: an empty one used to match every listing.
+        self.settings.fastboot_serial = "FB"
+        self.assertFalse(self.make().fastboot_listed())
+        self.settings.fastboot_serial = "FB1"
+        self.assertTrue(self.make().fastboot_listed())
+
+    def test_an_unknown_fastboot_serial_is_learnt_from_the_one_device_in_fastboot(self):
+        # .env has no fastboot serial before the install's unlock: a restore after an early stop.
+        self.settings.fastboot_serial = ""
+        dev = self.make()
+        with patch.object(sys, "platform", "linux"):
+            dev.to_fastboot()
+        self.assertEqual(self.settings.fastboot_serial, "FB1")
+        dev.fastboot("reboot", "recovery")
+        self.assertIn(["fastboot", "-s", "FB1", "reboot", "recovery"], [c[-5:] for c in self.calls])
+        self.assertFalse(any("-s  " in t or t.endswith("-s") for t in self.texts()))
+
+    def test_without_a_known_serial_several_devices_in_fastboot_are_none(self):
+        self.settings.fastboot_serial = ""
+        dev = self.make({"fastboot devices": "FB1\tfastboot\nFB2\tfastboot\n"})
+        self.assertFalse(dev.fastboot_listed())
+        self.assertEqual(self.settings.fastboot_serial, "")
+        with self.assertRaisesRegex(RuntimeError, "fastboot serial is not known"):
+            dev.fastboot("reboot")
+
+    def test_a_headset_waiting_in_fastboot_starts_its_normal_boot(self):
+        dev = self.make()
+        self.assertTrue(dev.start_from_fastboot())
+        self.assertTrue(any(t.endswith("-s FB1 reboot") for t in self.texts()))
+        self.fastboot_listed = False
+        self.assertFalse(self.make().start_from_fastboot())
 
     def test_which_system_runs_by_its_first_process(self):
         self.assertTrue(self.make({"cat /proc/1/comm": "systemd\n"}).installed_running())

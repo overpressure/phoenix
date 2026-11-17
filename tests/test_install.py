@@ -792,6 +792,47 @@ class WorkflowTests(unittest.TestCase):
         ctx.recall.return_value, ctx.completed.return_value = plan.PICO_OS_RAN, False
         self.assertTrue(self.plan.restore_written("system")(ctx))
 
+    def test_a_restore_after_an_install_that_stopped_early_writes_only_the_bootloader(self):
+        # The install stopped in the engineering bootloader's step: PICO OS's system is still there.
+        ctx = mock.Mock()
+        ctx.settings.return_value = mock.Mock(adb_serial="SERIAL", tool=mock.Mock(return_value="adb"))
+        ctx.output.return_value = "List of devices attached\n"  # in its bootloader, not in PICO OS
+        with tempfile.TemporaryDirectory() as folder:
+            restore = plan.Plan(HEADSET, root=Path(folder), computer=list)
+            record = Path(folder, "out", "install", HEADSET.info.codename, "state.json")
+            record.parent.mkdir(parents=True)
+
+            def stopped(tasks: dict, **more: object) -> None:
+                record.write_text(json.dumps({"schema": 1, "tasks": tasks, **more}), encoding="utf-8")
+
+            stopped({"backup": {"status": "done"}, "stage-abl": {"status": "failed"}})
+            with mock.patch.object(plan, "AskingDev") as dev:
+                restore.restore_maintenance(ctx)
+            dev.return_value.start_from_fastboot.assert_called_once_with()
+            dev.return_value.recovery.assert_not_called()
+            ctx.remember.assert_called_once_with(plan.PICO_OS_RAN)  # the system, data and recovery are skipped
+            self.assertIn("still on the headset", ctx.note.call_args.args[0])
+
+            # Once the install wrote the maintenance system, or an install ever finished, the system was replaced.
+            for tasks, more in (
+                ({"flash": {"status": "done"}, "install": {"status": "failed"}}, {}),
+                ({"stage-abl": {"status": "failed"}}, {"completed": {"release": "1.0-beta", "at": "2026"}}),
+            ):
+                stopped(tasks, **more)
+                ctx.reset_mock()
+                with mock.patch.object(plan, "AskingDev") as dev:
+                    restore.restore_maintenance(ctx)
+                dev.return_value.recovery.assert_called_once_with()
+                ctx.remember.assert_called_once_with("")
+
+    def test_the_installer_writes_a_fastboot_serial_it_learns_to_env(self):
+        ctx = mock.Mock()
+        ctx.settings.return_value = localconfig.Settings(adb_serial=ADB, fastboot_serial="", edl_serial=EDL)
+        dev = plan.AskingDev(ctx, Path("/nowhere"))
+        dev.learn_fastboot_serial(FASTBOOT)
+        self.assertEqual(dev.s.fastboot_serial, FASTBOOT)
+        ctx.set_setting.assert_called_once_with(plan.KEY("fastboot_serial"), FASTBOOT)
+
     def test_each_part_of_the_restore_runs_on_its_own_and_recovery_reaches_fastboot_here(self):
         ctx = mock.Mock()
         with (

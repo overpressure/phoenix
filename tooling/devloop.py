@@ -340,10 +340,40 @@ class Dev(Headset):
         if not self.s.fastboot_serial:
             return False
         self.release_adb()
-        return self.s.fastboot_serial in self.run([self.s.tool("fastboot"), "devices"], 30, check=False)
+        return self.fastboot_listed()
+
+    def fastboot_listed(self) -> bool:
+        """Tell whether fastboot lists the headset now, by its whole serial.
+
+        Without a known serial (.env has none before the install's unlock), the one device in fastboot
+        is the headset, and its serial is learnt (learn_fastboot_serial); with none or several, it is not.
+        """
+        output = self.run([self.s.tool("fastboot"), "devices"], 30, check=False)
+        rows = [words[0] for words in map(str.split, output.splitlines()) if words[1:2] == ["fastboot"]]
+        if self.s.fastboot_serial:
+            return self.s.fastboot_serial in rows
+        if len(rows) == 1:
+            self.learn_fastboot_serial(rows[0])
+            return True
+        return False
+
+    def start_from_fastboot(self) -> bool:
+        """Start the headset's normal boot when it waits in fastboot; tell whether it did."""
+        self.release_adb()
+        if not self.fastboot_listed():
+            return False
+        self.fastboot("reboot")
+        return True
+
+    def learn_fastboot_serial(self, serial: str) -> None:
+        """Take @p serial, the one device in fastboot, as the headset's; the installer also writes it to .env."""
+        self.s.fastboot_serial = serial
 
     def fastboot(self, *words: str | Path, timeout: float = 60) -> str:
-        """Run fastboot on the configured headset; return its output."""
+        """Run fastboot on the configured headset; return its output. Without its serial it refuses."""
+        if not self.s.fastboot_serial:
+            msg = "the headset's fastboot serial is not known: bring it into fastboot mode first"
+            raise RuntimeError(msg)
         return self.run([self.s.tool("fastboot"), "-s", self.s.fastboot_serial, *words], timeout)
 
     def stock_recovery(self) -> tuple[Path, bytes]:
@@ -466,12 +496,15 @@ class Dev(Headset):
             raise RuntimeError(msg)
 
     def to_fastboot(self) -> None:
-        """From PICO OS (ADB, once it is through with the MCU), stage 1 or stage 2 (SSH) into the bootloader."""
-        fastboot = self.s.tool("fastboot")
+        """From PICO OS (ADB, once it is through with the MCU), stage 1 or stage 2 (SSH) into the bootloader.
+
+        The headset in fastboot is found by its whole serial, or learnt as the one device there when .env
+        has none yet (fastboot_listed).
+        """
         denial = usbaccess.Denial(self.clock)
 
         def ready() -> None:
-            listed = self.s.fastboot_serial in self.run([fastboot, "devices"], 30, check=False)
+            listed = self.fastboot_listed()
             # fastboot leaves out a device it may not even read: Linux before udev grants it, or without a rule.
             denial.see(
                 not listed and bool(usbaccess.denied(FASTBOOT_MODE)),
@@ -481,12 +514,13 @@ class Dev(Headset):
                 raise RuntimeError(NOT_IN_FASTBOOT)
 
         self.release_adb()
-        if self.s.fastboot_serial in self.run([fastboot, "devices"], 30, check=False):
+        if self.fastboot_listed():
             return
         if usbaccess.denied(FASTBOOT_MODE):  # in fastboot already, not usable yet
             self.until("fastboot", 180, ready)
             return
-        pico_os = f"{self.s.adb_serial}\tdevice" in self.run([self.s.tool("adb"), "devices"], 30, check=False)
+        adb_rows = [line.strip() for line in self.run([self.s.tool("adb"), "devices"], 30, check=False).splitlines()]
+        pico_os = bool(self.s.adb_serial) and f"{self.s.adb_serial}\tdevice" in adb_rows
         # That look started the adb server again, which on Linux holds the headset in fastboot.
         self.release_adb()
         if pico_os:
