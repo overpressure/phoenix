@@ -15,6 +15,7 @@ from devices.phoenix import tooling
 from devices.phoenix.tooling import HEADSET, devloop, localconfig
 from devices.phoenix.tooling import doctor as checks
 from devices.phoenix.tooling import install as plan
+from overpressure.api.v1 import backup as backups
 from overpressure.api.v1 import doctor, qualcomm, tools, usbaccess
 from overpressure.api.v1.doctor import Check
 from overpressure.api.v1.headset import BackupSet
@@ -700,6 +701,10 @@ class BackupSetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder, mock.patch.object(localconfig, "load", return_value=settings):
             work = Path(folder)
             with mock.patch.object(devloop, "WORK", work):
+                # Right after the backup: no key yet, as the install makes it with the maintenance system.
+                self.assertEqual(HEADSET.backup_set().files, {})
+                for name in ("id_ed25519", "id_ed25519.pub"):
+                    (work / name).write_text("key", encoding="utf-8")
                 here = HEADSET.backup_set()
                 self.assertEqual(sorted(here.files), ["id_ed25519", "id_ed25519.pub"])
                 (work / devloop.INSTALLED).write_text("{}", encoding="utf-8")
@@ -719,6 +724,31 @@ class BackupSetTests(unittest.TestCase):
         self.assertEqual(saved["PICO4_FASTBOOT_SERIAL"], "FB1")  # .env had none
         self.assertNotIn("PICO4_ADB_SERIAL", saved)  # .env's own stays
         self.assertNotIn("PICO4_NOPE", saved)
+
+    def test_a_backup_made_before_the_ssh_key_exports_and_imports(self):
+        # An install that stopped after its backup: Export backup had refused the missing key.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            stock, identity = root / "backup" / "stock-1", root / "backup" / "device.json"
+            (stock / "lun4").mkdir(parents=True)
+            (stock / "lun4" / "abl.bin").write_bytes(b"abl" * 100)
+            ident = {"serial": ADB, "chip_id": "0x1"}
+            files = {"lun4/abl.bin": backups.digest(stock / "lun4" / "abl.bin")}
+            (stock / "manifest.json").write_text(json.dumps({"schema": 1, "identity": ident, "files": files}))
+            identity.write_text(json.dumps(ident), encoding="utf-8")
+            settings = localconfig.Settings(adb_serial=ADB, edl_serial=EDL, backup=str(stock), identity=str(identity))
+            with (
+                mock.patch.object(localconfig, "load", return_value=settings),
+                mock.patch.object(devloop, "WORK", root / "out" / "dev"),
+            ):
+                bundle = HEADSET.backup_set()
+            archive = root / "phoenix.overpressure-backup.tar"
+            backups.export_archive(bundle, "phoenix", archive, say=lambda _line: None)
+            elsewhere = BackupSet(root / "other" / "stock-1", root / "other" / "device.json", {}, {})
+            (root / "other").mkdir()
+            imported = backups.import_archive(archive, "phoenix", elsewhere, say=lambda _line: None)
+            self.assertTrue((imported.folder / "lun4" / "abl.bin").is_file())
+            self.assertEqual(imported.files, {})
 
 
 class WorkflowTests(unittest.TestCase):

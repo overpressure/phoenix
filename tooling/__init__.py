@@ -430,7 +430,9 @@ class Phoenix(Headset):
         """Return the backup .env names, with what the way back needs on another computer.
 
         The maintenance system in recovery takes this computer's SSH key only, the installed system's
-        record says a system is installed, and the serials name the headset to adb and fastboot.
+        record says a system is installed, and the serials name the headset to adb and fastboot. The key
+        goes along once the install has made it: before, this computer put no maintenance system on the
+        headset, and the way back needs none (a backup can be exported right after it is made).
         """
         from . import devloop, localconfig  # noqa: PLC0415  # they import this package's modules: circular otherwise
 
@@ -440,9 +442,8 @@ class Phoenix(Headset):
             for name in ("adb_serial", "fastboot_serial", "edl_serial")
             if getattr(settings, name)
         }
-        files = {"id_ed25519": devloop.WORK / "id_ed25519", "id_ed25519.pub": devloop.WORK / "id_ed25519.pub"}
-        if (devloop.WORK / devloop.INSTALLED).is_file():
-            files[devloop.INSTALLED] = devloop.WORK / devloop.INSTALLED
+        names = ("id_ed25519", "id_ed25519.pub", devloop.INSTALLED)
+        files = {name: devloop.WORK / name for name in names if (devloop.WORK / name).is_file()}
         return BackupSet(settings.path("backup"), settings.path("identity"), files, serials)
 
     def adopt_backup(self, imported: BackupSet) -> None:
