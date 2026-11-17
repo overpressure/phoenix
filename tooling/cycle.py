@@ -4,7 +4,8 @@
   python -m overpressure cycle [--skip-stage] [--keep-abl | --restore-only]
 
 1. Engineering ABL: ADB to EDL, write and read back (python -m overpressure device stage), EDL
-   reset, PICO OS. --skip-stage when it is already staged (after the dev loop).
+   reset, PICO OS. --skip-stage when it is already staged (after the dev loop). The cycle needs a
+   headset unlocked before: on a locked one the engineering ABL does not start PICO OS.
 2. python -m overpressure hwtest flash-run with the stage-1 image for PICO4_FIRMWARE. The
    runner restores stock boot itself; if it could not, the device deadline returns the headset
    to fastboot and the runner's recorded commands flash the pinned stock image.
@@ -22,6 +23,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 import subprocess
 import sys
 import time
@@ -31,7 +33,7 @@ from typing import TYPE_CHECKING, Callable, TypeVar
 from overpressure.api.v1 import REPO, android, qualcomm, usbaccess
 from overpressure.api.v1 import backup as backups
 from overpressure.api.v1.fastboot import NOT_IN_FASTBOOT
-from overpressure.api.v1.process import run, until
+from overpressure.api.v1.process import Final, run, until
 from overpressure.api.v1.qualcomm import edl_devices
 
 from . import ADB_MODE, EDL_RESTART, FASTBOOT_MODE, USB_MODES, device, localconfig
@@ -41,6 +43,19 @@ if TYPE_CHECKING:
 
 ROOT = REPO
 T = TypeVar("T")
+#: Why a headset in fastboot with PICO's stock ABL is not staged: EDL needs the owner's hands.
+EDL_FROM_FASTBOOT = (
+    "the headset waits in fastboot with its stock bootloader: put it into EDL mode by hand (power it off, then hold "
+    "both volume buttons while plugging in the cable), then start this again"
+)
+#: The engineering ABL's unlock state in oem device-info; the stock ABL writes DeviceUnlocked= instead.
+ENGINEERING_LOCK = re.compile(
+    r"^\s*(?:\(bootloader\)\s*)?Device unlocked\s*:\s*(?:yes|no|true|false)\s*$", re.IGNORECASE | re.MULTILINE
+)
+
+
+class StoppedError(RuntimeError, Final):
+    """A wait that cannot end well any more: it stops at once, with the reason (process.until)."""
 
 
 class Headset:
@@ -178,10 +193,127 @@ class Headset:
             "abl",
         ]
 
-    def stage_abl(self) -> None:
-        """Engineering ABL through EDL (hash and readback checked), then PICO OS."""
+    def pico_os_booted(self) -> str:
+        """Return PICO OS's build fingerprint once it has finished booting; raise while it has not (one look)."""
+        lines = self.run(
+            [
+                self.s.tool("adb"),
+                "-s",
+                self.s.adb_serial,
+                "shell",
+                "getprop sys.boot_completed; getprop ro.build.fingerprint",
+            ],
+            15,
+        ).splitlines()
+        if not lines or lines[0].strip() != "1":
+            msg = "PICO OS has not finished booting"
+            raise RuntimeError(msg)
+        return lines[1].strip() if len(lines) > 1 else ""
+
+    def fastboot_abl(self) -> tuple[bool, bool] | None:
+        """Return (whether the engineering ABL runs, whether it is unlocked) for a headset in fastboot; else None.
+
+        The engineering ABL's oem device-info says "Device unlocked: no|yes". Any other answer is another ABL:
+        PICO's stock one writes "DeviceUnlocked=..." or refuses oem commands without the unlock token's
+        authority. A headset not in fastboot, or one that does not answer yet, is None. Without a fastboot
+        serial (.env has none before the install's unlock), the one device in fastboot is the headset; the
+        unlock step learns its serial.
+        """
+        self.release_adb()  # Linux: adb's server would keep hold of a headset in fastboot
+        fastboot = self.s.tool("fastboot")
+        output = self.run([fastboot, "devices"], 30, check=False)
+        rows = [words[0] for words in map(str.split, output.splitlines()) if words[1:2] == ["fastboot"]]
+        serial = self.s.fastboot_serial or (rows[0] if len(rows) == 1 else "")
+        if not serial or serial not in rows:
+            return None
+        state = self.run([fastboot, "-s", serial, "oem", "device-info"], 30, check=False)
+        if ENGINEERING_LOCK.search(state):
+            return True, android.unlocked(state)
+        return (False, False) if state.strip() else None
+
+    def fastboot_lock(self) -> bool | None:
+        """Return whether the engineering ABL waits in fastboot with the bootloader locked; None when it does not."""
+        found = self.fastboot_abl()
+        return None if found is None or not found[0] else not found[1]
+
+    def other_abl_in_fastboot(self) -> bool:
+        """Tell whether the headset waits in fastboot with another ABL than the engineering one (PICO's stock ABL).
+
+        Writing the engineering ABL then needs EDL mode, which the owner enters by hand: adb needs PICO OS, and
+        the stock ABL's EDL command needs the unlock token's authority.
+        """
+        found = self.fastboot_abl()
+        return found is not None and not found[0]
+
+    def reset_after_stage(self, log: str) -> bool:
+        """Reset from EDL after the engineering ABL was written; return whether PICO OS started.
+
+        A headset unlocked before starts PICO OS on it. A locked one cannot: the engineering ABL refuses
+        PICO OS's signing key (vbmeta, boot state red) and falls back to fastboot, where the unlock goes
+        on. Anything else within the deadline (nothing on USB, or fastboot on an unlocked headset) stops
+        as reset_to_pico_os does.
+        """
+        self.edl("reset", "--mode", "Reset", log=log)
+        self.drain()  # Linux: the loader resets only once its last message is read
+
+        def started() -> bool:
+            try:
+                print(f"   PICO OS with engineering ABL: {self.pico_os_booted()}", flush=True)
+            except (RuntimeError, subprocess.TimeoutExpired):
+                pass  # not (yet) in PICO OS: fastboot?
+            else:
+                return True
+            lock = self.fastboot_lock()
+            if lock:
+                print(
+                    "   fastboot, the bootloader locked: the engineering ABL does not start PICO OS on a locked "
+                    "headset; the unlock goes on from here",
+                    flush=True,
+                )
+                return False
+            if lock is False:
+                msg = "the headset is in fastboot with its bootloader unlocked, but PICO OS did not start"
+                raise StoppedError(msg)
+            msg = "neither PICO OS nor the engineering ABL's fastboot answers yet"
+            raise RuntimeError(msg)
+
+        try:
+            return self.until("PICO OS or fastboot", 300, started)
+        except RuntimeError as exc:
+            if isinstance(exc, StoppedError):
+                raise
+            where = "still in EDL" if self.edl_count() else "no ADB, fastboot or EDL device"
+            msg = (
+                f"neither PICO OS nor fastboot came up after the EDL reset ({where}): hard reset needed; "
+                "hold the power button until the headset restarts, nothing is retried"
+            )
+            raise RuntimeError(msg) from exc
+
+    def staged_and_locked(self) -> bool:
+        """Tell whether the engineering ABL waits in fastboot already, the bootloader locked.
+
+        An earlier stage left it there on a locked headset (its fastboot menu loops): the ABL was written and
+        read back then, and the unlock goes on from here, without EDL. A headset in PICO OS or in EDL is not.
+        """
+        return self.edl_count() != 1 and bool(self.fastboot_lock())
+
+    def stage_abl(self) -> bool:
+        """Engineering ABL through EDL (hash and readback checked), then PICO OS or, on a locked headset, fastboot.
+
+        Return whether PICO OS started (reset_after_stage). A headset whose engineering ABL waits in fastboot,
+        locked, from an earlier run is staged already (staged_and_locked).
+        """
         self.s.require("adb_serial", "edl_serial", "engineering_abl_sha256")
         print(">> engineering ABL", flush=True)
+        if self.staged_and_locked():
+            print(
+                "   the engineering ABL runs already, in fastboot with the bootloader locked: the unlock goes on "
+                "from here",
+                flush=True,
+            )
+            return False
+        if self.edl_count() != 1 and self.other_abl_in_fastboot():
+            raise StoppedError(EDL_FROM_FASTBOOT)
         self.enter_edl()
         # A read-only first session identifies the device before anything is written.
         self.identify()
@@ -208,7 +340,7 @@ class Headset:
             900,
             log=self.folder / "stage-abl.log",
         )
-        print(f"   PICO OS with engineering ABL: {self.reset_to_pico_os('reset-stage')}", flush=True)
+        return self.reset_after_stage("reset-stage")
 
     def stock_partition(self, name: str) -> tuple[Path, dict]:
         """Return a partition's image in the backup and its manifest entry."""
@@ -221,6 +353,12 @@ class Headset:
 
 class Cycle(Headset):
     """The acceptance cycle's steps: stage the ABL, the runner's flash-run, verify and restore."""
+
+    def stage_unlocked(self) -> None:
+        """Stage the engineering ABL; the cycle goes on in PICO OS, so a locked headset stops it."""
+        if not self.stage_abl():
+            msg = "the cycle needs a headset unlocked before (python -m overpressure device unlock first)"
+            raise RuntimeError(msg)
 
     def flash_run(self) -> int:
         """Run the acceptance runner's flash-run; restore stock boot if it could not; wait for PICO OS."""
@@ -343,7 +481,7 @@ def main(argv: list[str] | None = None) -> int:
         settings.require("adb_serial", "fastboot_serial")
         if not args.restore_only:
             if not args.skip_stage:
-                cycle.stage_abl()
+                cycle.stage_unlocked()
             code = cycle.flash_run()
         if not args.keep_abl:
             cycle.restore_abl()

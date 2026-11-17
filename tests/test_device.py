@@ -353,10 +353,15 @@ class WorkflowTests(unittest.TestCase):
         args = [*self.args("unlock"), "--execute", "--confirm-device", "ABC", "--accept-data-loss"]
         with patch.object(device, "run", side_effect=fake):
             self.assertEqual(self.call(args), 0)
+        # A fresh bootloader session first: a locked headset is in the fastboot its failed boot left,
+        # where the unlock flags cannot be saved. The OEM authorization belongs to the new session.
+        self.assertEqual(commands[1][3:], ["reboot", "bootloader"])
+        self.assertEqual(commands[2][3], "oem")
+        self.assertEqual(commands[2][-1], "unlock")
         # Real engineering ABL rejected persistent unlock writes until permissive
         # mode was enabled. Normal unlock must also precede critical unlock.
         self.assertEqual(
-            [command[3:] for command in commands[2:5]],
+            [command[3:] for command in commands[3:6]],
             [
                 ["oem", "setenforce", "0"],
                 ["flashing", "unlock"],

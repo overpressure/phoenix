@@ -83,6 +83,7 @@ class PlanTests(unittest.TestCase):
         patcher = mock.patch.object(plan, "AskingDev")
         self.dev = patcher.start()
         self.addCleanup(patcher.stop)
+        self.dev.return_value.other_abl_in_fastboot.return_value = False  # PICO OS, not its bootloader
         self.env = self.root / ".env"
         self.identity = self.root / "backup" / "device.json"
         self.backup = self.root / "backup" / "stock"
@@ -866,6 +867,36 @@ class WorkflowTests(unittest.TestCase):
         tasks = {"backup": {"status": "done"}, "stage-abl": {"status": "failed"}}
         record.write_text(json.dumps({"schema": 1, "tasks": tasks}), encoding="utf-8")
         return restore
+
+    def test_the_engineering_bootloader_from_the_stock_bootloader_in_fastboot_goes_through_edl_by_hand(self):
+        # adb needs PICO OS and the stock bootloader's EDL command the unlock token: the owner's hands it is.
+        ctx = mock.Mock()
+        ctx.clock = FakeClock()
+        edl = [0]
+        install_plan = plan.Plan(HEADSET, root=Path("/nowhere"), computer=list, edl_count=lambda: edl[0])
+        task = next(t for s in install_plan.stages() for t in s.tasks if t.id == "stage-abl")
+        self.assertTrue(task.writes)
+        ctx.ask.side_effect = lambda ask: edl.__setitem__(0, 1) if ask.id == "edl" else None
+        order: list[str] = []
+        with (
+            mock.patch.object(plan, "AskingDev") as dev,
+            mock.patch.object(install_plan, "run_step", side_effect=lambda _ctx, key: order.append(key)),
+        ):
+            dev.return_value.other_abl_in_fastboot.return_value = True
+            task.run(ctx)
+            self.assertEqual(ctx.note.call_args.args[0], plan.STOCK_FASTBOOT)
+            self.assertEqual(ctx.ask.call_args.args[0].id, "edl")
+            self.assertEqual(order, ["stage-abl"])
+
+            # From PICO OS, or in EDL already: no ask, the step goes on as before.
+            for in_edl, in_fastboot in ((0, False), (1, True)):
+                ctx.reset_mock(side_effect=True)
+                edl[0] = in_edl
+                order.clear()
+                dev.return_value.other_abl_in_fastboot.return_value = in_fastboot
+                task.run(ctx)
+                ctx.ask.assert_not_called()
+                self.assertEqual(order, ["stage-abl"])
 
     def test_a_headset_that_boots_back_into_fastboot_gets_its_stock_bootloader_first_from_edl(self):
         # #39: after an early stop every start ends in fastboot, so PICO OS's setup would wait for ever.

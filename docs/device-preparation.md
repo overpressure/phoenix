@@ -212,19 +212,23 @@ python -m overpressure device stage --identity backup/device.json --backup backu
 backup; the image must fit it and match the SHA-256 (integrity and size, not provenance or compatibility). A
 fresh EDL readback is compared with every byte of the image (not the padding beyond it); the readback path must
 be new and outside the backup. Nothing reboots. If the write or readback fails, stay in EDL and recover with
-the original image. The engineering ABL is a signed PICO Neo3 engineering ABL; PICO OS boots normally with it.
-`dev stage-abl` and the cycle stage only `abl`.
+the original image. The engineering ABL is a signed PICO Neo3 engineering ABL. PICO OS boots with it only on a
+headset unlocked before: on a locked one it refuses PICO OS's signing key (`vbmeta`, boot state red) and falls
+back to fastboot, which is where the unlock starts. `dev stage-abl` and the cycle stage only `abl`.
 
 ## 4. Unlock
 
-In fastboot with the engineering ABL active (`adb reboot bootloader`):
+In fastboot with the engineering ABL active (`adb reboot bootloader` on a headset unlocked before; a locked
+one is there already):
 
 ```sh
 python -m overpressure device unlock --identity backup/device.json --backup backup/stock
 ```
 
-This previews, in order: `oem <token> unlock`, `oem setenforce 0`, `flashing unlock`, `flashing unlock_critical`,
-`reboot bootloader`. Execution needs `--execute --confirm-device ADB_SERIAL --accept-data-loss`. **Unlocking
+This previews, in order: `reboot bootloader`, `oem <token> unlock`, `oem setenforce 0`, `flashing unlock`,
+`flashing unlock_critical`, `reboot bootloader`. The first restart gives the unlock a fresh bootloader session: in
+the fastboot that a failed boot leaves, the unlock flags cannot be saved (`00000050`), and the OEM authorization
+holds for one session only. Execution needs `--execute --confirm-device ADB_SERIAL --accept-data-loss`. **Unlocking
 wipes user data, and the sequence sets SELinux to permissive.** If fastboot shows another serial than ADB, pass
 `--serial FASTBOOT_SERIAL` after checking the device. Every command must succeed; a `flashing` command refused as
 already unlocked counts as done.
@@ -288,8 +292,8 @@ enters development mode, in which the headset stays between tasks; the second re
 
 | Command | Steps |
 | --- | --- |
-| `python -m overpressure dev stage-abl` | `adb reboot edl` (unless exactly one EDL device is attached), `device stage --partition abl` with hash check and readback, EDL reset, wait for PICO OS |
-| `python -m overpressure cycle` | the same staging (`--skip-stage` skips it), `hwtest flash-run`, then EDL, a readback of `boot` that must match the backup and come from `PICO4_EDL_SERIAL`, `device restore-abl` with readback, EDL reset, PICO OS. `--keep-abl` stops before the ABL restore; `--restore-only` runs only the readback, the restore and the reset |
+| `python -m overpressure dev stage-abl` | `adb reboot edl` (unless exactly one EDL device is attached), `device stage --partition abl` with hash check and readback, EDL reset, then wait for PICO OS (a headset unlocked before) or for fastboot with the bootloader locked (a new headset, ready for the unlock); fastboot on an unlocked headset, or neither within 5 minutes, stops. A headset whose engineering ABL already waits in fastboot, locked, from an earlier run is staged already: no EDL, the unlock goes on. The engineering ABL tells itself apart in fastboot by its `oem device-info` (`Device unlocked: no`); PICO's stock ABL answers `DeviceUnlocked=` or refuses oem commands without the unlock token. A headset in fastboot with any other ABL is not staged: `adb reboot edl` needs PICO OS and the stock ABL's EDL command the unlock token, so the step stops and names EDL by hand (the installer asks for it and goes on) |
+| `python -m overpressure cycle` | the same staging (`--skip-stage` skips it; a locked headset stops it), `hwtest flash-run`, then EDL, a readback of `boot` that must match the backup and come from `PICO4_EDL_SERIAL`, `device restore-abl` with readback, EDL reset, PICO OS. `--keep-abl` stops before the ABL restore; `--restore-only` runs only the readback, the restore and the reset |
 
 Both read `.env` at the overpressure checkout's root (a new one starts with this repository's
 [env.example](../env.example)); the keys are in

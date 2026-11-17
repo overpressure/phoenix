@@ -359,9 +359,12 @@ def dispatch(args: argparse.Namespace) -> None:  # noqa: C901, PLR0911, PLR0912,
         print("Image bytes verified by EDL readback; no reboot performed.")
         return
     if args.command == "unlock":
+        # A fresh bootloader session first: on a locked headset the engineering ABL lands in fastboot
+        # after refusing to boot PICO OS, and in that session the unlock flags cannot be saved (00000050).
         # Engineering ABL needs permissive mode before writing the unlock flags.
         # Otherwise 00000050 can leave apparently unlocked, nonpersistent state.
         commands = [
+            ["reboot", "bootloader"],
             ["oem", unlock_token(identity["chip_id"]), "unlock"],
             ["oem", "setenforce", "0"],
             ["flashing", "unlock"],

@@ -129,6 +129,8 @@ class HeadsetFixture(unittest.TestCase):
         self.run_result = {"status": "passed", "boot_restore_required": False}
         self.fastboot_listed = True
         self.unlocked = "true"
+        self.stock_abl = False  # fastboot runs PICO's stock ABL, not the engineering one
+        self.booted = True  # PICO OS answers sys.boot_completed with 1
         self.partitions = [("boot", len(self.boot)), ("abl", 1 << 20)]
         self.clock = FakeClock()
         quiet = contextlib.redirect_stdout(io.StringIO())
@@ -160,7 +162,7 @@ class HeadsetFixture(unittest.TestCase):
         elif "reset --mode Edl" in text:
             self.restarting = [1, 1, 1, 0, 0]  # still there a while, then gone, then back (as the PICO 4)
         elif "getprop sys.boot_completed" in text:
-            output = "1\nPico/Phoenix_ovs/PICOA8110:10/5.13.7/test:user/dev-keys"
+            output = "1\nPico/Phoenix_ovs/PICOA8110:10/5.13.7/test:user/dev-keys" if self.booted else ""
         elif f"echo {devloop.REACHED}" in text:
             output = devloop.REACHED  # its own system answers over SSH
         elif "getprop sys.pxr.init.status" in text:
@@ -175,7 +177,11 @@ class HeadsetFixture(unittest.TestCase):
         elif "printgpt" in text:
             output = self.edl_outputs.pop(0) if self.edl_outputs else self.edl_output
         elif "oem device-info" in text:
-            output = f"(bootloader) Device unlocked: {self.unlocked}"
+            output = (
+                f"(bootloader) DeviceUnlocked={self.unlocked}"
+                if self.stock_abl
+                else f"(bootloader) Device unlocked: {self.unlocked}"
+            )
         elif "getvar all" in text:
             output = "\n".join(f"(bootloader) partition-size:{name}: {hex(size)}" for name, size in self.partitions)
         elif words[0].endswith("fastboot") and words[-1] == "devices":
@@ -272,6 +278,98 @@ class CycleTests(HeadsetFixture):
         c.stage_abl()
         self.assertEqual(reads, ["edl-reset", "edl-reset"])  # after the fresh-session restart and the final reset
         self.assertEqual(self.steps(), ["identify", "edl-reset", "identify", "stage", "edl-reset", "pico-os"])
+
+    def test_a_locked_headset_waits_in_fastboot_after_the_stage(self):
+        # On a locked headset the engineering ABL refuses PICO OS's signing key and falls back to fastboot.
+        c = self.make()
+        self.booted = False
+        self.fastboot_listed = False  # PICO OS, before the stage
+        self.edl = 1
+        self.unlocked = "false"
+        reset = c.edl
+
+        def edl(*words: object, log: str, timeout: float = 600) -> str:
+            if words[:1] == ("reset",) and log == "reset-stage":
+                self.edl, self.fastboot_listed = 0, True  # the engineering ABL's fastboot
+            return reset(*words, log=log, timeout=timeout)
+
+        c.edl = edl
+        self.assertFalse(c.stage_abl())
+        self.assertIn("stage", self.steps())
+        self.assertEqual(self.steps()[-3:-1], ["stage", "edl-reset"])  # then a look for PICO OS, then fastboot
+        self.assertIn(["-s", "FB1", "oem", "device-info"], [w[-4:] for w in self.calls])
+
+    def test_a_locked_headset_without_a_fastboot_serial_is_the_one_device_in_fastboot(self):
+        # A new install: .env has no fastboot serial before the unlock, which learns it.
+        self.settings.fastboot_serial = ""
+        self.booted = False
+        self.unlocked = "no"
+        self.assertFalse(self.make().reset_after_stage("reset-stage"))
+        self.assertIn(["-s", "FB1", "oem", "device-info"], [w[-4:] for w in self.calls])
+
+    def test_a_headset_unlocked_before_starts_pico_os_on_the_engineering_abl(self):
+        self.fastboot_listed = False
+        self.assertTrue(self.make().stage_abl())
+        self.assertEqual(self.steps()[-1], "pico-os")
+
+    def test_an_unlocked_headset_left_in_fastboot_stops_at_once(self):
+        self.booted = False
+        with self.assertRaisesRegex(RuntimeError, "unlocked, but PICO OS did not start"):
+            self.make().reset_after_stage("reset-stage")
+        self.assertEqual(sum("device-info" in " ".join(w) for w in self.calls), 1)
+
+    def test_neither_pico_os_nor_fastboot_ends_in_the_way_out(self):
+        self.booted = False
+        self.fastboot_listed = False
+        with self.assertRaisesRegex(RuntimeError, "neither PICO OS nor fastboot came up .*hold the power button"):
+            self.make().reset_after_stage("reset-stage")
+
+    def test_the_stock_abl_in_fastboot_is_not_taken_for_the_engineering_one(self):
+        self.booted = False
+        self.stock_abl = True
+        self.unlocked = "false"
+        with self.assertRaisesRegex(RuntimeError, "neither PICO OS nor fastboot came up"):
+            self.make().reset_after_stage("reset-stage")
+
+    def test_the_engineering_abl_left_in_fastboot_by_an_earlier_run_goes_straight_to_the_unlock(self):
+        # The reporters' headsets: an earlier stage on a locked headset ended in this fastboot loop.
+        self.booted = False
+        self.unlocked = "false"
+        self.assertFalse(self.make().stage_abl())
+        self.assertEqual(self.steps(), [])  # no EDL, no write, no reset
+        self.assertIn(["-s", "FB1", "oem", "device-info"], [w[-4:] for w in self.calls])
+
+    def test_the_stock_abl_in_fastboot_asks_for_edl_by_hand(self):
+        # adb needs PICO OS, and the stock ABL's EDL command needs the unlock token's authority.
+        self.booted = False
+        self.stock_abl = True
+        self.unlocked = "false"
+        with self.assertRaisesRegex(RuntimeError, "stock bootloader: put it into EDL mode by hand"):
+            self.make().stage_abl()
+        self.assertEqual(self.steps(), [])  # nothing sent but fastboot's questions
+
+    def test_a_stock_abl_that_refuses_device_info_is_another_abl_too(self):
+        self.booted = False
+        self.stock_abl = True
+        c = self.make()
+        real = self.fake
+
+        def refusing(argv: Sequence[object], *args: object, **kwargs: object) -> str:
+            if "device-info" in " ".join(map(str, argv)):
+                self.calls.append([str(a) for a in argv])
+                return "FAILED (remote: 'oem command is not allowed without unlocktoken authority')"
+            return real(argv, *args, **kwargs)  # ty: ignore[invalid-argument-type]  # passed on as received
+
+        c.run = refusing
+        self.assertTrue(c.other_abl_in_fastboot())
+
+    def test_the_headset_already_in_edl_is_staged_from_there(self):
+        # The owner put it into EDL by hand: the stock ABL in fastboot is no question any more.
+        self.edl = 1
+        self.stock_abl = True
+        self.assertTrue(self.make().stage_abl())
+        self.assertIn("stage", self.steps())
+        self.assertNotIn("adb-edl", self.steps())
 
     def test_a_headset_that_does_not_restart_is_not_identified_in_its_old_session(self):
         self.edl_outputs = ["[INFO]  Detected device mode: Firehose"]

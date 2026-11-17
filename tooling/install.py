@@ -191,6 +191,11 @@ EDL_BY_HAND = Ask(
     "Choose Power off in the menu on the headset (the volume buttons move, the power button chooses). Unplug the "
     "USB cable, then hold both volume buttons and plug the cable back in. The lenses stay dark. Then press Done.",
 )
+#: The install's engineering bootloader from PICO's stock bootloader in fastboot (Plan.stage_abl).
+STOCK_FASTBOOT = (
+    "The headset waits in its bootloader (fastboot) with PICO's own bootloader, which cannot be replaced from "
+    "there. It goes into EDL mode by hand instead; then the engineering bootloader is written."
+)
 #: A restore after an install that stopped before the maintenance system (Plan.install_stopped_early).
 STOPPED_EARLY = (
     "The install stopped before it replaced anything of PICO OS: its system is still on the headset. Only the "
@@ -910,21 +915,38 @@ class Plan:
                 return True
         return False
 
+    def edl_by_hand(self, ctx: Context) -> None:
+        """Have the owner put the headset into EDL mode, unless it is the one EDL device already; wait for it."""
+        if self.edl_count() == 1:
+            return
+        ctx.ask(EDL_BY_HAND)
+
+        def in_edl() -> None:
+            if self.edl_count() != 1:
+                msg = "the headset is not the one device in EDL mode"
+                raise RuntimeError(msg)
+
+        replug_until(ctx, "EDL mode", EDL_SECONDS, in_edl)
+
+    def stage_abl(self, ctx: Context) -> None:
+        """Write the engineering bootloader (dev stage-abl); from the stock bootloader in fastboot, through EDL by hand.
+
+        adb takes the headset from PICO OS to EDL mode, and the engineering bootloader left in fastboot by an
+        earlier run is staged already (cycle.Headset.staged_and_locked). The stock bootloader in fastboot can do
+        neither: the owner puts the headset into EDL mode, and the step goes on from there.
+        """
+        if self.edl_count() != 1 and AskingDev(ctx, self.work).other_abl_in_fastboot():
+            ctx.note(STOCK_FASTBOOT)
+            self.edl_by_hand(ctx)
+        self.run_step(ctx, "stage-abl")
+
     def bootloader_first(self, ctx: Context) -> None:
         """Write the stock bootloader from EDL mode, which the owner enters by hand, then wait for PICO OS.
 
         The restore's stock bootloader step (cycle --restore-only) starts from EDL when the headset is the one EDL
         device there: it checks the headset and its boot partition, writes the stock bootloader and starts PICO OS.
         """
-        if self.edl_count() != 1:
-            ctx.ask(EDL_BY_HAND)
-
-            def in_edl() -> None:
-                if self.edl_count() != 1:
-                    msg = "the headset is not the one device in EDL mode"
-                    raise RuntimeError(msg)
-
-            replug_until(ctx, "EDL mode", EDL_SECONDS, in_edl)
+        self.edl_by_hand(ctx)
         self.run_step(ctx, "restore-abl")
         ctx.remember(BOOTLOADER_WRITTEN)
 
@@ -1224,13 +1246,15 @@ class Plan:
                 "the cable in and start the installer again: it goes on from there. To return to PICO OS "
                 "instead, hold the power button for about 10 s.",
             ),
-            self.step_task(
+            Task(
                 "stage-abl",
                 "Engineering bootloader",
+                self.stage_abl,
                 "about 5 min",
+                writes=True,
                 where="Your headset may be in EDL mode with the engineering bootloader not or only partly "
-                "written. Keep the cable in and start the installer again; if it fails again, get help: your "
-                "backup holds the stock bootloader.",
+                "written, or in its bootloader (fastboot). Keep the cable in and start the installer again; if it "
+                "fails again, get help: your backup holds the stock bootloader.",
             ),
             Task(
                 "unlock",
