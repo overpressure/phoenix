@@ -404,7 +404,10 @@ cameras ─▶ driver_monado (vrserver) ─▶ /dev/shm/pico4-roomview ─▶ pi
   - The sensor streams only while the room view shows it: 5 s after it closes the driver pauses it
     (`pico4-imx471`'s paused control).
   - The lens is PICO's omni model with "fisheye62" distortion; [pico4_tcam.c](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4_tcam.c)
-    projects it and fits KB4 for the metadata.
+    projects it and fits KB4 for the metadata, over the rays up to 70° off axis only: the view's edge lies at
+    about 55–60°, and fitted out to the image's corners (80–90°, which the headset never shows) the fit's error
+    swung by up to 2 px inside the view and the room wobbled toward the edges. Up to 70° it grows smoothly to
+    about 1 px at the edge; the room view logs it at its start (`lens fit up to 70 degrees: rms …, max …`).
   - `pico4-roomview` publishes the NV12 frame (one linear dma-buf) to both camera slots.
     `--test-pattern` shows colour bars.
 
