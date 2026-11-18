@@ -54,7 +54,7 @@ kernel, and refuse the rest before they change anything:
 | | Verified | Checked by |
 | --- | --- | --- |
 | Headset | original PICO 4, A8110, *phoenix*, with LPDDR4X | the fingerprint, PICO OS's model (`pxr.vendorhw.product.model` `PICO 4`) and memory (`ro.vendor.ddr_type` `DDR4`), in `device probe` and every later command |
-| PICO OS | 5.13.7 `global-seko` (`ro.oem.state` true), where the whole path has run; 5.13.3 and 5.13.8 `global-seko`, which run the same code before the kernel ([other builds](#other-pico-os-builds)) | the same, with the fingerprint's region |
+| PICO OS | 5.13.7 `global-seko` (`ro.oem.state` true), where the whole path has run; 5.13.3 and 5.13.8 `global-seko` and 5.13.3, 5.13.7 and 5.13.8 `global-sek`, which run the same code before the kernel ([other builds](#other-pico-os-builds)) | the same, with the fingerprint's region |
 | Panel | Sharp LS026B3SA | `dev install`, from the kernel command line in the maintenance stage 1 (the installer checks it on PICO OS too): the stock tree also knows an Innolux NT57900, which our driver and tree do not |
 
 Neo 3 and Ultra have other fingerprints and are refused. The PICO 4 Pro and Enterprise take the same packages
@@ -77,8 +77,11 @@ log on stderr contains device identifiers. Identity files, logs and backups stay
 ## Other PICO OS builds
 
 `tooling/firmware.json` lists PICO's public full packages for the PICO 4, all still on PICO's servers; 5.13.8
-is the newest. `seko` and `sek` are secure-boot user builds, `seko` with `ro.oem.state` true; the region is the
-fingerprint's product (`Phoenix_ovs` global, `Phoenix` China).
+is the newest. `seko` and `sek` are secure-boot user builds of the same source, built minutes apart: `seko` with
+`ro.oem.state=true` in `system/build.prop`, `sek` with it empty, each with its own AVB key for `vbmeta` and
+`recovery`. Only PICO's updater (`SystemUpdate2`) reads the property, and every package refuses a headset with
+the other value, so it picks the headset's update track. The region is the fingerprint's product
+(`Phoenix_ovs` global, `Phoenix` China).
 
 **What the headset's own build decides.** The installed system runs the headset's own build's files: DSP
 images, Wi-Fi and Bluetooth firmware from its `modem`, `dsp` and `bluetooth` partitions; GPU firmware, PICO's
@@ -101,7 +104,7 @@ recovery the install writes is checked against the headset's `vbmeta`: its key a
 | 5.13.7 `global-seko` (b9665) | true | 2025-10-30 | the reference | the reference | verified: the whole path has run |
 | 5.13.3 `global-seko` (b9480) | true | 2025-07-03 | the same code, re-signed; `dtbo` the same | the same, recovery rollback index 1 | accepted: the same code |
 | 5.13.8 `global-seko` (b10102) | true | 2026-09-02 | the same code, re-signed; `dtbo` the same | the same, recovery rollback index 1 | accepted: the same code |
-| 5.13.3, 5.13.7, 5.13.8 `global-sek` (b9479, b9666, b10113) | empty | | the same code, re-signed; `dtbo` the same | another key | refused: the install's recovery is signed with the `seko` key |
+| 5.13.3, 5.13.7, 5.13.8 `global-sek` (b9479, b9666, b10113) | empty | | the same code, re-signed; `dtbo` the same | another key: the install keeps the headset's own `vbmeta` and writes its recovery with the headset's own stock recovery's | accepted: the same code |
 | 5.13.7 `cn-seko`, `cn-sek` (b9650, b9651) | true, empty | 2025-10-30 | XBL and AOP differ | | refused: other code before the kernel |
 
 The tools refuse every other build too, naming the reason, before anything is written. An accepted build is
@@ -117,7 +120,7 @@ What the packages also say (their `updater-script` and firmware):
   certificates, and the engineering ABL chains to the same Pico root CA as every 5.13.7 and 5.13.8 ABL and XBL.
   In all eight packages `vbmeta` has rollback index 0 and `vbmeta_system` 1617580800; recovery's is 1 in every
   `global` one.
-- **Who can install today:** a headset on a `global-seko` build, 5.13.3, 5.13.7 or 5.13.8.
+- **Who can install today:** a headset on a `global` build, `seko` or `sek`, 5.13.3, 5.13.7 or 5.13.8.
 
 ## Entering and leaving EDL
 

@@ -138,9 +138,11 @@ class VerdictTests(unittest.TestCase):
         # The install replaces it with the engineering ABL.
         self.assertNotIn("abl.elf", bootchain.BOOT_CHAIN)
 
-    def test_the_accepted_builds_are_global_seko(self):
+    def test_the_accepted_builds_are_global(self):
+        # seko and sek alike: the China builds run another XBL and AOP.
         for version, region, state in device.VERIFIED_FIRMWARES | device.SAME_CODE_FIRMWARES:
-            self.assertEqual((region, state), ("global", "true"), version)
+            self.assertEqual(region, "global", version)
+            self.assertIn(state, ("true", ""), version)
 
 
 if __name__ == "__main__":

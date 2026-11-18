@@ -61,12 +61,21 @@ def unlock_token(number: int) -> str:
 
 
 #: The PICO OS builds the install accepts (docs/device-preparation.md#other-pico-os-builds), as (version,
-#: region, ro.oem.state): the one the whole path has run on, and the ones that run the same code before
-#: the kernel by `python -m overpressure bootchain` (the boot chain re-signed, the board overlay the same)
-#: and sign vbmeta and recovery with the same key at the same rollback index. Everything of PICO OS's the
-#: system runs is the headset's own build's: its partitions and its backup (docs/install.md#pico-oss-files).
+#: region, ro.oem.state, "true" for seko and "" for sek): the one the whole path has run on, and the ones that
+#: run the same code before the kernel by `python -m overpressure bootchain` (the boot chain re-signed, the
+#: board overlay the same). A sek build is its seko twin built again with another AVB key and ro.oem.state
+#: empty, which only picks PICO's update track; the install keeps the headset's own vbmeta and writes its
+#: recovery with the headset's own stock recovery's vbmeta, so the key does not matter. Everything of PICO
+#: OS's the system runs is the headset's own build's: its partitions and its backup
+#: (docs/install.md#pico-oss-files).
 VERIFIED_FIRMWARES = {("5.13.7", "global", "true")}
-SAME_CODE_FIRMWARES = {("5.13.3", "global", "true"), ("5.13.8", "global", "true")}
+SAME_CODE_FIRMWARES = {
+    ("5.13.3", "global", "true"),
+    ("5.13.8", "global", "true"),
+    ("5.13.3", "global", ""),
+    ("5.13.7", "global", ""),
+    ("5.13.8", "global", ""),
+}
 #: Panels the kernel's driver and tree know, as the bootloader names them to the stock kernel.
 VERIFIED_PANELS = ("sharp_ls026b3sa",)
 #: The PICO 4 among the headsets PICO OS's one package serves, as PICO OS tells them apart: the model from
@@ -91,7 +100,8 @@ def firmware_support(identity: dict) -> str:
 
 def check_firmware(version: str, oem_state: str, region: str = "global") -> str:
     """Return whether a PICO OS build is verified or the same code before the kernel; refuse any other."""
-    state = str(oem_state).lower()
+    # sek builds report ro.oem.state empty; firmware.json and `match` call that false.
+    state = "true" if str(oem_state).lower() == "true" else ""
     build = (version, region, state)
     if build in VERIFIED_FIRMWARES:
         return "verified"
@@ -99,17 +109,12 @@ def check_firmware(version: str, oem_state: str, region: str = "global") -> str:
         return "the verified build's code before the kernel"
     if region != "global":
         why = "China builds run another XBL and AOP than the verified build"
-    elif state != "true":
-        why = (
-            "builds with an empty ro.oem.state (sek) sign vbmeta and recovery with another key than the seko "
-            "build whose recovery the install writes"
-        )
     else:
         why = "this build has not been compared with the verified one (python -m overpressure bootchain)"
-    accepted = ", ".join(v for v, _r, _s in sorted(VERIFIED_FIRMWARES | SAME_CODE_FIRMWARES))
+    accepted = ", ".join(sorted({v for v, _r, _s in VERIFIED_FIRMWARES | SAME_CODE_FIRMWARES}))
     msg = (
         f"PICO OS {version} ({region}, ro.oem.state {oem_state}) is not supported: {why}. Supported: the global "
-        f"seko builds {accepted}. Nothing was changed (docs/device-preparation.md)"
+        f"builds {accepted}, seko and sek. Nothing was changed (docs/device-preparation.md)"
     )
     raise ValueError(msg)
 

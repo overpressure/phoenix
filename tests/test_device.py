@@ -171,22 +171,28 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(self.call(self.args("unlock")), 1)
             run.assert_not_called()
 
-    def test_the_global_seko_builds_with_the_verified_code_pass(self):
-        for version, support in (
-            ("5.13.7", "verified"),
-            ("5.13.3", "the verified build's code before the kernel"),
-            ("5.13.8", "the verified build's code before the kernel"),
+    def test_the_global_builds_with_the_verified_code_pass(self):
+        same = "the verified build's code before the kernel"
+        for version, state, support in (
+            ("5.13.7", "true", "verified"),
+            ("5.13.3", "true", same),
+            ("5.13.8", "true", same),
+            # sek: the seko build again with another AVB key; the install keeps the headset's own vbmeta.
+            ("5.13.3", "", same),
+            ("5.13.7", "", same),
+            ("5.13.8", "", same),
+            ("5.13.7", "false", same),  # as firmware.json and match call an empty state
         ):
             self.record["fingerprint"] = f"Pico/Phoenix_ovs/PICOA8110:10/{version}/build:user/dev-keys"
+            self.record["oem_state"] = state
             self.identity.write_text(json.dumps(self.record))
-            # The saved record stays as it is: backups compare it as a whole.
-            self.assertEqual(device.read_identity(self.identity), self.record)
-            self.assertEqual(device.firmware_support(self.record), support)
+            with self.subTest(version=version, state=state):
+                # The saved record stays as it is: backups compare it as a whole.
+                self.assertEqual(device.read_identity(self.identity), self.record)
+                self.assertEqual(device.firmware_support(self.record), support)
 
     def test_every_other_build_is_refused_with_its_reason(self):
         for product, version, state, reason in (
-            ("Phoenix_ovs", "5.13.7", "false", "another key"),  # sek: another AVB key
-            ("Phoenix_ovs", "5.13.8", "", "another key"),
             ("Phoenix", "5.13.7", "true", "China builds run another XBL and AOP"),
             ("phoenix", "5.13.7", "false", "China builds"),
             ("Phoenix_ovs", "5.13.9", "true", "has not been compared"),
