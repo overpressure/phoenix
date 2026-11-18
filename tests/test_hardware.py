@@ -21,6 +21,9 @@ from devices.phoenix.tooling import devloop
 from devices.phoenix.tooling import hardware_test as hw
 from overpressure.api.v1 import bootimg, cpio, evidence
 
+#: The session check's error without both controllers.
+CONTROLLERS = hw.userspace.CONTROLLERS_MISSING
+
 
 def report(run_id: str) -> bytes:
     """Build the headset's report archive for this run."""
@@ -319,12 +322,13 @@ class HarnessTests(unittest.TestCase):
             if command.startswith("pico4-valve-session-check"):
                 self.assertIn("--seconds 30", command)
                 failed = self.scenario == "valve"
+                off = self.scenario == "controllers-off"  # a fresh install: the controllers are still off
                 return (
                     json.dumps(
                         {
                             "schema": 1,
-                            "status": "failed" if failed else "passed",
-                            "errors": ["steamvr.service is failed"] if failed else [],
+                            "status": "failed" if failed or off else "passed",
+                            "errors": ["steamvr.service is failed"] if failed else [CONTROLLERS] if off else [],
                             "seconds": 30,
                             "startup_seconds": 21,
                             "session": {
@@ -352,7 +356,7 @@ class HarnessTests(unittest.TestCase):
                                 {"index": 0, "position": [-0.01, 1.61, 0.07], "rotation": [-2.5, -1.56, 2.42]},
                                 {"index": 1, "position": [0.09, 0.96, -0.6], "rotation": [-0.27, 0.05, 0.86]},
                                 {"index": 2, "position": [0.48, 0.96, -0.24], "rotation": [-0.31, -0.13, -0.93]},
-                            ],
+                            ][: 1 if off else 3],
                             "max_temp_c": {"before": 80.1, "after_run": 92.3},
                             "fan": {"before": self.FAN_STATE, "after_run": {**self.FAN_STATE, "duty": 50}},
                             "performance": {
@@ -367,7 +371,7 @@ class HarnessTests(unittest.TestCase):
                         }
                     )
                     + "\nEXIT="
-                    + ("1" if failed else "0")
+                    + ("1" if failed or off else "0")
                 )
             if command.startswith(("pico4-imu list", "systemctl status")):
                 return "sensor evidence"
@@ -412,13 +416,16 @@ class HarnessTests(unittest.TestCase):
 
     installed_system = False
 
-    def stage2_checks(self, *, firmware: bool = False, sensors: bool = False, steamvr: bool = False) -> dict[str, Any]:
+    def stage2_checks(
+        self, *, firmware: bool = False, sensors: bool = False, steamvr: bool = False, installer: bool = False
+    ) -> dict[str, Any]:
         """Run the stage-2 checks as `dev check` runs them on the installed system; return their state."""
         self.installed_system = True
         self.info = {"kernel": "Linux version 7.2.0-pico4 test", "stock": "test"}
         dev = SimpleNamespace(s=SimpleNamespace(adb_serial="ABC"), ssh_argv=lambda command: ["ssh", command])
         # A stand-in with only what DevChecks uses of a Dev.
         self.runner = devloop.DevChecks(cast("devloop.Dev", dev), self.root / "check", self.info, {"chip_id": 1234567})
+        self.runner.installer_check = installer
         self.state: dict[str, Any] = {
             "installed": True,
             "gpu_firmware": firmware,
@@ -516,6 +523,17 @@ class HarnessTests(unittest.TestCase):
                 self.assertTrue((self.runner.folder / "userspace-valve-vrcompositor.txt").exists())
                 # The session comes back, also after a failed check.
                 self.assertTrue(self.resumed_session)
+
+    def test_controllers_off_fail_dev_check_and_only_warn_in_the_installers_check(self):
+        # #59: dev check counts every check; the installer's only warns.
+        self.scenario = "controllers-off"
+        with self.assertRaisesRegex(ValueError, "both controllers"):
+            self.stage2_checks(sensors=True, steamvr=True)
+        self.setUp()
+        self.scenario = "controllers-off"
+        self.stage2_checks(sensors=True, steamvr=True, installer=True)
+        self.assertEqual(len(self.runner.result["warnings"]), 1)
+        self.assertIn("no controllers", self.runner.result["warnings"][0])
 
     def test_valve_session_skipped_without_steamvr(self):
         state = self.stage2_checks(sensors=True)

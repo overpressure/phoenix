@@ -211,24 +211,36 @@ VALVE_SESSION_MIN_HZ = 0.4 * DISPLAY_HZ
 VBLANK_TOLERANCE = 0.01
 #: SteamVR's devices: the headset, then the two controllers.
 HEADSET_INDEX, CONTROLLER_INDICES = 0, (1, 2)
+#: The session check's error when SteamVR misses a controller (pico4-valve-session-check in overpressure/packages).
+CONTROLLERS_MISSING = "SteamVR does not report the headset and both controllers"
 #: A pose: position (x, y, z) and rotation, three numbers each.
 POSE_NUMBERS = 6
 
 
-def validate_valve_session(value: object) -> None:
-    """Validate `pico4-valve-session-check` JSON: Valve's VR session on the panels.
+def validate_valve_session(value: object, *, installer: bool = False) -> list[str]:
+    """Validate `pico4-valve-session-check` JSON: Valve's VR session on the panels; return its warnings.
 
     gamescope's session must run with SteamVR, whose compositor presents;
     SteamVR must report the headset and both controllers
     with positions; and the configured session must come back. The
     fan daemon's state before and after is recorded (null without the daemon).
     The performance verdict over the run after startup must pass as well.
+    In the @p installer's check, two things are a warning, returned, not a failure: controllers SteamVR does not
+    report (on a fresh install they are usually still off) and missed performance limits (the system works, only
+    slower than it should). The headset must be there all the same, and the session must run.
     """
     if not isinstance(value, dict) or value.get("schema") != 1:
         msg = "Valve session check produced no schema-1 result"
         raise ValueError(msg)
-    if value.get("status") != "passed":
-        raise ValueError("Valve session check failed: " + "; ".join(value.get("errors") or ["no reason"]))
+    errors = list(value.get("errors") or [])
+    warnings = []
+    missing = _missing_controllers(value.get("devices") or []) if installer else []
+    if missing:
+        errors = [e for e in errors if e != CONTROLLERS_MISSING]
+        which = "no controllers" if len(missing) == len(CONTROLLER_INDICES) else "only one controller"
+        warnings.append(f"SteamVR saw {which}: turn them on, and pair them in Overpressure Settings if they never were")
+    if value.get("status") != "passed" and (errors or not warnings):
+        raise ValueError("Valve session check failed: " + "; ".join(errors or ["no reason"]))
     session = value.get("session") or {}
     # Before the first-run setup is through, its panel runs in place of the held-back client.
     target = "setup" if session.get("first_run") == "pending" else "target_state"
@@ -241,7 +253,7 @@ def validate_valve_session(value: object) -> None:
         msg = f"SteamVR's compositor did not run with gamescope: {compositor}"
         raise ValueError(msg)
     _validate_frames(value.get("frames"))
-    _validate_devices(value.get("devices") or [])
+    _validate_devices(value.get("devices") or [], controllers=not installer)
     fan = value.get("fan")
     if not isinstance(fan, dict) or any(
         fan.get(k) is not None and not isinstance(fan.get(k), dict) for k in ("before", "after_run")
@@ -253,9 +265,13 @@ def validate_valve_session(value: object) -> None:
         msg = "The Valve session check gave no performance verdict"
         raise ValueError(msg)
     if performance["status"] != "passed":
-        raise ValueError(
-            "Valve's session missed its performance limits: " + "; ".join(performance.get("failures") or ["no reason"])
+        missed = "Valve's session missed its performance limits: " + "; ".join(
+            performance.get("failures") or ["no reason"]
         )
+        if not installer:
+            raise ValueError(missed)
+        warnings.append(missed)
+    return warnings
 
 
 def _validate_frames(frames: object) -> None:
@@ -279,19 +295,31 @@ def _validate_frames(frames: object) -> None:
         raise ValueError(msg)
 
 
-def _validate_devices(reported: list) -> None:
-    """Refuse a session without the headset and both controllers, each with a valid pose."""
+def _missing_controllers(reported: list) -> list[int]:
+    """Return the controllers' indices SteamVR does not report."""
+    devices = {d.get("index") for d in reported if isinstance(d, dict)}
+    return [index for index in CONTROLLER_INDICES if index not in devices]
+
+
+def _validate_devices(reported: list, *, controllers: bool = True) -> None:
+    """Refuse a session without the headset and both controllers (@p controllers), each with a valid pose.
+
+    Without @p controllers only the headset must be there; a controller that is there must still be valid.
+    """
     devices = {d.get("index"): d for d in reported if isinstance(d, dict)}
-    indices = (HEADSET_INDEX, *CONTROLLER_INDICES)
-    if not set(indices) <= devices.keys():
+    required = (HEADSET_INDEX, *CONTROLLER_INDICES) if controllers else (HEADSET_INDEX,)
+    if not set(required) <= devices.keys():
         msg = f"SteamVR reports devices {sorted(devices)}, not the headset and two controllers"
+        if not controllers:
+            msg = f"SteamVR reports devices {sorted(devices)}, not the headset"
         raise ValueError(msg)
+    indices = [index for index in (HEADSET_INDEX, *CONTROLLER_INDICES) if index in devices]
     for index in indices:
         numbers = list(devices[index].get("position") or []) + list(devices[index].get("rotation") or [])
         if len(numbers) != POSE_NUMBERS or not all(isinstance(n, (int, float)) and math.isfinite(n) for n in numbers):
             msg = f"SteamVR's pose of device {index} is not valid: {devices[index]}"
             raise ValueError(msg)
-    for index in CONTROLLER_INDICES:
+    for index in (i for i in CONTROLLER_INDICES if i in devices):
         if not any(devices[index]["position"]):
             msg = f"Controller {index} has no position in SteamVR"
             raise ValueError(msg)

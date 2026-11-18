@@ -376,6 +376,19 @@ class PlanTests(unittest.TestCase):
         statuses = [(e["task"], e["status"]) for e in ui.events if e["event"] == "task"]
         self.assertIn(("identity", "skipped"), statuses)
 
+    def test_the_acceptance_checks_let_the_controllers_off_and_show_the_warning(self):
+        # #59: a working install with the controllers still off is done, with the warning in the window.
+        run = self.root / "out" / "dev" / "check-20261118-090000"
+        run.mkdir(parents=True)
+        warning = "SteamVR saw no controllers: turn them on"
+        (run / "result.json").write_text(json.dumps({"status": "passed", "warnings": [warning]}))
+        ui = self.run_stages(("install",), self.yes("wifi", "ssh-key"))
+        self.assertEqual(ui.finished()["status"], "done", ui.finished())
+        check = next(argv for argv, _, _ in self.spawned if "check" in argv)
+        self.assertEqual(check[-2:], ["check", "--installer"])
+        notes = [e for e in ui.events if e["event"] == "note" and e["text"] == warning]
+        self.assertEqual([n.get("level") for n in notes], ["warning"])
+
     def saved_identity(self, version: str) -> None:
         self.identity.parent.mkdir(parents=True, exist_ok=True)
         record = {"schema": 1, "serial": ADB, "fingerprint": FINGERPRINT.format(version), "oem_state": "true"}

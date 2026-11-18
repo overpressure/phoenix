@@ -216,6 +216,8 @@ class Runner(evidence.Runner):
     def __init__(self, args: argparse.Namespace) -> None:
         """Start a run with the command line's @p args; its results go to a new folder."""
         self.args = args
+        #: The installer's check: controllers SteamVR does not see and missed performance limits only warn.
+        self.installer_check = False
         folder = args.out.resolve()
         self.flash_mode = args.command == "flash-run"
         if self.flash_mode:
@@ -676,8 +678,13 @@ class Runner(evidence.Runner):
             f"   integration: {value.get('status')}; {userspace.format_valve_performance(value.get('performance'))}",
             flush=True,
         )
-        require(code.strip() == "0", "Valve session check failed")
-        userspace.validate_valve_session(value)
+        warnings = userspace.validate_valve_session(value, installer=self.installer_check)
+        if not warnings:
+            require(code.strip() == "0", "Valve session check failed")
+        for warning in warnings:
+            print(f"   warning: {warning}", flush=True)
+            self.result.setdefault("warnings", []).append(warning)
+        self.save()
 
     def recover(self) -> None:
         """Bring the headset back to the original PICO OS, restoring stock boot if the flash touched it."""

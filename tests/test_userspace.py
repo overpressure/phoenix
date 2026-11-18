@@ -310,6 +310,45 @@ class ValveSessionTests(unittest.TestCase):
             with self.subTest(session), self.assertRaises(ValueError):
                 userspace.validate_valve_session({**VALVE_SESSION_PASSING, "session": session})
 
+    def test_controllers_off_only_warn_when_they_are_optional(self):
+        # #59: on a fresh install the controllers are usually still off; the installer's check only warns.
+        headset = VALVE_SESSION_PASSING["devices"][:1]
+        off = {
+            **VALVE_SESSION_PASSING,
+            "status": "failed",
+            "errors": [userspace.CONTROLLERS_MISSING],
+            "devices": headset,
+        }
+        with self.assertRaisesRegex(ValueError, "both controllers"):
+            userspace.validate_valve_session(off)  # dev check: every check counts
+        warnings = userspace.validate_valve_session(off, installer=True)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("no controllers", warnings[0])
+        one = {**off, "devices": VALVE_SESSION_PASSING["devices"][:2]}
+        self.assertIn("only one controller", userspace.validate_valve_session(one, installer=True)[0])
+        self.assertEqual(userspace.validate_valve_session(VALVE_SESSION_PASSING, installer=True), [])
+
+    def test_missed_performance_limits_only_warn_in_the_installers_check(self):
+        slow = {**VALVE_SESSION_PASSING, "performance": {"status": "failed", "failures": ["52.0 commits/s"]}}
+        with self.assertRaisesRegex(ValueError, "performance limits"):
+            userspace.validate_valve_session(slow)  # dev check
+        warnings = userspace.validate_valve_session(slow, installer=True)
+        self.assertEqual(warnings, ["Valve's session missed its performance limits: 52.0 commits/s"])
+
+    def test_the_installers_check_does_not_excuse_anything_else(self):
+        devices = VALVE_SESSION_PASSING["devices"]
+        base = {**VALVE_SESSION_PASSING, "status": "failed", "errors": [userspace.CONTROLLERS_MISSING]}
+        cases = [
+            ("another error too", {"errors": [userspace.CONTROLLERS_MISSING, "steamvr.service is failed"]}),
+            ("no headset", {"devices": []}),
+            ("controller pose not a number", {"devices": [devices[0], {**devices[1], "rotation": ["nan", 0, 0]}]}),
+            ("no performance verdict", {"performance": None}),
+            ("failed without a reason", {"errors": [], "devices": devices}),
+        ]
+        for name, change in cases:
+            with self.subTest(name), self.assertRaises(ValueError):
+                userspace.validate_valve_session({**base, "devices": devices[:1], **change}, installer=True)
+
     def test_failures_are_rejected(self):
         devices = VALVE_SESSION_PASSING["devices"]
         cases = [

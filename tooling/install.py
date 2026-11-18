@@ -438,6 +438,28 @@ class Plan:
         """Return a command of the headset's command line (one that is no step of the window)."""
         return [sys.executable, "-m", "overpressure", "--device", self.headset.info.codename, *map(str, words)]
 
+    def check_task(self, where: str) -> Task:
+        """Return the acceptance checks of a finished install or upgrade (dev check).
+
+        Two things only warn here: controllers SteamVR does not see (on a fresh install they are usually still
+        off, and pairing them comes after this step) and missed performance limits (the system works). The
+        window shows each warning; the install counts as done.
+        """
+        return Task("check", "Acceptance checks", self.acceptance_checks, "about 3 min", where=where)
+
+    def acceptance_checks(self, ctx: Context) -> None:
+        """Run dev check as the installer's check; show the warnings its result records."""
+        ctx.run([*self.argv(ctx, "check"), "--installer"])
+        runs = sorted(p for p in self.work.glob("check-*") if (p / "result.json").is_file())
+        if not runs:
+            return
+        try:
+            result = json.loads((runs[-1] / "result.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        for warning in result.get("warnings") or []:
+            ctx.note(str(warning), "warning")
+
     def step_task(
         self, key: str, title: str, estimate: str, *, done: Callable[[Context], bool] | None = None, where: str = ""
     ) -> Task:
@@ -1259,7 +1281,7 @@ class Plan:
                         "Keep the cable in and start the installer again: the install can be repeated.",
                     ),
                     self.step_task("installed", "Start the installed system", "about 2 min", where=installed_where),
-                    self.step_task("check", "Acceptance checks", "about 3 min", where=installed_where),
+                    self.check_task(installed_where),
                     Task("ready", "Unplug it and put it on", lambda ctx: ctx.note(UPGRADED), ""),
                 ),
             ),
@@ -1418,7 +1440,7 @@ class Plan:
                         writes=True,
                         where=installed_where,
                     ),
-                    self.step_task("check", "Acceptance checks", "about 3 min", where=installed_where),
+                    self.check_task(installed_where),
                     Task("ready", "Unplug it and put it on", lambda ctx: ctx.note(READY), ""),
                 ),
             ),

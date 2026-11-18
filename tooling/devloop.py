@@ -1110,11 +1110,16 @@ class Dev(Headset):
             )
         return output
 
-    def check(self) -> int:
-        """Run the acceptance runner's stage-2 checks on the installed system; 0 when they pass."""
+    def check(self, *, installer: bool = False) -> int:
+        """Run the acceptance runner's stage-2 checks on the installed system; 0 when they pass.
+
+        The @p installer's check records controllers SteamVR does not see and missed performance limits as
+        warnings in result.json, not failures.
+        """
         state = json.loads((self.work / "state.json").read_text(encoding="utf-8"))
         folder = self.work / ("check-" + dt.datetime.now(dt.timezone.utc).astimezone().strftime("%Y%m%d-%H%M%S"))
         checks = DevChecks(self, folder, self.boot_build_info(), self.identity())
+        checks.installer_check = installer
         try:
             checks.step("stage-2 checks", lambda: checks.userspace_checks(dict(state)))
             checks.result["status"] = "passed"
@@ -1321,6 +1326,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per 
         "installed",
     ):
         sub.add_parser(name)
+    sub.choices["check"].add_argument(
+        "--installer",
+        action="store_true",
+        help="the installer's check: controllers SteamVR does not see and missed performance limits only warn",
+    )
     sub.add_parser("boot-image", help="out/kernel/valve-boot.img from out/kernel, out/dev and the backup's recovery")
     release = sub.add_parser("release-check", help="the automated part of docs/release-checklist.md")
     release.add_argument("--attended", action="store_true", help="also what needs someone near: tones, a suspend")
@@ -1355,7 +1365,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per 
             folder.mkdir(parents=True)
             Headset(dev.s, folder).stage_abl()
         elif args.command == "check":
-            return dev.check()
+            return dev.check(installer=args.installer)
         elif args.command == "install":
             dev.install(args.system, format_data=args.format_data, boot=args.boot, on_headset=args.on_headset)
         elif args.command == "boot-image":
