@@ -39,6 +39,10 @@ PRINTGPT = f"""[INFO]  Serial Number: {EDL}
 """
 
 
+#: The install's and the upgrade's last check: none where the check is a workflow of its own (#74).
+END_CHECK = [] if tooling.CHECK_WORKFLOW else ["check"]
+
+
 class FakeClock:
     def __init__(self):
         self.now = 0.0
@@ -218,8 +222,9 @@ class PlanTests(unittest.TestCase):
                 ["find", "identity", "panel"],
                 # The images take the backup's boot and recovery: after the backup, before the flash.
                 ["consent", "backup", "stage-abl", "unlock", *images, "flash", "maintenance"],
-                # The checks are a workflow of their own, which the finished page offers (#74).
-                ["wifi", "ssh-key", "install", "installed", "wifi-profile", "ready"],
+                # The checks are a workflow of their own, which the finished page offers (#74); with an older
+                # overpressure the install checks at its end.
+                ["wifi", "ssh-key", "install", "installed", "wifi-profile", *END_CHECK, "ready"],
             ],
         )
         writes = [t.id for s in stages for t in s.tasks if t.writes]
@@ -661,7 +666,7 @@ class PlanTests(unittest.TestCase):
         answers |= self.yes("ssh-key")
         ui = self.run_stages(("install",), answers)
         self.assertEqual(ui.finished()["status"], "done", ui.finished())
-        self.assertEqual(self.commands(), ["dev install", "dev installed"])
+        self.assertEqual(self.commands(), ["dev install", "dev installed", *(["dev check"] if END_CHECK else [])])
         ssh = [(argv, data) for argv, data, _ in self.spawned if data is not None]
         self.assertEqual(len(ssh), 1)
         argv, data = ssh[0]
@@ -782,14 +787,15 @@ class AfterInstallTests(unittest.TestCase):
         self.assertEqual(
             [(a.label, a.step, a.workflow) for a in after.actions],
             [
-                ("Check the headset", "", "check"),
+                *([("Check the headset", "", "check")] if tooling.CHECK_WORKFLOW else []),
                 ("Upgrade later", "", "upgrade"),
                 ("Restore to stock", "", "restore"),
                 ("Get help", "support-bundle", ""),
             ],
         )
         self.assertEqual(HEADSET.finished_page("check").title, "Checked")
-        self.assertIn("check", [a.workflow for a in HEADSET.finished_page("upgrade").actions])
+        if tooling.CHECK_WORKFLOW:
+            self.assertIn("check", [a.workflow for a in HEADSET.finished_page("upgrade").actions])
         keys = {step.key for step in HEADSET.steps()}
         workflows = {w.key for w in HEADSET.workflows()}
         for workflow in workflows:
@@ -872,12 +878,14 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual([t.id for t in install.tasks][-2:], ["check", "ready"])
             upgrade = next(s for s in self.plan.upgrade_stages() if s.id == "install")
             self.assertEqual([t.id for t in upgrade.tasks][-2:], ["check", "ready"])
-        self.assertIn("check", [w.key for w in HEADSET.workflows()])
-        self.assertFalse(next(w for w in HEADSET.workflows() if w.key == "check").changes)
+        if tooling.CHECK_WORKFLOW:  # an overpressure with Workflow.changes
+            self.assertIn("check", [w.key for w in HEADSET.workflows()])
+            self.assertFalse(next(w for w in HEADSET.workflows() if w.key == "check").changes)
 
-    def test_four_workflows_in_order_with_their_plans(self):
-        self.assertEqual([w.key for w in HEADSET.workflows()], ["install", "upgrade", "restore", "check"])
-        self.assertEqual([w.erases for w in HEADSET.workflows()], [True, False, True, False])
+    def test_the_workflows_in_order_with_their_plans(self):
+        check = ["check"] if tooling.CHECK_WORKFLOW else []
+        self.assertEqual([w.key for w in HEADSET.workflows()], ["install", "upgrade", "restore", *check])
+        self.assertEqual([w.erases for w in HEADSET.workflows()], [True, False, True, *[False for _ in check]])
         self.assertEqual([s.id for s in self.plan.check_stages()], ["check"])
         # Nothing of the check writes to the headset.
         self.assertFalse(any(t.writes for s in self.plan.check_stages() for t in s.tasks))
@@ -899,7 +907,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual({k for k, t in build.items() if t.done is None}, {"kernel", "boot-image"})
         tasks = [t.id for t in stages["install"].tasks]
         # This version's maintenance system is written first: the headset's build and the write need its tools.
-        self.assertEqual(tasks, ["plug-in", "flash", "maintenance", "install", "installed", "ready"])
+        self.assertEqual(tasks, ["plug-in", "flash", "maintenance", "install", "installed", *END_CHECK, "ready"])
         self.assertNotIn("--format-data", " ".join(self.plan.steps["install"].argv))
 
     def test_the_upgrade_waits_for_fastboot_and_its_maintenance_system_here_where_a_wait_asks_for_a_replug(self):
