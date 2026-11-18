@@ -174,8 +174,9 @@ class PlanTests(unittest.TestCase):
             return 0, f"{FASTBOOT}\tfastboot\n" if self.fastboot else ""
         return 0, ""
 
-    def run_stages(self, ids: tuple[str, ...], answers: dict[str, dict]) -> Recorder:
-        stages = [s for s in self.plan.stages() if s.id in ids]
+    def run_stages(self, ids: tuple[str, ...], answers: dict[str, dict], workflow: str = "install") -> Recorder:
+        plans = {"install": self.plan.stages, "check": self.plan.check_stages}
+        stages = [s for s in plans[workflow]() if s.id in ids]
         ui = Recorder(answers)
         engine = Engine(
             HEADSET.info,
@@ -217,7 +218,8 @@ class PlanTests(unittest.TestCase):
                 ["find", "identity", "panel"],
                 # The images take the backup's boot and recovery: after the backup, before the flash.
                 ["consent", "backup", "stage-abl", "unlock", *images, "flash", "maintenance"],
-                ["wifi", "ssh-key", "install", "installed", "wifi-profile", "check", "ready"],
+                # The checks are a workflow of their own, which the finished page offers (#74).
+                ["wifi", "ssh-key", "install", "installed", "wifi-profile", "ready"],
             ],
         )
         writes = [t.id for s in stages for t in s.tasks if t.writes]
@@ -376,18 +378,25 @@ class PlanTests(unittest.TestCase):
         statuses = [(e["task"], e["status"]) for e in ui.events if e["event"] == "task"]
         self.assertIn(("identity", "skipped"), statuses)
 
-    def test_the_acceptance_checks_let_the_controllers_off_and_show_the_warning(self):
-        # #59: a working install with the controllers still off is done, with the warning in the window.
-        run = self.root / "out" / "dev" / "check-20261118-090000"
+    def test_the_check_workflow_runs_each_part_and_shows_its_warnings(self):
+        # #74: the headset on a table, then one row per part; #59: the controllers off only warn.
+        run = self.root / "out" / "dev" / "check-20261118-090000-session"
         run.mkdir(parents=True)
         warning = "SteamVR saw no controllers: turn them on"
         (run / "result.json").write_text(json.dumps({"status": "passed", "warnings": [warning]}))
-        ui = self.run_stages(("install",), self.yes("wifi", "ssh-key"))
+        ui = self.run_stages(("check",), self.yes("put-down"), workflow="check")
         self.assertEqual(ui.finished()["status"], "done", ui.finished())
-        check = next(argv for argv, _, _ in self.spawned if "check" in argv)
-        self.assertEqual(check[-2:], ["check", "--installer"])
+        self.assertEqual(self.commands(), ["dev installed", "dev check", "dev check", "dev check"])
+        parts = [argv[-3:] for argv, _, _ in self.spawned if "check" in argv]
+        self.assertEqual(parts, [["--installer", "--part", p] for p in ("system", "imu", "session")])
         notes = [e for e in ui.events if e["event"] == "note" and e["text"] == warning]
         self.assertEqual([n.get("level") for n in notes], ["warning"])
+
+    def test_the_checks_start_only_with_the_headset_put_down(self):
+        answers = {"put-down": {"answer": "put-down", "accepted": False, "values": {}}}
+        ui = self.run_stages(("check",), answers, workflow="check")
+        self.assertEqual(ui.finished()["status"], "stopped")
+        self.assertEqual(self.commands(), [])
 
     def saved_identity(self, version: str) -> None:
         self.identity.parent.mkdir(parents=True, exist_ok=True)
@@ -652,7 +661,7 @@ class PlanTests(unittest.TestCase):
         answers |= self.yes("ssh-key")
         ui = self.run_stages(("install",), answers)
         self.assertEqual(ui.finished()["status"], "done", ui.finished())
-        self.assertEqual(self.commands(), ["dev install", "dev installed", "dev check"])
+        self.assertEqual(self.commands(), ["dev install", "dev installed"])
         ssh = [(argv, data) for argv, data, _ in self.spawned if data is not None]
         self.assertEqual(len(ssh), 1)
         argv, data = ssh[0]
@@ -772,8 +781,15 @@ class AfterInstallTests(unittest.TestCase):
         self.assertIn("sign in to Steam", after.text)
         self.assertEqual(
             [(a.label, a.step, a.workflow) for a in after.actions],
-            [("Upgrade later", "", "upgrade"), ("Restore to stock", "", "restore"), ("Get help", "support-bundle", "")],
+            [
+                ("Check the headset", "", "check"),
+                ("Upgrade later", "", "upgrade"),
+                ("Restore to stock", "", "restore"),
+                ("Get help", "support-bundle", ""),
+            ],
         )
+        self.assertEqual(HEADSET.finished_page("check").title, "Checked")
+        self.assertIn("check", [a.workflow for a in HEADSET.finished_page("upgrade").actions])
         keys = {step.key for step in HEADSET.steps()}
         workflows = {w.key for w in HEADSET.workflows()}
         for workflow in workflows:
@@ -843,16 +859,36 @@ class WorkflowTests(unittest.TestCase):
     def setUp(self):
         self.plan = plan.Plan(HEADSET, root=Path("/nowhere"), computer=list)
 
-    def test_three_workflows_in_order_with_their_plans(self):
-        self.assertEqual([w.key for w in HEADSET.workflows()], ["install", "upgrade", "restore"])
-        self.assertEqual([w.erases for w in HEADSET.workflows()], [True, False, True])
+    def test_with_an_older_overpressure_the_install_and_upgrade_check_at_their_end(self):
+        # Without Workflow.changes (interface 1.3) the check is no workflow of its own: it would erase the
+        # install's record when it finished.
+        with (
+            mock.patch.object(tooling, "CHECK_WORKFLOW", new=False),
+            mock.patch.object(plan, "CHECK_WORKFLOW", new=False),
+        ):
+            self.assertNotIn("check", [w.key for w in HEADSET.workflows()])
+            self.assertNotIn("check", [a.workflow for a in HEADSET.after_install().actions])
+            install = next(s for s in self.plan.stages() if s.id == "install")
+            self.assertEqual([t.id for t in install.tasks][-2:], ["check", "ready"])
+            upgrade = next(s for s in self.plan.upgrade_stages() if s.id == "install")
+            self.assertEqual([t.id for t in upgrade.tasks][-2:], ["check", "ready"])
+        self.assertIn("check", [w.key for w in HEADSET.workflows()])
+        self.assertFalse(next(w for w in HEADSET.workflows() if w.key == "check").changes)
+
+    def test_four_workflows_in_order_with_their_plans(self):
+        self.assertEqual([w.key for w in HEADSET.workflows()], ["install", "upgrade", "restore", "check"])
+        self.assertEqual([w.erases for w in HEADSET.workflows()], [True, False, True, False])
+        self.assertEqual([s.id for s in self.plan.check_stages()], ["check"])
+        # Nothing of the check writes to the headset.
+        self.assertFalse(any(t.writes for s in self.plan.check_stages() for t in s.tasks))
         self.assertEqual([s.id for s in self.plan.upgrade_stages()], ["computer", "build", "install"])
         self.assertEqual([s.id for s in self.plan.restore_stages()], ["backup", "restore", "pico-os", "bootloader"])
 
     def test_every_task_that_can_fail_says_where_the_headset_is_and_what_next(self):
         # Its where is what a failure shows unless the failure says more; only the closing notes have none.
-        for stages in (self.plan.stages(), self.plan.upgrade_stages(), self.plan.restore_stages()):
-            for task in (t for s in stages for t in s.tasks if t.id not in ("ready", "restored")):
+        plans = (self.plan.stages(), self.plan.upgrade_stages(), self.plan.restore_stages(), self.plan.check_stages())
+        for stages in plans:
+            for task in (t for s in stages for t in s.tasks if t.id not in ("ready", "restored", "checked")):
                 self.assertTrue(task.where, task.id)
                 self.assertTrue("again" in task.where or "get help" in task.where, (task.id, task.where))
 
@@ -863,7 +899,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual({k for k, t in build.items() if t.done is None}, {"kernel", "boot-image"})
         tasks = [t.id for t in stages["install"].tasks]
         # This version's maintenance system is written first: the headset's build and the write need its tools.
-        self.assertEqual(tasks, ["plug-in", "flash", "maintenance", "install", "installed", "check", "ready"])
+        self.assertEqual(tasks, ["plug-in", "flash", "maintenance", "install", "installed", "ready"])
         self.assertNotIn("--format-data", " ".join(self.plan.steps["install"].argv))
 
     def test_the_upgrade_waits_for_fastboot_and_its_maintenance_system_here_where_a_wait_asks_for_a_replug(self):

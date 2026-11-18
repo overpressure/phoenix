@@ -517,6 +517,37 @@ class Runner(evidence.Runner):
 
     def userspace_checks(self, state: dict) -> None:
         """Everything checked in a running stage 2, in the order each feature builds on the last."""
+        self.system_checks(state)
+        if state["sensor_data"]:
+            self.head_imu(state)
+            self.session_checks(state)
+
+    #: The parts the installer's check runs one by one (dev check --part), each one task of its checklist.
+    PARTS = ("system", "imu", "session")
+
+    def part_checks(self, state: dict, part: str) -> None:
+        """Run one part of the stage-2 checks: the system, the head IMU, or Valve's session with SteamVR.
+
+        A part the system was not built with (no sensor data, no SteamVR) has nothing to check and passes.
+        """
+        if part == "system":
+            self.system_checks(state)
+        elif part == "imu":
+            if state.get("sensor_data"):
+                self.head_imu(state)
+            else:
+                print("   this system has no head IMU data: nothing to check", flush=True)
+        elif part == "session":
+            if state.get("sensor_data") and state.get("steamvr"):
+                self.session_checks(state)
+            else:
+                print("   this system has no Valve session: nothing to check", flush=True)
+        else:
+            msg = f"unknown part {part!r}: one of {', '.join(self.PARTS)}"
+            raise ValueError(msg)
+
+    def system_checks(self, state: dict) -> None:
+        """Check the installed system: systemd, storage, the USB link, the session's units, fan, power, graphics."""
         self.installed = bool(state.get("installed"))
         output = self.ssh("pico4-userspace-check --wait 240; echo EXIT=$?", 300)
         report, _, code = output.rpartition("EXIT=")
@@ -542,27 +573,51 @@ class Runner(evidence.Runner):
         userspace.validate_check(value, require_vulkan=state["gpu_firmware"])
         # The storage and identity guarantees of stage 1 must hold in stage 2.
         self.assertions("-userspace")
-        if state["sensor_data"]:
-            self.head_imu(state)
 
     def head_imu(self, state: dict) -> None:
-        """Step 5: stream the head IMU through the sensor DSP (docs/xr.md)."""
+        """Step 5: stream the head IMU through the sensor DSP (docs/xr.md).
+
+        The check needs the headset still. The installer's check measures again while it moved, a few times,
+        and a headset that never lies still is a warning: its IMU streams, it was only not checked at rest.
+        """
         print(">> head IMU: sensor DSP and SSC stream", flush=True)
         for name, command in (
             ("sensors-units", "systemctl status --no-pager -l pico4-slpi pico4-sensorspd"),
             ("sensors-list", "pico4-imu list accel gyro"),
         ):
             self.evidence(f"userspace-{name}.txt", command)
-        output = self.ssh(
-            f"pico4-imu stream --rate {userspace.IMU_RATE_HZ:g} --seconds 10 --check --orientation; echo EXIT=$?", 120
-        )
-        report, _, code = output.rpartition("EXIT=")
-        (self.folder / "userspace-imu.json").write_text(report.strip() + "\n", encoding="utf-8")
-        value = json.loads(report)
-        state["imu"] = {k: value.get(k) for k in ("status", "failures", "streams", "orientation")}
-        self.save()
+        attempts = userspace.IMU_STILL_ATTEMPTS if self.installer_check else 1
+        code, value, moved = "", {}, False
+        for attempt in range(1, attempts + 1):
+            output = self.ssh(
+                f"pico4-imu stream --rate {userspace.IMU_RATE_HZ:g} --seconds 10 --check --orientation; echo EXIT=$?",
+                120,
+            )
+            report, _, code = output.rpartition("EXIT=")
+            (self.folder / "userspace-imu.json").write_text(report.strip() + "\n", encoding="utf-8")
+            value = json.loads(report)
+            state["imu"] = {k: value.get(k) for k in ("status", "failures", "streams", "orientation")}
+            self.save()
+            moved = code.strip() != "0" and userspace.imu_moved(value)
+            if not moved:
+                break
+            if attempt < attempts:
+                print(
+                    f"   the headset moved during the IMU check: leave it still, again in "
+                    f"{userspace.IMU_STILL_WAIT_SECONDS} s",
+                    flush=True,
+                )
+                time.sleep(userspace.IMU_STILL_WAIT_SECONDS)
+        if moved and self.installer_check:
+            print(f"   warning: {userspace.IMU_MOVED}", flush=True)
+            self.result.setdefault("warnings", []).append(userspace.IMU_MOVED)
+            self.save()
+            return
         require(code.strip() == "0", "Head IMU check failed")
         userspace.validate_imu(value)
+
+    def session_checks(self, state: dict) -> None:
+        """Valve's session with SteamVR on the panels, the session paused for it and started again after."""
         if state.get("steamvr"):
             paused = self.pause_session()
             try:

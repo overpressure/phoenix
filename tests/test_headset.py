@@ -907,7 +907,7 @@ class DevTests(HeadsetFixture):
 
     def test_release_check_records_every_result_and_fails_on_one(self):
         dev, _ = self.install_setup()
-        dev.check = lambda *, installer=False: 0  # noqa: ARG005  # dev check's signature
+        dev.check = lambda *, installer=False, part="": 0  # noqa: ARG005  # dev check's signature
         answers = {
             "pico4-listeners": "sshd tcp/22",
             "pico4-still-gate 60": "3000 poses, 0 lost",
@@ -936,7 +936,7 @@ class DevTests(HeadsetFixture):
 
     def test_the_suspend_check_runs_detached_through_the_link_loss(self):
         dev, _ = self.install_setup()
-        dev.check = lambda *, installer=False: 0  # noqa: ARG005  # dev check's signature
+        dev.check = lambda *, installer=False, part="": 0  # noqa: ARG005  # dev check's signature
         sent: list[str] = []
         reads = [RuntimeError("ssh.exe failed (255)"), "", '{"status": "passed", "suspended": true}']
 
@@ -972,7 +972,7 @@ class DevTests(HeadsetFixture):
 
     def test_release_check_fails_a_still_gate_that_lost_the_headset(self):
         dev, _ = self.install_setup()
-        dev.check = lambda *, installer=False: 0  # noqa: ARG005  # dev check's signature
+        dev.check = lambda *, installer=False, part="": 0  # noqa: ARG005  # dev check's signature
         answers = {
             "pico4-listeners": "sshd tcp/22",
             "pico4-still-gate 60": "54577 poses, 54577 lost, furthest 0.00 mm, 1.149 deg, longest gap 1.0 ms",
@@ -991,7 +991,7 @@ class DevTests(HeadsetFixture):
 
     def test_the_still_gate_waits_for_a_settled_session(self):
         dev, _ = self.install_setup()
-        dev.check = lambda *, installer=False: 0  # noqa: ARG005  # dev check's signature
+        dev.check = lambda *, installer=False, part="": 0  # noqa: ARG005  # dev check's signature
         order: list[str] = []
         start = dev.clock.monotonic()
 
@@ -1010,7 +1010,7 @@ class DevTests(HeadsetFixture):
 
     def test_release_check_fails_a_slow_boot(self):
         dev, _ = self.install_setup()
-        dev.check = lambda *, installer=False: 0  # noqa: ARG005  # dev check's signature
+        dev.check = lambda *, installer=False, part="": 0  # noqa: ARG005  # dev check's signature
         slow = "Startup finished in 2.1s (kernel) + 1min 2.5s (userspace) = 1min 4.6s\n"
         dev.ssh = lambda command, *_, **__: (
             slow + "graphical.target reached after 1min 2.4s in userspace.\n"

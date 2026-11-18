@@ -297,16 +297,27 @@ class HarnessTests(unittest.TestCase):
                     "mean": [9.7, 0.0, 1.5],
                 }
                 failed = self.scenario == "imu"
+                # The headset moves: every measurement ("moved"), or only the first ("moved-once").
+                self.imu_runs = getattr(self, "imu_runs", 0) + 1
+                moving = self.scenario == "moved" or (self.scenario == "moved-once" and self.imu_runs == 1)
+                if moving:
+                    failed = True
+                gyro = stream | {"std": [0.4, 0.6, 0.8] if moving else [0.002, 0.002, 0.003]}
+                failure = (
+                    "gyro: mean [0.02, 0.05, 0.2] rad/s (not still, or uncalibrated)"
+                    if moving
+                    else ("accel: |g| 3.0 m/s^2")
+                )
                 return (
                     json.dumps(
                         {
                             "schema": 1,
                             "seconds": 10,
                             "requested_rate_hz": 500.0,
-                            "streams": {"accel": stream, "gyro": stream},
+                            "streams": {"accel": stream, "gyro": gyro},
                             "orientation": {},
                             "status": "fail" if failed else "pass",
-                            "failures": ["accel: |g| 3.0 m/s^2"] if failed else [],
+                            "failures": [failure] if failed else [],
                         }
                     )
                     + "\nEXIT="
@@ -417,10 +428,17 @@ class HarnessTests(unittest.TestCase):
     installed_system = False
 
     def stage2_checks(
-        self, *, firmware: bool = False, sensors: bool = False, steamvr: bool = False, installer: bool = False
+        self,
+        *,
+        firmware: bool = False,
+        sensors: bool = False,
+        steamvr: bool = False,
+        installer: bool = False,
+        part: str = "",
     ) -> dict[str, Any]:
         """Run the stage-2 checks as `dev check` runs them on the installed system; return their state."""
         self.installed_system = True
+        self.imu_runs = 0
         self.info = {"kernel": "Linux version 7.2.0-pico4 test", "stock": "test"}
         dev = SimpleNamespace(s=SimpleNamespace(adb_serial="ABC"), ssh_argv=lambda command: ["ssh", command])
         # A stand-in with only what DevChecks uses of a Dev.
@@ -434,9 +452,13 @@ class HarnessTests(unittest.TestCase):
         }
         with (
             patch.object(self.runner, "command", side_effect=self.fake_command),
+            patch.object(hw.time, "sleep"),
             contextlib.redirect_stdout(io.StringIO()),
         ):
-            self.runner.userspace_checks(self.state)
+            if part:
+                self.runner.part_checks(self.state, part)
+            else:
+                self.runner.userspace_checks(self.state)
         return self.state
 
     def execute(self):
@@ -499,6 +521,46 @@ class HarnessTests(unittest.TestCase):
                 self.assertEqual(self.state["imu"]["status"], "fail" if failed else "pass")
                 self.assertTrue((self.runner.folder / "userspace-imu.json").exists())
                 self.assertTrue((self.runner.folder / "userspace-sensors-list.txt").exists())
+
+    def test_a_headset_that_moved_is_measured_again_by_the_installer(self):
+        # #74: the installer's check measures again while the headset moves, then only warns.
+        self.scenario = "moved-once"
+        self.stage2_checks(sensors=True, installer=True, part="imu")
+        self.assertEqual((self.imu_runs, self.state["imu"]["status"]), (2, "pass"))
+        self.assertNotIn("warnings", self.runner.result)
+        self.setUp()
+        self.scenario = "moved"
+        self.stage2_checks(sensors=True, installer=True, part="imu")
+        self.assertEqual(self.imu_runs, 3)
+        self.assertEqual(self.runner.result["warnings"], [hw.userspace.IMU_MOVED])
+
+    def test_a_moving_headset_fails_the_developers_check_and_a_broken_imu_always(self):
+        self.scenario = "moved"
+        with self.assertRaisesRegex(ValueError, "Head IMU check failed"):
+            self.stage2_checks(sensors=True, part="imu")
+        self.assertEqual(self.imu_runs, 1)
+        self.setUp()
+        self.scenario = "imu"  # still, but wrong: no retry, no warning
+        with self.assertRaisesRegex(ValueError, "Head IMU check failed"):
+            self.stage2_checks(sensors=True, installer=True, part="imu")
+        self.assertEqual(self.imu_runs, 1)
+
+    def test_each_part_runs_alone(self):
+        self.stage2_checks(sensors=True, steamvr=True, part="system")
+        self.assertIn("check", self.state)
+        self.assertNotIn("imu", self.state)
+        self.assertFalse(any(c[0] == "ssh" and "pico4-valve-session-check" in c[-1] for c in self.calls))
+        self.setUp()
+        self.stage2_checks(sensors=True, steamvr=True, part="session")
+        self.assertIn("valve_session", self.state)
+        self.assertNotIn("check", self.state)
+        self.setUp()
+        # A system without the feature has nothing to check in that part.
+        self.stage2_checks(part="session")
+        self.assertNotIn("valve_session", self.state)
+        self.setUp()
+        with self.assertRaisesRegex(ValueError, "unknown part"):
+            self.stage2_checks(part="cameras")
 
     def test_valve_session_is_checked_with_steamvr(self):
         for scenario, message in (

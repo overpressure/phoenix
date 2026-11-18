@@ -177,6 +177,33 @@ def power_warnings(power: object) -> list[str]:
 IMU_RATE_HZ = 500.0  # requested; the SSC runs the ICM-42688 at 512 Hz for it
 
 
+#: The installer's IMU check measures this often while the headset moves, this many seconds apart.
+IMU_STILL_ATTEMPTS = 3
+IMU_STILL_WAIT_SECONDS = 10
+#: A gyro whose spread is above this moved: at rest it is a few thousandths of a rad/s.
+IMU_MOVING_RAD_S = 0.05
+IMU_MOVED = (
+    "The headset moved during each head IMU measurement. Its IMU streams, but it was not checked at rest: "
+    "put the headset on a table and run the check again to be sure."
+)
+
+
+def imu_moved(value: object) -> bool:
+    """Tell whether a `pico4-imu stream --check` result failed only because the headset moved.
+
+    Both streams ran (samples, increasing timestamps, no gaps) and the gyro's spread shows motion.
+    """
+    if not isinstance(value, dict):
+        return False
+    streams = value.get("streams") or {}
+    for name in ("accel", "gyro"):
+        stream = streams.get(name) or {}
+        if not stream.get("samples") or stream.get("non_increasing_timestamps") or stream.get("gaps"):
+            return False
+    spread = (streams.get("gyro") or {}).get("std") or []
+    return any(isinstance(s, (int, float)) and s > IMU_MOVING_RAD_S for s in spread)
+
+
 def validate_imu(value: object, rate: float = IMU_RATE_HZ) -> None:
     """Validate `pico4-imu stream --check` JSON: head IMU streaming from the SLPI."""
     if not isinstance(value, dict) or value.get("schema") != 1:

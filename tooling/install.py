@@ -49,7 +49,7 @@ from overpressure.api.v1 import backup as backups
 from overpressure.api.v1.install import Ask, Context, Failed, Field, NoBackup, Stage, Task
 from overpressure.api.v1.process import Final, until
 
-from . import ADB_MODE, FASTBOOT_MODE, USB_MODES, device, devloop, localconfig, unlockfiles
+from . import ADB_MODE, CHECK_WORKFLOW, FASTBOOT_MODE, USB_MODES, device, devloop, localconfig, unlockfiles
 from . import doctor as checks
 from . import kernel as pinned_kernel
 
@@ -203,9 +203,30 @@ STOPPED_EARLY = (
 )
 READY = (
     "Unplug the headset and put it on. Sign in to Steam, pair the controllers and set up your room in the "
-    "headset. If you skipped Wi-Fi, join a network in its settings first. The installer can upgrade the "
-    "system later, take the headset back to PICO OS, or collect the logs for a bug report."
+    "headset. If you skipped Wi-Fi, join a network in its settings first. The installer can "
+    + (
+        "check that everything works (Check the headset; python -m overpressure install --workflow check), "
+        if CHECK_WORKFLOW
+        else ""
+    )
+    + "upgrade the system later, take the headset back to PICO OS, or collect the logs for a bug report."
 )
+#: The check workflow: a few minutes with the headset left alone, a checklist of what runs.
+PUT_DOWN = Ask(
+    "put-down",
+    "action",
+    "Put the headset on a table",
+    "Keep the cable in and put the headset on a stable table, its front cameras facing the room. Switch the "
+    "controllers on and lay them next to it if you like. Then don't touch it until every check is ticked off: "
+    "about 5 minutes. Nothing is changed on the headset.",
+    accept="Start the checks",
+    decline="Not now",
+)
+CHECK_WHERE = (
+    "Nothing was changed: the system stays installed. Save logs… has what the checks found; you can run them "
+    "again any time."
+)
+CHECKED = "The checks are done: you can pick the headset up, unplug it and put it on."
 UPGRADE_PLUG_IN = Ask(
     "plug-in",
     "action",
@@ -438,27 +459,75 @@ class Plan:
         """Return a command of the headset's command line (one that is no step of the window)."""
         return [sys.executable, "-m", "overpressure", "--device", self.headset.info.codename, *map(str, words)]
 
-    def check_task(self, where: str) -> Task:
-        """Return the acceptance checks of a finished install or upgrade (dev check).
+    def check_part_task(self, part: str, title: str, estimate: str) -> Task:
+        """Return one row of the check workflow's checklist: dev check's @p part (DevChecks.PARTS).
 
-        Two things only warn here: controllers SteamVR does not see (on a fresh install they are usually still
-        off, and pairing them comes after this step) and missed performance limits (the system works). The
-        window shows each warning; the install counts as done.
+        Three things only warn here: controllers SteamVR does not see (they may be off), missed performance
+        limits (the system works) and a headset that moved during the IMU check. The window shows each
+        warning under its row; a failed check stops the checklist there and changes nothing.
         """
-        return Task("check", "Acceptance checks", self.acceptance_checks, "about 3 min", where=where)
+        return Task(f"check-{part}", title, lambda ctx: self.check_part(ctx, part), estimate, where=CHECK_WHERE)
+
+    def check_part(self, ctx: Context, part: str) -> None:
+        """Run dev check's @p part as the installer's check; show the warnings its result records."""
+        ctx.run([*self.argv(ctx, "check"), "--installer", "--part", part])
+        runs = sorted(p for p in self.work.glob(f"check-*-{part}") if (p / "result.json").is_file())
+        for warning in self.warnings(runs[-1]) if runs else ():
+            ctx.note(warning, "warning")
+
+    def end_checks(self, where: str) -> tuple[Task, ...]:
+        """Return the checks at the end of an install or upgrade: none, or with an older overpressure all of them.
+
+        Without the check workflow (CHECK_WORKFLOW), the install and the upgrade check as they did: dev check's
+        parts in one task, whose warnings show in the window.
+        """
+        if CHECK_WORKFLOW:
+            return ()
+        return (Task("check", "Acceptance checks", self.acceptance_checks, "about 3 min", where=where),)
 
     def acceptance_checks(self, ctx: Context) -> None:
         """Run dev check as the installer's check; show the warnings its result records."""
         ctx.run([*self.argv(ctx, "check"), "--installer"])
         runs = sorted(p for p in self.work.glob("check-*") if (p / "result.json").is_file())
-        if not runs:
-            return
+        for warning in self.warnings(runs[-1]) if runs else ():
+            ctx.note(warning, "warning")
+
+    @staticmethod
+    def warnings(run: Path) -> list[str]:
+        """Return the warnings a dev check run's result.json records."""
         try:
-            result = json.loads((runs[-1] / "result.json").read_text(encoding="utf-8"))
+            result = json.loads((run / "result.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            return
-        for warning in result.get("warnings") or []:
-            ctx.note(str(warning), "warning")
+            return []
+        return [str(w) for w in result.get("warnings") or []]
+
+    @staticmethod
+    def put_down(ctx: Context) -> None:
+        """Ask the owner to leave the headset on a table for the checks."""
+        ctx.ask(PUT_DOWN)
+
+    def check_stages(self) -> tuple[Stage, ...]:
+        """Return the check workflow: the headset left alone, then the stage-2 checks one by one.
+
+        It changes nothing: the install and the upgrade end once the system starts, and their finished pages
+        offer it. Each part is a task, so the window's checklist ticks off as each part passes.
+        """
+        return (
+            Stage(
+                "check",
+                "Check the headset",
+                "A few minutes of checks with the headset lying still on a table: the system, the head IMU, and "
+                "SteamVR on the panels with the controllers. Nothing is changed on the headset.",
+                (
+                    Task("put-down", "Put the headset on a table", self.put_down, "", where=CHECK_WHERE),
+                    self.step_task("installed", "Connect to the system", "a few seconds", where=CHECK_WHERE),
+                    self.check_part_task("system", "The system, its storage, fan and graphics", "about 1 min"),
+                    self.check_part_task("imu", "The head IMU", "about 20 s"),
+                    self.check_part_task("session", "SteamVR on the panels, with the controllers", "about 4 min"),
+                    Task("checked", "Pick it up", lambda ctx: ctx.note(CHECKED), ""),
+                ),
+            ),
+        )
 
     def step_task(
         self, key: str, title: str, estimate: str, *, done: Callable[[Context], bool] | None = None, where: str = ""
@@ -1262,7 +1331,7 @@ class Plan:
                 "install",
                 "Install the upgrade",
                 "The headset's maintenance system starts and builds the new system itself, from public downloads "
-                "through this computer's connection; then it goes on and is checked. Your data stays. "
+                "through this computer's connection; then it starts. Your data stays. "
                 + INSTALL_TIME
                 + " Keep the cable in.",
                 (
@@ -1281,7 +1350,7 @@ class Plan:
                         "Keep the cable in and start the installer again: the install can be repeated.",
                     ),
                     self.step_task("installed", "Start the installed system", "about 2 min", where=installed_where),
-                    self.check_task(installed_where),
+                    *self.end_checks(installed_where),
                     Task("ready", "Unplug it and put it on", lambda ctx: ctx.note(UPGRADED), ""),
                 ),
             ),
@@ -1418,9 +1487,7 @@ class Plan:
                 "install",
                 "Install",
                 "Wi-Fi and your SSH key if you like; then the headset builds the system itself, from public "
-                "downloads through this computer's connection, and it goes on and is checked. "
-                + INSTALL_TIME
-                + " Keep the cable in.",
+                "downloads through this computer's connection, and it starts. " + INSTALL_TIME + " Keep the cable in.",
                 (
                     Task("wifi", "Wi-Fi (optional)", self.wifi, "a minute", where=IN_MAINTENANCE),
                     Task("ssh-key", "Your SSH key (optional)", self.ssh_key, "a minute", where=IN_MAINTENANCE),
@@ -1440,7 +1507,7 @@ class Plan:
                         writes=True,
                         where=installed_where,
                     ),
-                    self.check_task(installed_where),
+                    *self.end_checks(installed_where),
                     Task("ready", "Unplug it and put it on", lambda ctx: ctx.note(READY), ""),
                 ),
             ),

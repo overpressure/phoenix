@@ -12,6 +12,7 @@ shares with other headsets come from the overpressure package.
 
 from __future__ import annotations
 
+import dataclasses
 import subprocess
 from typing import TYPE_CHECKING, Callable
 
@@ -49,7 +50,11 @@ EDL_RESTART = (
     "again: the headset enters EDL mode afresh."
 )
 #: The installer's other workflows (overpressure/headset.py, Workflow).
-UPGRADE, RESTORE = "upgrade", "restore"
+UPGRADE, RESTORE, CHECK = "upgrade", "restore", "check"
+#: The check of the headset is a workflow of its own where the engine runs it afresh and leaves the install's
+#: record (interface 1.3, Workflow.changes); with an older overpressure the install and the upgrade check at
+#: their end, as before.
+CHECK_WORKFLOW = "changes" in {f.name for f in dataclasses.fields(Workflow)}
 #: The dev loop's subcommands that touch the headset: all but its two builds (image, boot-image).
 DEV_ON_HEADSET = (
     "stage-abl",
@@ -355,7 +360,7 @@ class Phoenix(Headset):
         return Plan(self).stages()
 
     def workflows(self) -> Sequence[Workflow]:
-        """Return the installer's three workflows: install, upgrade, back to PICO OS."""
+        """Return the installer's workflows: install, upgrade, back to PICO OS, and the check (CHECK_WORKFLOW)."""
         return (
             Workflow(
                 INSTALL,
@@ -377,6 +382,18 @@ class Phoenix(Headset):
                 "everything on it is erased.",
                 erases=True,
             ),
+        ) + (
+            (
+                Workflow(
+                    CHECK,
+                    "Check the headset",
+                    "A few minutes of checks with the headset on a table: the system, the head IMU and SteamVR "
+                    "with the controllers, ticked off one by one. Nothing is changed.",
+                    changes=False,
+                ),
+            )
+            if CHECK_WORKFLOW
+            else ()
         )
 
     def plan(self, workflow: str) -> Sequence[Stage]:
@@ -384,13 +401,18 @@ class Phoenix(Headset):
         from .install import Plan  # noqa: PLC0415  # install imports this package's modules: a top-level import is circular
 
         plan = Plan(self)
-        return {INSTALL: plan.stages, UPGRADE: plan.upgrade_stages, RESTORE: plan.restore_stages}[workflow]()
+        return {
+            INSTALL: plan.stages,
+            UPGRADE: plan.upgrade_stages,
+            RESTORE: plan.restore_stages,
+            CHECK: plan.check_stages,
+        }[workflow]()
 
     def workflow_problem(self, workflow: str) -> str:
         """Return why WORKFLOW cannot run now: an upgrade needs a system this computer installed, a restore a backup."""
         from . import devloop  # noqa: PLC0415  # devloop imports this package's modules: a top-level import is circular
 
-        if workflow == UPGRADE and not (devloop.WORK / devloop.INSTALLED).is_file():
+        if workflow in (UPGRADE, CHECK) and not (devloop.WORK / devloop.INSTALLED).is_file():
             return "This computer has not installed the system on a headset: install it first."
         if workflow == RESTORE and not (self.backup_set().folder / "manifest.json").is_file():
             return f"This computer has no backup of your headset: {backup.HOW_TO_IMPORT}."
@@ -400,8 +422,15 @@ class Phoenix(Headset):
         """Return the finished page: sign in to Steam; upgrade, back to PICO OS or a support bundle."""
         return AfterInstall(
             "Unplug it and put it on",
-            "Your headset is ready. Unplug the cable, put the headset on and sign in to Steam.",
+            "Your headset is ready. "
+            + (
+                "If you like, check that everything works first: a few minutes with the headset on a table. Then "
+                if CHECK_WORKFLOW
+                else ""
+            )
+            + "Unplug the cable, put the headset on and sign in to Steam.",
             (
+                *((Action("Check the headset", workflow=CHECK),) if CHECK_WORKFLOW else ()),
                 Action("Upgrade later", workflow=UPGRADE),
                 Action("Restore to stock", workflow=RESTORE),
                 Action("Get help", "support-bundle"),
@@ -415,7 +444,17 @@ class Phoenix(Headset):
                 "Upgraded",
                 "Unplug the cable and put the headset on: your account, games, settings and Wi-Fi are as you left "
                 "them.",
-                (Action("Restore to stock", workflow=RESTORE), Action("Get help", "support-bundle")),
+                (
+                    *((Action("Check the headset", workflow=CHECK),) if CHECK_WORKFLOW else ()),
+                    Action("Restore to stock", workflow=RESTORE),
+                    Action("Get help", "support-bundle"),
+                ),
+            )
+        if workflow == CHECK:
+            return AfterInstall(
+                "Checked",
+                "Every check ran; what it found is listed with each one. Unplug the cable and put the headset on.",
+                (Action("Upgrade later", workflow=UPGRADE), Action("Get help", "support-bundle")),
             )
         if workflow == RESTORE:
             return AfterInstall(

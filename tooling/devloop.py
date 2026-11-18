@@ -1110,18 +1110,24 @@ class Dev(Headset):
             )
         return output
 
-    def check(self, *, installer: bool = False) -> int:
+    def check(self, *, installer: bool = False, part: str = "") -> int:
         """Run the acceptance runner's stage-2 checks on the installed system; 0 when they pass.
 
-        The @p installer's check records controllers SteamVR does not see and missed performance limits as
-        warnings in result.json, not failures.
+        The @p installer's check records controllers SteamVR does not see, missed performance limits and a
+        headset that moved during the IMU check as warnings in result.json, not failures. @p part runs one
+        part only (DevChecks.PARTS), as the installer's check workflow does, one task each.
         """
         state = json.loads((self.work / "state.json").read_text(encoding="utf-8"))
-        folder = self.work / ("check-" + dt.datetime.now(dt.timezone.utc).astimezone().strftime("%Y%m%d-%H%M%S"))
+        stamp = dt.datetime.now(dt.timezone.utc).astimezone().strftime("%Y%m%d-%H%M%S")
+        folder = self.work / (f"check-{stamp}" + (f"-{part}" if part else ""))
         checks = DevChecks(self, folder, self.boot_build_info(), self.identity())
         checks.installer_check = installer
+        name = f"stage-2 checks: {part}" if part else "stage-2 checks"
+        run = (
+            (lambda: checks.part_checks(dict(state), part)) if part else (lambda: checks.userspace_checks(dict(state)))
+        )
         try:
-            checks.step("stage-2 checks", lambda: checks.userspace_checks(dict(state)))
+            checks.step(name, run)
             checks.result["status"] = "passed"
         except (Exception, KeyboardInterrupt) as exc:  # noqa: BLE001  # whatever stops the checks is their result
             checks.result.update(status="failed", error=str(exc) or "Interrupted")
@@ -1329,7 +1335,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per 
     sub.choices["check"].add_argument(
         "--installer",
         action="store_true",
-        help="the installer's check: controllers SteamVR does not see and missed performance limits only warn",
+        help="the installer's check: controllers SteamVR does not see, missed performance limits and a headset "
+        "that moved during the IMU check only warn",
+    )
+    sub.choices["check"].add_argument(
+        "--part", choices=DevChecks.PARTS, default="", help="one part only: the system, the head IMU or Valve's session"
     )
     sub.add_parser("boot-image", help="out/kernel/valve-boot.img from out/kernel, out/dev and the backup's recovery")
     release = sub.add_parser("release-check", help="the automated part of docs/release-checklist.md")
@@ -1365,7 +1375,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per 
             folder.mkdir(parents=True)
             Headset(dev.s, folder).stage_abl()
         elif args.command == "check":
-            return dev.check(installer=args.installer)
+            return dev.check(installer=args.installer, part=args.part)
         elif args.command == "install":
             dev.install(args.system, format_data=args.format_data, boot=args.boot, on_headset=args.on_headset)
         elif args.command == "boot-image":
