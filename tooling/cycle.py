@@ -524,8 +524,10 @@ def main(argv: list[str] | None = None) -> int:
     cycle = Cycle(settings, folder)
     code = 0
     try:
-        settings.require("adb_serial", "fastboot_serial")
         if not args.restore_only:
+            # Only the flash-run uses fastboot: the restore goes through PICO OS and EDL (restore_abl), and an
+            # install that stopped before its unlock never learnt the fastboot serial.
+            settings.require("adb_serial", "fastboot_serial")
             if not args.skip_stage:
                 cycle.stage_unlocked()
             code = cycle.flash_run()

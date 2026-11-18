@@ -240,6 +240,19 @@ class CycleTests(HeadsetFixture):
             c.restore_abl()
         return code
 
+    def test_the_restore_needs_no_fastboot_serial(self):
+        # #64: an install that stopped before its unlock never learnt the fastboot serial; the restore uses none.
+        self.settings.fastboot_serial = ""
+        restored = []
+        with (
+            patch.object(cycle, "ROOT", self.root),
+            patch.object(cycle.localconfig, "load", return_value=self.settings),
+            patch.object(cycle.Cycle, "restore_abl", lambda _c: restored.append(True)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(cycle.main(["--restore-only"]), 0)
+        self.assertEqual(restored, [True])
+
     def test_full_cycle_order_ends_on_stock(self):
         self.assertEqual(self.run_cycle(self.make()), 0)
         self.assertEqual(
