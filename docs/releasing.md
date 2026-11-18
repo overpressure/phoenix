@@ -47,6 +47,9 @@ a new minor or major comes after the overpressure release that brings it. The im
      SHA-256;
    - creates the GitHub release titled by the tag's first line, with the notes, the zip and its checksum, as a
      pre-release for a beta.
+   - then closes the issues the release brings: every open issue whose Stage is Awaiting release gets a comment
+     linking the release and is closed as completed (`python scripts/release.py close TAG --repo OWNER/NAME`,
+     `--dry-run` lists them; [overpressure's CLAUDE.md](https://github.com/overpressure/overpressure/blob/main/CLAUDE.md#backlog)). A failure there leaves the release published.
 
    No image, package or vendor file is attached ([distribution.md](distribution.md)): everything is built on the
    owner's computer or the headset.
