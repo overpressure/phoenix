@@ -155,8 +155,13 @@ The lens model is the stock compositor's (`libpxrcompositor.so`), like the Oculu
   `t = p / F`, `s` a polynomial K0…K10. `F` and `A0`…`A10` come per eye from `distortion_parameter`
   in `pvr/OpticalCalibrationData.json` (on this unit the stock table entry for its lens model and
   mould cavity).
-- **Lens centre.** The panel centre plus `lens_center_gos` (below 0.1 mm here). The panels move with
-  the lenses, so the IPD does not change the distortion.
+- **Lens centre.** The panel centre plus `lens_center_gos` in millimetres, with the stock compositor's
+  signs: −`centerx`, +`centery` (its distortion mesh scales them by 0.001 and −0.001 and adds them to
+  the panel point). Worn, a lens centre moved 2 mm along `centerx` or `centery` moves that eye's picture
+  the way stock's would only with these signs. The offsets differ per headset: on one, the two eyes'
+  `centery` differ by 0.05 mm, on another by 0.33 mm. Stock's compositor reads no other field of the
+  file's lens geometry (`rotation_binocular`, `decenter_lineangle`, `lens_center_through_lens`). The
+  panels move with the lenses, so the IPD does not change the distortion.
 - **Chromatic aberration.** Red and blue scale the green tan-angle by `1 + CA0 + CA1·r² + CA4·r` and
   `1 + CA2 + CA3·r² + CA5·r`, from the stock `SDK_Lens_ConfigFile.txt`. Off by default as on PICO OS
   (`sdk_chromaticStaus = 0`); `PICO4_LENS_CA=1` turns it on, and then the two-layer test scene drops
