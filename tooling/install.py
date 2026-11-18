@@ -542,15 +542,35 @@ class Plan:
             raise Failed(str(exc).split(": ", 1)[-1], NOTHING_CHANGED + " " + AGAIN) from exc
         ctx.set_setting(KEY("adb_serial"), serial)
 
+    @staticmethod
+    def running_build(ctx: Context) -> str | None:
+        """Return the build fingerprint of the PICO OS the headset runs now; None when PICO OS does not answer."""
+        settings = ctx.settings(Settings)
+        if not settings.adb_serial:
+            return None
+        rows = device_rows(ctx.output([settings.tool("adb"), "devices"], 30, check=False), ("device",))
+        if settings.adb_serial not in rows:
+            return None
+        argv = [settings.tool("adb"), "-s", settings.adb_serial, "shell", "getprop", "ro.build.fingerprint"]
+        found = ctx.output(argv, 15, check=False).strip()
+        return found if found.startswith("Pico/") else None
+
     def identity_known(self, ctx: Context) -> bool:
-        """Tell whether the saved identity is this headset's (by its adb serial) and verified."""
+        """Tell whether the saved identity is this headset's (by its adb serial), verified and still its build.
+
+        A headset whose PICO OS answers is asked for its build: one updated since the record was saved needs a
+        new record and a new backup (identity). One that does not answer (in its bootloader, or another system
+        runs) keeps its record.
+        """
         settings = ctx.settings(Settings)
         try:
-            return bool(settings.adb_serial) and device.read_identity(settings.path("identity"))["serial"] == (
-                settings.adb_serial
-            )
+            saved = device.read_identity(settings.path("identity"))
         except (OSError, ValueError, KeyError):
             return False
+        if not settings.adb_serial or saved["serial"] != settings.adb_serial:
+            return False
+        running = self.running_build(ctx)
+        return running is None or running == saved["fingerprint"]
 
     def identity(self, ctx: Context) -> None:
         """Read the headset's identity (device probe) unless the saved one is this headset; refuse an unverified one."""
@@ -567,6 +587,9 @@ class Plan:
                     "install this one."
                 )
                 raise Failed(msg, NOTHING_CHANGED)
+            running = self.running_build(ctx)
+            if running is not None and running != self.saved_build(path):
+                path = self.new_identity(ctx, path, running)
         else:
             ctx.run(
                 self.command(
@@ -578,6 +601,36 @@ class Plan:
         except (OSError, ValueError, KeyError) as exc:
             raise Failed(str(exc), NOTHING_CHANGED + " PICO OS keeps running as it is.") from exc
         ctx.log(f"identity: PICO OS {record['fingerprint'].split('/')[3]}, {device.firmware_support(record)}")
+
+    @staticmethod
+    def saved_build(path: Path) -> str:
+        """Return the build fingerprint a saved identity record holds, empty when it cannot be read."""
+        try:
+            return str(json.loads(path.read_text(encoding="utf-8")).get("fingerprint", ""))
+        except (OSError, ValueError, AttributeError):
+            return ""
+
+    def new_identity(self, ctx: Context, old: Path, running: str) -> Path:
+        """Save a new identity record for the headset's new PICO OS build beside @p old, and name it in .env.
+
+        The old record and its backup stay as they are: they describe the build the headset ran then. The
+        backup task then takes a new backup, since the named backup is of another identity (backup_there).
+        """
+        settings = ctx.settings(Settings)
+        name = "device-" + dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d-%H%M%S") + ".json"
+        path = old.with_name(name)
+        ctx.note(
+            f"PICO OS changed since {old.name} was saved ({build_version(self.saved_build(old))} to "
+            f"{build_version(running)}): a new record ({name}) and a new backup are made. The old ones stay as "
+            "they are."
+        )
+        ctx.run(
+            self.command(
+                "device", "probe", "--adb", settings.tool("adb"), "--serial", settings.adb_serial, "--output", path
+            )
+        )
+        ctx.set_setting(KEY("identity"), path.relative_to(REPO).as_posix() if path.is_relative_to(REPO) else str(path))
+        return path
 
     def panel(self, ctx: Context) -> None:
         """Refuse a display panel Valve's kernel does not drive, from what PICO OS tells its adb shell."""
@@ -860,6 +913,15 @@ class Plan:
                 msg,
                 f"{NOTHING_CHANGED} Name this headset's own backup in .env ({KEY('backup')}). {AGAIN}",
             )
+        running = self.running_build(ctx)
+        backed_up = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))["identity"]["fingerprint"]
+        if running is not None and running != backed_up:
+            msg = (
+                f"PICO OS {build_version(running)} runs on the headset, but the backup in {folder} is of "
+                f"{build_version(backed_up)}: restoring it would put back another build's system next to this "
+                "build's firmware."
+            )
+            raise Failed(msg, f"{NOTHING_CHANGED} PICO OS runs as it is: there is nothing to restore from this backup.")
 
     def pico_os_running(self, ctx: Context) -> bool:
         """Tell whether the headset .env names answers adb now: PICO OS runs, its system is stock already."""
@@ -1361,6 +1423,12 @@ class Plan:
                 ),
             ),
         )
+
+
+def build_version(fingerprint: str) -> str:
+    """Return the PICO OS version a build fingerprint names (Pico/PRODUCT/DEVICE:10/VERSION/...), else the whole."""
+    parts = fingerprint.split("/")
+    return parts[3] if len(parts) > 3 else fingerprint  # noqa: PLR2004  # the version's place in a fingerprint
 
 
 def _sha256(path: Path) -> str:

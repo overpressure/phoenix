@@ -109,6 +109,7 @@ class PlanTests(unittest.TestCase):
         self.model = "PICO 4"
         self.cmdline = SHARP
         self.mcu = ["1\n"]  # PICO OS's answers to the MCU probe, the last one repeated
+        self.running: str | None = None  # the PICO OS version the headset runs now; None: it does not answer that
         self.edl = 0
         self.restarting: list[int] = []  # the EDL count's next answers while a restart into EDL runs
         self.fastboot = False
@@ -160,6 +161,8 @@ class PlanTests(unittest.TestCase):
         if "reset --mode Reset" in text:  # out of EDL, into PICO OS
             self.edl = 0
             return 0, ""
+        if text.endswith("shell getprop ro.build.fingerprint"):  # not the boot check, which asks for it too
+            return 0, FINGERPRINT.format(self.running) if self.running else ""
         if "getprop sys.boot_completed" in text:
             return 0, "1\nPico/Phoenix_ovs/PICOA8110:10/5.13.7/x:user/dev-keys"
         if "printgpt" in text:
@@ -372,6 +375,77 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(self.commands(), [])
         statuses = [(e["task"], e["status"]) for e in ui.events if e["event"] == "task"]
         self.assertIn(("identity", "skipped"), statuses)
+
+    def saved_identity(self, version: str) -> None:
+        self.identity.parent.mkdir(parents=True, exist_ok=True)
+        record = {"schema": 1, "serial": ADB, "fingerprint": FINGERPRINT.format(version), "oem_state": "true"}
+        self.identity.write_text(json.dumps(record | {"chip_id": 7}))
+
+    def test_a_saved_identity_of_the_build_the_headset_still_runs_is_kept(self):
+        self.saved_identity("5.13.7")
+        self.running = "5.13.7"
+        ui = self.run_stages(("connect",), self.yes("plug-in"))
+        self.assertEqual(ui.finished()["status"], "done")
+        self.assertEqual(self.commands(), [])
+        self.assertEqual(self.settings().identity, self.identity.as_posix())
+
+    def test_pico_os_updated_since_the_record_gets_a_new_record_and_keeps_the_old(self):
+        # #66: an owner updated PICO OS after the first backup; the old record and backup describe the old build.
+        self.saved_identity("5.13.7")
+        old = self.identity.read_text()
+        self.running = self.version = "5.13.8"
+        ui = self.run_stages(("connect",), self.yes("plug-in"))
+        self.assertEqual(ui.finished()["status"], "done", ui.finished())
+        self.assertEqual(self.commands(), ["device probe"])
+        new = Path(self.settings().identity)
+        self.assertNotEqual(new, self.identity)
+        self.assertTrue(new.name.startswith("device-"), new)
+        self.assertIn("/5.13.8/", json.loads(new.read_text())["fingerprint"])
+        self.assertEqual(self.identity.read_text(), old)  # a record is never overwritten
+        notes = [e["text"] for e in ui.events if e["event"] == "note"]
+        self.assertTrue(any("5.13.7 to 5.13.8" in n for n in notes), notes)
+
+    def test_a_backup_of_the_old_build_no_longer_counts_after_an_update(self):
+        self.saved_identity("5.13.7")
+        self.running = self.version = "5.13.8"
+        with mock.patch.object(plan.checks, "backup_check", return_value=mock.Mock(status=plan.doctor.OK)):
+            self.backup.mkdir(parents=True)
+            manifest = {"identity": json.loads(self.identity.read_text())}
+            (self.backup / "manifest.json").write_text(json.dumps(manifest))
+            self.env.write_text(self.env.read_text() + f"PICO4_EDL_SERIAL={EDL}\n")
+            ctx = self.ctx()
+            self.assertTrue(self.plan.backup_there(ctx))
+            self.run_stages(("connect",), self.yes("plug-in"))
+            self.assertFalse(self.plan.backup_there(self.ctx()))
+
+    def test_a_headset_whose_pico_os_does_not_answer_keeps_its_record(self):
+        # In its bootloader after the engineering bootloader, or another system runs: nothing to compare.
+        self.saved_identity("5.13.7")
+        self.running = None
+        ui = self.run_stages(("connect",), self.yes("plug-in"))
+        self.assertEqual(ui.finished()["status"], "done")
+        self.assertEqual(self.commands(), [])
+
+    def test_the_restore_refuses_a_backup_of_another_build_than_pico_os_runs(self):
+        self.saved_identity("5.13.7")
+        self.backup.mkdir(parents=True)
+        (self.backup / "manifest.json").write_text(json.dumps({"identity": json.loads(self.identity.read_text())}))
+        ctx = self.ctx()
+        with (
+            mock.patch.object(ctx, "run"),
+            mock.patch.object(self.plan, "backup_there", return_value=True),
+            mock.patch.object(self.plan, "running_build", return_value=FINGERPRINT.format("5.13.8")),
+            self.assertRaisesRegex(plan.Failed, "5.13.8 runs on the headset, but the backup .* is of 5.13.7"),
+        ):
+            self.plan.check_backup(ctx)
+        # PICO OS that does not answer (a stuck headset) or runs the backup's build: the restore goes on.
+        for running in (None, FINGERPRINT.format("5.13.7")):
+            with (
+                mock.patch.object(ctx, "run"),
+                mock.patch.object(self.plan, "backup_there", return_value=True),
+                mock.patch.object(self.plan, "running_build", return_value=running),
+            ):
+                self.plan.check_backup(ctx)
 
     def test_several_devices_or_none_end_in_words(self):
         original = self.capture
