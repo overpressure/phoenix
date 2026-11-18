@@ -1,6 +1,6 @@
 name: Bug report
 description: Something on the headset, in the installer or in the tools does not work as documented.
-labels: [bug]
+type: Bug
 body:
   - type: dropdown
     id: area
