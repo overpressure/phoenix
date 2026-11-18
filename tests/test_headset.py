@@ -131,6 +131,8 @@ class HeadsetFixture(unittest.TestCase):
         self.unlocked = "true"
         self.stock_abl = False  # fastboot runs PICO's stock ABL, not the engineering one
         self.booted = True  # PICO OS answers sys.boot_completed with 1
+        self.adb_listed: dict[str, int] = {}  # adb devices: serial -> SoC ID (the identity's is 1234567)
+        self.adb_empty = 0  # adb devices lists nothing this many times first (a server that has just started)
         self.partitions = [("boot", len(self.boot)), ("abl", 1 << 20)]
         self.clock = FakeClock()
         quiet = contextlib.redirect_stdout(io.StringIO())
@@ -143,7 +145,7 @@ class HeadsetFixture(unittest.TestCase):
     def texts(self):
         return [" ".join(c) for c in self.calls]
 
-    def fake(  # noqa: C901  # one answer per command the steps run
+    def fake(  # noqa: C901, PLR0912  # one answer per command the steps run
         self,
         argv: Sequence[object],
         _timeout: float = 60,
@@ -161,6 +163,14 @@ class HeadsetFixture(unittest.TestCase):
             self.edl = 1
         elif "reset --mode Edl" in text:
             self.restarting = [1, 1, 1, 0, 0]  # still there a while, then gone, then back (as the PICO 4)
+        elif "soc0/serial_number" in text:  # one device's boot state, SoC ID and fingerprint
+            chip = self.adb_listed.get(words[words.index("-s") + 1])
+            fingerprint = "Pico/Phoenix_ovs/PICOA8110:10/5.13.7/test:user/dev-keys"
+            output = f"{1 if self.booted else 0}\n{chip}\n{fingerprint}" if chip is not None else ""
+        elif words[0].endswith("adb") and words[-1] == "devices":
+            listed = {} if self.adb_empty > 0 else self.adb_listed
+            self.adb_empty -= 1
+            output = "List of devices attached\n" + "".join(f"{s}\tdevice\n" for s in listed)
         elif "getprop sys.boot_completed" in text:
             output = "1\nPico/Phoenix_ovs/PICOA8110:10/5.13.7/test:user/dev-keys" if self.booted else ""
         elif f"echo {devloop.REACHED}" in text:
@@ -212,6 +222,10 @@ class HeadsetFixture(unittest.TestCase):
 
 
 class CycleTests(HeadsetFixture):
+    def setUp(self):
+        super().setUp()
+        self.adb_listed = {"ADB1": 1234567}  # PICO OS on the headset answers adb
+
     def make(self):
         return cycle.Cycle(self.settings, self.folder, self.fake, self.clock, self.edl_count)
 
@@ -311,6 +325,35 @@ class CycleTests(HeadsetFixture):
         self.fastboot_listed = False
         self.assertTrue(self.make().stage_abl())
         self.assertEqual(self.steps()[-1], "pico-os")
+
+    def test_pico_os_is_found_by_the_headsets_soc_id_whatever_its_serial(self):
+        # #55: a sek headset's PICO OS answered with another serial under the engineering ABL.
+        self.adb_listed = {"PHONE1": 7654321, "OTHER1": 1234567}
+        c = self.make()
+        self.assertEqual(c.pico_os_booted(), "Pico/Phoenix_ovs/PICOA8110:10/5.13.7/test:user/dev-keys")
+        asked = [w[w.index("-s") + 1] for w in self.calls if "soc0/serial_number" in " ".join(w)]
+        self.assertEqual(asked, ["PHONE1", "OTHER1"])  # the phone answered with another SoC ID: not the headset
+
+    def test_another_android_device_is_never_taken_for_the_headset(self):
+        # The headset still boots: only a phone answers adb, and it has finished booting.
+        self.adb_listed = {"PHONE1": 7654321}
+        with self.assertRaisesRegex(RuntimeError, "PICO OS has not finished booting"):
+            self.make().pico_os_booted()
+
+    def test_without_an_identity_only_the_saved_serial_counts(self):
+        (self.root / "device.json").unlink()
+        self.adb_listed = {"OTHER1": 1234567}
+        with self.assertRaisesRegex(RuntimeError, "PICO OS has not finished booting"):
+            self.make().pico_os_booted()
+        self.adb_listed = {"ADB1": 1234567}
+        self.assertTrue(self.make().pico_os_booted())
+
+    def test_a_just_started_adb_server_gets_a_few_seconds_to_list_the_headset(self):
+        # Linux and macOS: the fastboot check stops adb's server; the next one lists nothing at first.
+        self.adb_empty = 2
+        self.assertTrue(self.make().pico_os_booted())
+        lists = [w for w in self.calls if w[0].endswith("adb") and w[-1] == "devices"]
+        self.assertEqual(len(lists), 3)
 
     def test_an_unlocked_headset_left_in_fastboot_stops_at_once(self):
         self.booted = False

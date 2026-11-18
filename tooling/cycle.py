@@ -48,6 +48,8 @@ EDL_FROM_FASTBOOT = (
     "the headset waits in fastboot with its stock bootloader: put it into EDL mode by hand (power it off, then hold "
     "both volume buttons while plugging in the cable), then start this again"
 )
+#: How long a just-started adb server may list no device before none counts (Headset.adb_devices).
+ADB_LIST_SECONDS = 5
 #: The engineering ABL's unlock state in oem device-info; the stock ABL writes DeviceUnlocked= instead.
 ENGINEERING_LOCK = re.compile(
     r"^\s*(?:\(bootloader\)\s*)?Device unlocked\s*:\s*(?:yes|no|true|false)\s*$", re.IGNORECASE | re.MULTILINE
@@ -193,22 +195,66 @@ class Headset:
             "abl",
         ]
 
+    def identity_chip(self) -> int | None:
+        """Return the SoC ID the headset's identity record holds, None without a readable one."""
+        try:
+            return qualcomm.chip_id(str(json.loads(self.s.path("identity").read_text(encoding="utf-8"))["chip_id"]))
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    def adb_devices(self) -> list[str]:
+        """Return the serials adb lists ready ("device"), oldest first as adb lists them.
+
+        On Linux and macOS the fastboot check stops adb's server (release_adb); the next adb command starts a new
+        one, which lists no device in its first moments. An empty list is only taken as such after a few seconds.
+        """
+        adb = self.s.tool("adb")
+        deadline = self.clock.monotonic() + ADB_LIST_SECONDS
+        while True:
+            output = self.run([adb, "devices"], 15, check=False)
+            serials = [w[0] for w in map(str.split, output.splitlines()[1:]) if w[1:2] == ["device"]]
+            if serials or self.clock.monotonic() >= deadline:
+                return serials
+            self.clock.sleep(1)
+
     def pico_os_booted(self) -> str:
-        """Return PICO OS's build fingerprint once it has finished booting; raise while it has not (one look)."""
-        lines = self.run(
-            [
-                self.s.tool("adb"),
-                "-s",
-                self.s.adb_serial,
-                "shell",
-                "getprop sys.boot_completed; getprop ro.build.fingerprint",
-            ],
-            15,
-        ).splitlines()
-        if not lines or lines[0].strip() != "1":
-            msg = "PICO OS has not finished booting"
-            raise RuntimeError(msg)
-        return lines[1].strip() if len(lines) > 1 else ""
+        """Return PICO OS's build fingerprint once it has finished booting on this headset; raise while not (one look).
+
+        The headset is the adb device whose SoC ID is its identity's, whatever its serial: under the engineering ABL
+        PICO OS may report another one than under the stock ABL, and another Android device on this computer is never
+        taken for it. Without an identity record only the saved serial counts.
+        """
+        adb, saved = self.s.tool("adb"), self.s.adb_serial
+        chip = self.identity_chip()
+        serials = self.adb_devices()
+        for serial in sorted(serials, key=lambda s: s != saved):  # the saved serial first
+            if chip is None and serial != saved:
+                continue
+            lines = self.run(
+                [
+                    adb,
+                    "-s",
+                    serial,
+                    "shell",
+                    "getprop sys.boot_completed; cat /sys/devices/soc0/serial_number; getprop ro.build.fingerprint",
+                ],
+                15,
+                check=False,
+            ).splitlines()
+            try:
+                soc = qualcomm.chip_id(lines[1]) if len(lines) > 1 else None
+            except ValueError:
+                soc = None
+            if chip is not None and soc != chip:
+                continue  # another device, or one that does not answer yet
+            if not lines or lines[0].strip() != "1":
+                break
+            if serial != saved:
+                # Not the serial itself: the logs mask only the serials .env names.
+                print("   PICO OS answers with another adb serial than the saved one (its SoC ID matches)", flush=True)
+            return lines[2].strip() if len(lines) > 2 else ""  # noqa: PLR2004  # the third line: the fingerprint
+        msg = "PICO OS has not finished booting"
+        raise RuntimeError(msg)
 
     def fastboot_abl(self) -> tuple[bool, bool] | None:
         """Return (whether the engineering ABL runs, whether it is unlocked) for a headset in fastboot; else None.
