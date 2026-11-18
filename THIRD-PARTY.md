@@ -34,5 +34,5 @@ release `2026.11.17`, which carries the complete sources of its GPL and LGPL pac
 
 Valve's Linux kernel with the project's changes is its own repository,
 [overpressure/linux](https://github.com/overpressure/linux) (GPL-2.0-only, unless a file states another
-license). `kernel/release.json` pins its release `phoenix/7.2-4`, whose binaries the project publishes there
-with their source: Valve's commit `509b71a1bdcd` and the project's commits on it.
+license). `kernel/release.json` pins its release `phoenix/7.2-6`, whose binaries the project publishes there
+with their source: Valve's commit `e5fd17767590` and the project's commits on it.
