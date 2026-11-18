@@ -13,10 +13,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from typing import IO, TYPE_CHECKING
 from unittest.mock import patch
 
-from devices.phoenix.tooling import HEADSET, cycle, devloop, localconfig
+from devices.phoenix.tooling import HEADSET, cycle, device, devloop, localconfig
 from overpressure.api.v1 import REPO, progress, qualcomm
 from overpressure.api.v1.localconfig import parse
 
@@ -1429,6 +1430,27 @@ class SupportFilesTests(unittest.TestCase):
                 "state.json",
             ],
         )
+
+    def masks(self, identity: str | None) -> dict[str, str]:
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder, "device.json")
+            if identity is not None:
+                path.write_text(identity, encoding="utf-8")
+            settings = SimpleNamespace(path=lambda _name: path)
+            with patch("devices.phoenix.tooling.localconfig.load", return_value=settings):
+                return HEADSET.support_masks()
+
+    def test_the_unlock_token_and_the_soc_id_are_masked(self):
+        # #77: the unlock's log shows its fastboot command lines, the token in them.
+        masks = self.masks('{"serial": "ADB1", "chip_id": 1234567}')
+        self.assertEqual(masks[device.unlock_token(1234567)], "<unlock token>")
+        self.assertEqual(masks["1234567"], "<chip id>")
+        self.assertEqual(masks["0x12d687"], "<chip id>")
+        self.assertEqual(len(masks), 3)
+
+    def test_without_an_identity_record_nothing_is_named(self):
+        self.assertEqual(self.masks(None), {})
+        self.assertEqual(self.masks('{"serial": "ADB1"}'), {})
 
 
 if __name__ == "__main__":

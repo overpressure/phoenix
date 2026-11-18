@@ -448,4 +448,6 @@ What an owner sends is the window's *Save logs…* (`python -m overpressure supp
 the installer's logs, this computer's system and, from the PICO 4 (`support_files` in
 [tooling/\_\_init\_\_.py](../tooling/__init__.py)), the dev loop's state and the text files of its three newest
 `stage-abl-*` and `check-*` runs, plus this archive when the installed system answers over SSH. Nothing else of
-`out/dev` goes in: it also holds this computer's SSH key, PICO OS's files and images.
+`out/dev` goes in: it also holds this computer's SSH key, PICO OS's files and images. Every text file in it has
+the serials, the headset's unlock token and its SoC ID masked (`support_masks`): the unlock's log holds its
+fastboot command lines, the token in them (with an overpressure older than interface 1.4 only the serials).

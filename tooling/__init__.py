@@ -535,6 +535,23 @@ class Phoenix(Headset):
         except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
             (folder / "headset-bundle.txt").write_text(f"The headset's own bundle failed: {exc}\n", encoding="utf-8")
 
+    def support_masks(self) -> dict[str, str]:
+        """Return the unlock token and the SoC ID it comes from, as a bug report shows them instead (interface 1.4).
+
+        The unlock writes its fastboot command lines into its log, the token in them; the token is derived from
+        the SoC ID, so both identify the headset like its serials. Without an identity record there is neither.
+        """
+        import json  # noqa: PLC0415  # only here
+
+        from . import device, localconfig  # noqa: PLC0415  # they import this package's modules: circular otherwise
+
+        try:
+            identity = json.loads(localconfig.load().path("identity").read_text(encoding="utf-8"))
+            chip = qualcomm.chip_id(str(identity["chip_id"]))
+        except (OSError, ValueError, KeyError, TypeError):
+            return {}
+        return {device.unlock_token(chip): "<unlock token>", str(chip): "<chip id>", f"0x{chip:x}": "<chip id>"}
+
 
 #: What a bug report takes from out/dev: the newest runs of these dev loop steps, their text files up to a size.
 SUPPORT_RUNS = ("stage-abl-", "check-")
