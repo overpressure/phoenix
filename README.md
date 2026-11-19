@@ -12,7 +12,7 @@ to PICO OS is part of it.
 | | |
 | --- | --- |
 | **Status** | Beta: for owners who are fine with an early release and can report what they find |
-| **Newest release** | [1.0 beta 4](https://github.com/overpressure/phoenix/releases) |
+| **Newest release** | [1.0 beta 5](https://github.com/overpressure/phoenix/releases) |
 | **Your headset** | The original PICO 4, not the PICO 4 Pro or Ultra; PICO OS global build 5.13.3, 5.13.7 or 5.13.8, not a China build ([why](docs/device-preparation.md#other-pico-os-builds)) |
 | **Your computer** | Windows ✅ · Linux ✅ · macOS ❔ |
 | **Tested on** | 1 headset |
@@ -83,6 +83,7 @@ to PICO OS is part of it.
 | Android apps | ✅ | Through Valve's Lepton, as on the Steam Frame |
 | PC VR over Steam Link | ✅ | Picture, sound, tracking and controllers |
 | Video playback | 🟡 | Most videos play; HEVC files with B-frames show errors ([#29](https://github.com/overpressure/phoenix/issues/29)) |
+| Desktop | ✅ | KDE Plasma in a window in VR, as on the Steam Frame: Steam's + → Launch Program → Desktop; one controller is the whole mouse |
 
 ### Installing
 
