@@ -449,9 +449,20 @@ SteamVR's dashboard has default bindings only for some controller types, so
 [`pico4-vrcompositor-bindings.json`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4-vrcompositor-bindings.json)
 is the profile's `default_bindings` for `openvr.component.vrcompositor`: a press of `/input/system` (PICO
 button right, menu button left) toggles the dashboard, a double press the room view
-([xr.md](xr.md#passthrough)), holding the PICO button recenters; the aim pose is the laser, the trigger
-clicks, the grip goes back, the joystick scrolls. The dashboard's content is the Steam client's VR UI
-(`vrgamepadui`), so it shows once the client runs.
+([xr.md](xr.md#passthrough)), and holding the PICO button recenters. The aim pose is the laser. Each hand has
+the whole laser mouse, as Valve binds the Touch controllers, which share the PICO 4's layout; one controller
+is enough for the desktop:
+
+| Input | Laser |
+| --- | --- |
+| Trigger | left click |
+| Joystick click | right click (as on the Frame) |
+| Grip | middle click |
+| A or X | home |
+| B or Y | back |
+| Joystick | scroll |
+
+The dashboard's content is the Steam client's VR UI (`vrgamepadui`), so it shows once the client runs.
 
 #### Controllers in games
 
@@ -552,12 +563,29 @@ any other app in the running session:
 The package also brings Valve's Plasma defaults and look-and-feel packages, and Steam's autostart inside Plasma.
 
 - **Plasma is Holo's** (6.5.3, Qt 6.10). The Frame's own build (6.2.5) needs its private base's Qt 6.8.
-  The image adds Dolphin and Konsole, about 1.3 GiB in all: the system image is 6,005 MiB of `super`'s
+  The image adds Dolphin and Konsole, about 1.3 GiB in all: the system image is 6,007 MiB of `super`'s
   8 GiB.
 - **`plasma.desktop` is Valve's** (`start-gamescope-session plasma-session.target`), as on the Frame,
   whose Plasma build leaves it out. Holo's `plasma-workspace` ships its own, which starts Plasma
   without SteamVR. `build-userspace.sh` installs Valve's over it and checks the owner.
-**Desktop mode** works as sddm runs it on the Frame:
+- **Clicks.** kwin chooses its X11 backend (gamescope sets `DISPLAY`). For a window that is not Steam's,
+  gamescope sends the laser's click as a touch and sets `_STEAMOS_TOUCH_POINTER_EMULATION` on Xwayland's
+  root; Valve's Xwayland turns that touch into the pointer's click. Holo's Xwayland 24.1.9 does not, and
+  the Frame's needs its private base's libei (`ei_device_text_keysym`), so kwin got bare touches and
+  ignored them. `overpressure-gamescope`'s `gamescope-non-steam-window-click.patch` gives such windows
+  the click as the left button, as gamescope already does for game windows; hover is unchanged.
+- **One launch at a time.** `steamos-nested-desktop` first removes `$XDG_RUNTIME_DIR/nested_plasma`. A
+  second **Desktop** started while one runs removes the first one's runtime directory with kwin's
+  Wayland socket in it: kded6 fails ("Failed to create wl_display") and Plasma stays black.
+- **The laser** is the dashboard's ([SteamVR configuration](#steamvr-configuration)), one controller is
+  enough: trigger left click, joystick click right click, grip middle click, joystick scroll, B or Y
+  back. A or X is the laser's **home**, as on the Frame. SteamVR sends it as OpenVR button 1
+  (`k_EButton_ApplicationMenu`, the compositor's `VREvent_ButtonPress`, as back is button 2); the
+  Frame's Steam client acts only on button 2 (`k_EButton_Dashboard_Back`), and neither SteamVR nor
+  gamescope handle 1, so it does nothing on the Frame either.
+
+**Desktop mode** works as sddm runs it on the Frame. Steam's VR power menu does not offer **Switch to
+Desktop**, so in VR the desktop is the **Desktop** app above; desktop mode is not tried on the headset:
 
 1. Steam's **Switch to Desktop** asks steamos-manager, which writes a one-shot autologin
    (`/etc/sddm.conf.d/zzt-steamos-temp-login.conf`, `Session=plasma.desktop`) and ends the session.
@@ -585,7 +613,12 @@ The package also brings Valve's Plasma defaults and look-and-feel packages, and 
 so they run in both sessions.
 
 `pico4-userspace-check` requires the Desktop entry, `steamos-nested-desktop`, `startplasma-wayland` and
-`kwin_wayland_wrapper`, and checks the recorded target. Plasma on the headset is not verified yet.
+`kwin_wayland_wrapper`, and checks the recorded target.
+
+| Check | Result |
+| --- | --- |
+| **+ → Launch Program → Desktop**, worn | Plasma in a window of its own; hover, clicks, right click, middle click and scrolling with one controller; Dolphin opens folders and its window drags |
+| **Switch to Desktop** | not in Steam's VR power menu |
 
 ## Build
 
@@ -597,7 +630,7 @@ The session's parts are packages of the userspace archive (`scripts/build-usersp
 | `pico4-swapchain-usage` | [pico4-swapchain-usage](https://github.com/overpressure/packages/tree/main/phoenix/pico4-swapchain-usage), [PKGBUILD](https://github.com/overpressure/packages/blob/main/phoenix/pico4-swapchain-usage/PKGBUILD) | `libVkLayer_PICO4_swapchain_usage.so` |
 | `overpressure-mangohud` | MangoHud 0.8.4 release archive, [PKGBUILD](https://github.com/overpressure/packages/blob/main/common/overpressure-mangohud/PKGBUILD) | `mangoapp`, `mangohud`, `mangohudctl`, the MangoHud layer |
 | `pico4-monado` | [PKGBUILD](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/PKGBUILD) and patches, [pico4-monado](https://github.com/overpressure/packages/tree/main/phoenix/pico4-monado) | `monado-service`, the OpenXR runtime, `driver_monado` |
-| `overpressure-gamescope` | upstream gamescope at `ea3579ed` and one patch | gamescope |
+| `overpressure-gamescope` | upstream gamescope at `ea3579ed` and two patches (a window added once; [clicks](#the-desktop) for windows that are not Steam's) | gamescope |
 | `deckard-steamvr-rel`, `deckard-steamvr-session` | the Frame's repository | SteamVR in `/opt/steamvr`; the session's scripts and user units |
 | `steamdeck-kde-presets`; Plasma, kwin, Dolphin, Konsole | the Frame's repository; Holo's | [the desktop](#the-desktop) |
 

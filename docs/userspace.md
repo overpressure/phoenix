@@ -111,7 +111,7 @@ here.
 | `pico4-monado` | Monado 25.1.0 with the PICO 4 driver and `pico4-cam` | [xr.md](xr.md) |
 | `pico4-basalt` | Basalt for Monado's VIT interface, built for `armv8.2-a` | [xr.md](xr.md) |
 | `pico4-swapchain-usage` | the stock path's frame pacing and compressed scanout in SteamVR's compositor | [session.md](session.md) |
-| `overpressure-gamescope` | the Frame's gamescope 3.16.28 with a fix for a crash when a game starts | [session.md](session.md) |
+| `overpressure-gamescope` | the Frame's gamescope 3.16.28 with a fix for a crash when a game starts, and the laser's click as the left button for windows that are not Steam's | [session.md](session.md#the-desktop) |
 | `pico4-vrlink` | `vrlink` support for Steam Link | [session.md](session.md) |
 | `pico4-power` | fan control, the battery guard and the power key, as on PICO OS; its preset enables their services | [cooling.md](cooling.md), [install.md](install.md#power-key) |
 | `overpressure-spa-alsa` | PipeWire's ALSA plugin at Valve's 1.6.8 with the capture fix of [Audio](#audio), installed over `pipewire-audio`'s by its pacman hook | this document |
