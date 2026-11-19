@@ -92,6 +92,12 @@ STALE_EDL_WHERE = (
     "Nothing was written to your headset. Hold the power button for about 10 s until it restarts into PICO OS, "
     "keep the cable in, then start the installer again: it puts the headset into EDL mode afresh."
 )
+#: Where the headset is when edl-ng's transfer timed out in the middle of the backup: what it read stays.
+LINK_LOST_WHERE = (
+    "Nothing was written to your headset. Hold the power button for about 10 s until it restarts into PICO OS, "
+    "keep the cable in, then start the installer again: the backup goes on from where it stopped. If this "
+    "happens again and again, try another USB port or cable, without a hub."
+)
 #: Where the headset is when this computer may not use it in EDL or fastboot mode.
 EDL_WHERE = (
     "Your headset is in EDL mode (its lenses stay dark); nothing was written to it. Run the command above, keep "
@@ -784,14 +790,8 @@ class Plan:
 
     def backup(self, ctx: Context) -> None:
         """EDL, its partition table for the LUNs and the serial, then a full backup without userdata, verified."""
+        resume = self.backup_folder(ctx)
         settings = ctx.settings(Settings)
-        if settings.path("backup").exists() and not self.backup_there(ctx):
-            folder = "backup/stock-" + dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d-%H%M%S")
-            ctx.note(
-                f"{settings.path('backup')} holds another or an unfinished backup: it stays, this one goes to {folder}."
-            )
-            ctx.set_setting(KEY("backup"), folder)
-            settings = ctx.settings(Settings)
         ctx.progress(None, "Starting EDL mode")
         self.enter_edl(ctx, settings)
         ctx.progress(None, "Reading the partition table")
@@ -818,10 +818,12 @@ class Plan:
         ctx.set_setting(KEY("edl_serial"), serial)
         folder = settings.path("backup")
         try:
-            self.capture_backup(ctx, settings, folder, luns)
+            self.capture_backup(ctx, settings, folder, luns, resume=resume)
         except Failed as exc:
             if qualcomm.unanswered(str(exc)):
                 raise Failed(qualcomm.NO_ANSWER, STALE_EDL_WHERE) from exc
+            if device.RESUMABLE and qualcomm.link_lost(str(exc)):
+                raise Failed(qualcomm.LINK_LOST, LINK_LOST_WHERE) from exc
             raise
         ctx.progress(None, "Checking the backup")
         ctx.run(self.command("device", "verify-backup", "--backup", folder))
@@ -843,8 +845,37 @@ class Plan:
             f"{backups.HOW_TO_EXPORT}."
         )
 
-    def capture_backup(self, ctx: Context, settings: localconfig.Settings, folder: Path, luns: list[int]) -> None:
-        """Read every partition but userdata into the new @p folder (device backup, edl-ng's dumps)."""
+    def backup_folder(self, ctx: Context) -> bool:
+        """Choose the backup's folder: this headset's unfinished one goes on (True), any other stays as it is."""
+        settings = ctx.settings(Settings)
+        if not settings.path("backup").exists() or self.backup_there(ctx):
+            return False
+        if self.unfinished_here(ctx):
+            ctx.note(f"{settings.path('backup')} holds this headset's unfinished backup: it goes on from there.")
+            return True
+        folder = "backup/stock-" + dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d-%H%M%S")
+        ctx.note(
+            f"{settings.path('backup')} holds another or an unfinished backup: it stays, this one goes to {folder}."
+        )
+        ctx.set_setting(KEY("backup"), folder)
+        return False
+
+    @staticmethod
+    def unfinished_here(ctx: Context) -> bool:
+        """Tell whether .env's backup folder holds this headset's unfinished backup, which can go on (since 1.5)."""
+        settings = ctx.settings(Settings)
+        if not device.RESUMABLE:
+            return False
+        try:
+            identity = device.read_identity(settings.path("identity"))
+        except (OSError, ValueError, KeyError):
+            return False
+        return qualcomm.unfinished(settings.path("backup")) == identity
+
+    def capture_backup(
+        self, ctx: Context, settings: localconfig.Settings, folder: Path, luns: list[int], *, resume: bool = False
+    ) -> None:
+        """Read every partition but userdata into @p folder (device backup, edl-ng's dumps); @p resume goes on."""
         ctx.run(
             self.command(
                 "device",
@@ -864,6 +895,7 @@ class Plan:
                 "--execute",
                 "--confirm-device",
                 settings.adb_serial,
+                *(["--resume"] if resume else []),
             )
         )
 

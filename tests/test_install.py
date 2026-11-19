@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from unittest import mock
 
 from devices.phoenix import tooling
-from devices.phoenix.tooling import HEADSET, devloop, localconfig
+from devices.phoenix.tooling import HEADSET, device, devloop, localconfig
 from devices.phoenix.tooling import doctor as checks
 from devices.phoenix.tooling import install as plan
 from overpressure.api.v1 import backup as backups
@@ -653,6 +653,43 @@ class PlanTests(unittest.TestCase):
         new = self.settings().backup
         self.assertTrue(new.startswith("backup/stock-"), new)
         self.assertTrue((self.backup / "edl.log").exists())
+
+    @unittest.skipUnless(device.RESUMABLE, "this overpressure has no resumed backup (interface 1.5)")
+    def test_this_headsets_unfinished_backup_goes_on_where_it_stopped(self):
+        self.saved_identity("5.13.7")
+        self.backup.mkdir(parents=True)
+        record = {"identity": json.loads(self.identity.read_text())}
+        (self.backup / qualcomm.UNFINISHED).write_text(json.dumps(record))
+        self.run_stages(("connect", "prepare"), self.yes("plug-in", "consent"))
+        self.assertEqual(self.settings().backup, self.backup.as_posix())
+        backup = next(argv for argv, _, _ in self.spawned if "backup" in argv and "--execute" in argv)
+        self.assertIn("--resume", backup)
+        # Another headset's unfinished backup stays as it is: this one goes elsewhere, from the start.
+        record["identity"]["serial"] = "SOMEONE"
+        (self.backup / qualcomm.UNFINISHED).write_text(json.dumps(record))
+        self.spawned.clear()
+        self.run_stages(("connect", "prepare"), self.yes("plug-in", "consent"))
+        self.assertTrue(self.settings().backup.startswith("backup/stock-"), self.settings().backup)
+        backup = next(argv for argv, _, _ in self.spawned if "backup" in argv and "--execute" in argv)
+        self.assertNotIn("--resume", backup)
+
+    @unittest.skipUnless(device.RESUMABLE, "this overpressure has no resumed backup (interface 1.5)")
+    def test_a_link_that_timed_out_mid_backup_says_to_restart_and_that_it_goes_on(self):
+        original = self.spawn
+
+        def spawn(argv: list[str], stdin: bytes | None, writes: bool, line: Callable[[str], None]) -> int:  # noqa: FBT001  # the Spawn signature
+            if "backup" in argv and "--execute" in argv:
+                self.spawned.append((argv, stdin, writes))
+                line(r"error: Command failed: \.\COM5 timed out.")
+                return 1
+            return original(argv, stdin, writes, line)
+
+        self.spawn = spawn  # the test's own spawn in the method's place
+        ui = self.run_stages(("connect", "prepare"), self.yes("plug-in", "consent"))
+        finished = ui.finished()
+        self.assertEqual((finished["task"], finished["error"]), ("backup", qualcomm.LINK_LOST))
+        self.assertEqual(finished["where"], plan.LINK_LOST_WHERE)
+        self.assertIn("goes on from where it stopped", plan.LINK_LOST_WHERE)
 
     def test_declining_the_consent_writes_nothing(self):
         answers = self.yes("plug-in")

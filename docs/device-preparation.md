@@ -156,7 +156,8 @@ This previews the external command and does not contact EDL:
 python -m overpressure device backup --identity backup/device.json --backup backup/stock --loader assets/firehose.elf
 ```
 
-Add `--execute --confirm-device ADB_SERIAL` to dump. The backup directory must not exist yet. The dump takes
+Add `--execute --confirm-device ADB_SERIAL` to dump. The backup directory must not exist yet, unless
+`--resume` goes on with this headset's unfinished backup there ([a stopped backup](#a-stopped-backup)). The dump takes
 all partitions and the GPT and rawprogram metadata, without userdata by default; `--include-userdata` adds the
 full partition (allow space for the whole storage; no used-sector mode). Back up personal data separately.
 It always leaves out Android's `cache` and the crash-dump areas `rawdump` and `logdump`
@@ -185,6 +186,20 @@ that a manual LUN list is complete. The example dumps the small firmware LUNs be
 userdata. Pass `--edl-backend edl-ng --edl PATH` to `stage` and `restore-abl` as well. The way back and the write
 checks read this backup (maps, sizes, hashes); building an image does not need it
 ([development.md](development.md#stock-firmware)).
+
+### A stopped backup
+
+A backup that stops leaves its folder as it is, marked with whose it is (`unfinished.json`, the identity record);
+the manifest takes its place once the backup is complete. With edl-ng, `--resume` goes on with this headset's
+unfinished backup: edl-ng writes each LUN's rawprogram map before it reads a partition and deletes the file of a
+read that fails, so every partition whose file has the map's size counts as read and is skipped; the rest is read
+again. A complete backup, or another headset's, is never written to. The installer resumes by itself: a try after a
+stopped backup goes on with it, where an older or another headset's folder stays and a new one is started.
+
+A stopped backup is mostly the USB link: Windows' Qualcomm serial driver gives edl-ng a second for each transfer,
+and a transfer that times out in the middle of the session ends it (`QUD write to \\.\COM5 timed out`). The
+loader keeps running but answers no new session, so the headset has to restart (hold the power button for about
+10 s) before EDL mode works again; the installer says so, and the next try goes on from where it stopped.
 
 A manifest is written only when the dump has `abl`, `boot` and `devinfo` images, the GPT (`gpt_main*`), the
 rawprogram maps and, when requested, userdata; a failed dump has none and cannot be used later. `edl.log` keeps

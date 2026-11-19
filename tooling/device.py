@@ -17,9 +17,9 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from overpressure.api.v1 import android, process
+from overpressure.api.v1 import android, process, qualcomm
 from overpressure.api.v1.android import run
 from overpressure.api.v1.backup import digest, partition_names, save_new, verified_backup, verified_backup_shown
 from overpressure.api.v1.qualcomm import (
@@ -36,6 +36,8 @@ from . import localconfig, unlockfiles
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+#: Whether this overpressure goes on with a stopped backup (headset interface 1.5): an older one starts anew.
+RESUMABLE = hasattr(qualcomm, "dumped")
 #: The SoC ID is a 32-bit number.
 CHIP_ID_MAX = 0xFFFFFFFF
 
@@ -309,7 +311,14 @@ def dispatch(args: argparse.Namespace) -> None:  # noqa: C901, PLR0911, PLR0912,
     identity = read_identity(args.identity)
     confirm(args, identity)
     if args.command == "backup":
-        commands = backup_commands(args)
+        if args.resume and not RESUMABLE:
+            msg = "this overpressure cannot go on with a stopped backup (interface 1.5 can): use a new folder"
+            raise ValueError(msg)
+        # The keyword only where it is asked for: an overpressure before interface 1.5 has no such parameter.
+        resume: dict[str, Any] = {"resume": True} if args.resume else {}
+        # What a stopped edl-ng backup of this headset already read whole: skipped, so it goes on from there.
+        done = {lun: qualcomm.dumped(args.backup, lun) for lun in args.edl_luns or []} if args.resume else {}
+        commands = backup_commands(args, done) if done else backup_commands(args)
         if not args.execute:
             for command in commands:
                 print(subprocess.list2cmdline(command))
@@ -322,6 +331,7 @@ def dispatch(args: argparse.Namespace) -> None:  # noqa: C901, PLR0911, PLR0912,
             luns=args.edl_luns,
             include_userdata=args.include_userdata,
             runner=run_dump,
+            **resume,
         )
         print("Backup captured. Run verify-backup and retain an independent copy before modifying the device.")
         return
@@ -444,6 +454,11 @@ def parser() -> argparse.ArgumentParser:
         if name == "backup":
             p.add_argument(
                 "--include-userdata", action="store_true", help="full userdata partition, potentially hundreds of GB"
+            )
+            p.add_argument(
+                "--resume",
+                action="store_true",
+                help="go on with this headset's unfinished backup in --backup: what it read whole is not read again",
             )
             p.add_argument(
                 "--edl-luns",

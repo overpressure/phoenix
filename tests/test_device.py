@@ -98,6 +98,25 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(device.edl_command(args, "r", "abl", "read.bin")[5:], ["read-part", "abl", "read.bin"])
         self.assertEqual(device.edl_command(args, "w", "abl", "write.bin")[5:], ["write-part", "abl", "write.bin"])
 
+    @unittest.skipUnless(device.RESUMABLE, "this overpressure has no resumed backup (interface 1.5)")
+    def test_a_resumed_backup_skips_what_the_stopped_dump_read_whole(self):
+        lun = self.backup / "lun4"
+        lun.mkdir(parents=True)
+        (lun / "rawprogram4.xml").write_text(
+            '<data><program filename="abl.bin" label="abl" num_partition_sectors="1" SECTOR_SIZE_IN_BYTES="4096" '
+            'physical_partition_number="4" /><program filename="xbl.bin" label="xbl" num_partition_sectors="1" '
+            'SECTOR_SIZE_IN_BYTES="4096" physical_partition_number="4" /></data>'
+        )
+        (lun / "abl.bin").write_bytes(b"x" * 4096)
+        base = [*self.args("backup"), "--edl-backend", "edl-ng", "--edl", "edl-ng", "--edl-luns", "4", "0"]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(device.main([*base, "--resume"]), 0)
+        skips = [line.split("--skip ", 1)[1] for line in out.getvalue().splitlines() if "--skip" in line]
+        self.assertEqual(skips, ["cache,rawdump,logdump,userdata,abl", "cache,rawdump,logdump,userdata"])
+        with patch.object(device, "RESUMABLE", new=False):  # an overpressure before interface 1.5
+            self.assertEqual(self.call([*base, "--resume"]), 1)
+
     def test_the_dump_shows_its_partitions_and_fails_on_an_error(self):
         script = "import sys; sys.stdout.write('Dumping aop: 50.0% (1 / 2 MiB)\\rDumping aop: 100.0%\\n')"
         out = io.StringIO()
