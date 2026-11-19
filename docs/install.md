@@ -243,7 +243,11 @@ files the image shares; about 1 MB) goes over SSH, and
   on. Every download goes through [`scripts/fetch.sh`](../scripts/fetch.sh), which rides out a short outage of
   GitHub's downloads: server errors (408, 429, 5xx) and failed or dropped connections are tried again for three
   minutes, 5 s apart at first and up to 30 s; any other answer fails at once, with the URL and the error in the
-  log. What a stopped build downloaded stays, checked by its hash, so a new start fetches only the rest.
+  log. What a stopped build downloaded stays, checked by its hash, so a new start fetches only the rest. Before
+  anything is written, the PC checks that it reaches GitHub and Valve's package servers; a host it doesn't reach
+  is named with why (TLS, the name, a timeout, the connection). With an overpressure of interface 1.5 or later,
+  this check and the kernel's download verify TLS with the PC's own verifier, as overpressure's downloads do
+  ([tool.md](https://github.com/overpressure/overpressure/blob/main/docs/tool.md#downloads)).
 - **Where it runs.** `dev install --on-headset` (the installer's install and upgrade) builds in the installed system
   when it runs and keeps its data (its fan service runs); otherwise, as at the first install, the maintenance
   stage 1 formats the data partition first and builds there through `pico4-install build`, which takes the PC's

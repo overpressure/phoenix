@@ -73,6 +73,11 @@ from . import FASTBOOT_MODE, USB_MODES, device, localconfig, stockfiles
 from . import hardware_test as hw
 from .cycle import Headset, run
 
+try:  # interface 1.5: TLS verified by the system's own verifier, failures that say why
+    from overpressure.api.v1 import web
+except ImportError:  # an older overpressure: urllib, as before
+    web = None
+
 if TYPE_CHECKING:
     from overpressure.api.v1.process import Timing
 
@@ -150,20 +155,27 @@ def _git(*words: str) -> str:
         return ""
 
 
-def answers(url: str, timeout: float = 15) -> bool:
-    """Tell whether this PC gets an answer from @p url: any HTTP status is one."""
+def answers(url: str, timeout: float = 15) -> str:
+    """Return "" when this PC gets an answer from @p url (any HTTP status is one), else why not."""
+    if web is not None:  # interface 1.5: TLS verified as the system does, and the reason
+        return web.answers(url, timeout)
     try:
         urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=timeout).close()  # noqa: S310  # fixed https URLs
     except urllib.error.HTTPError:
-        return True
-    except (urllib.error.URLError, OSError):
-        return False
-    return True
+        return ""
+    except (urllib.error.URLError, OSError) as exc:
+        return str(getattr(exc, "reason", exc))
+    return ""
 
 
 def unreachable(urls: tuple[str, ...] = DOWNLOAD_HOSTS) -> list[str]:
-    """Return the hosts of @p urls this PC gets no answer from."""
-    return [url.split("//", 1)[1] for url in urls if not answers(url)]
+    """Return the hosts of @p urls this PC gets no answer from, each with why."""
+    found = []
+    for url in urls:
+        why = answers(url)
+        if why:
+            found.append(f"{url.split('//', 1)[1]} ({why})")
+    return found
 
 
 def _released(name: str) -> str:

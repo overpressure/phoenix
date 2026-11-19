@@ -37,6 +37,11 @@ from typing import Callable
 
 from overpressure.api.v1 import REPO, tools
 
+try:  # interface 1.5: TLS verified by the system's own verifier, a short outage tried again, failures that say why
+    from overpressure.api.v1 import web
+except ImportError:  # an older overpressure downloads with urllib, as before
+    web = None
+
 Log = Callable[[str], None]
 Opener = Callable[..., object]
 
@@ -117,7 +122,7 @@ def current(folder: Path = OUT, pin: Release | None = None) -> bool:
 
 
 def fetch(
-    folder: Path = OUT, pin: Release | None = None, *, log: Log = print, opener: Opener = urllib.request.urlopen
+    folder: Path = OUT, pin: Release | None = None, *, log: Log = print, opener: Opener | None = None
 ) -> list[str]:
     """Download the pinned release's files into @p folder, each checked by hash; return their names.
 
@@ -132,7 +137,7 @@ def fetch(
         if path.is_file() and sha256(path) == digest:
             log(f"   {name}: there")
             continue
-        data = tools.download(pin.url(name), digest, log, opener)
+        data = tools.download(pin.url(name), digest, log, *([opener] if opener else []))
         partial = path.with_name(path.name + ".part")
         partial.write_bytes(data)
         partial.replace(path)
@@ -316,21 +321,23 @@ def _here_text(path: str, root: Path) -> str:
     return "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in files)
 
 
-def kernel_file(
-    path: str, pin: Release | None = None, *, cache: Path = CACHE, opener: Opener = urllib.request.urlopen
-) -> str:
+def kernel_file(path: str, pin: Release | None = None, *, cache: Path = CACHE, opener: Opener | None = None) -> str:
     """Return the pinned commit's file @p path, kept in @p cache per commit."""
     pin = pin or release()
     kept = cache / pin.commit / path
     if not kept.is_file():
-        with opener(pin.source_url(path), timeout=60) as response:  # ty: ignore[invalid-context-manager]  # urlopen's response
-            data = response.read()
+        url = pin.source_url(path)
+        if opener is None and web is not None:
+            data = web.read(url, 60)
+        else:
+            with (opener or urllib.request.urlopen)(url, timeout=60) as response:  # ty: ignore[invalid-context-manager]  # urlopen's response
+                data = response.read()
         kept.parent.mkdir(parents=True, exist_ok=True)
         kept.write_bytes(data)
     return kept.read_text(encoding="utf-8", errors="replace")
 
 
-def packages_file(path: str, *, cache: Path = CACHE, opener: Opener = urllib.request.urlopen) -> str:
+def packages_file(path: str, *, cache: Path = CACHE, opener: Opener | None = None) -> str:
     """Return the pinned overpressure/packages commit's file @p path, kept in @p cache per commit."""
     return kernel_file(path, packages_release(), cache=cache, opener=opener)
 
