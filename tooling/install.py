@@ -92,11 +92,13 @@ STALE_EDL_WHERE = (
     "Nothing was written to your headset. Hold the power button for about 10 s until it restarts into PICO OS, "
     "keep the cable in, then start the installer again: it puts the headset into EDL mode afresh."
 )
-#: Where the headset is when edl-ng's transfer timed out in the middle of the backup: what it read stays.
+#: Where the headset is when the USB link broke in the middle of the backup: what it read stays. The port or the
+#: cable is almost always the cause, so the hint starts with them.
 LINK_LOST_WHERE = (
-    "Nothing was written to your headset. Hold the power button for about 10 s until it restarts into PICO OS, "
-    "keep the cable in, then start the installer again: the backup goes on from where it stopped. If this "
-    "happens again and again, try another USB port or cable, without a hub."
+    "Nothing was written to your headset. Plug the cable into another USB port, one directly on this computer "
+    "(not a hub, a dock or the front panel), or use another USB-C data cable. Then hold the power button for "
+    "about 10 s until the headset restarts into PICO OS, keep the cable in and start the installer again: the "
+    "backup goes on from where it stopped."
 )
 #: Where the headset is when this computer may not use it in EDL or fastboot mode.
 EDL_WHERE = (

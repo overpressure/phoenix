@@ -125,6 +125,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(out.getvalue().splitlines(), ["progress: reading aop (50%)", "progress: reading aop (100%)"])
         with self.assertRaisesRegex(ValueError, "failed"), contextlib.redirect_stderr(io.StringIO()):
             device.run_dump([sys.executable, "-c", "print('ERROR: no answer')"])
+        # The error keeps the output's end; the backup's edl.log takes all of it from the error.
+        script = "print('first line'); print('x' * 2000); print('ERROR: QUD write to COM5 timed out')"
+        with self.assertRaises(device.DumpError) as caught, contextlib.redirect_stderr(io.StringIO()):
+            device.run_dump([sys.executable, "-c", script])
+        self.assertIn("first line", caught.exception.output)
+        self.assertNotIn("first line", str(caught.exception))
 
     def test_backup_requires_recovery_files_and_does_not_overwrite(self):
         args = [*self.args("backup"), "--execute", "--confirm-device", "ABC"]

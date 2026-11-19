@@ -690,6 +690,9 @@ class PlanTests(unittest.TestCase):
         self.assertEqual((finished["task"], finished["error"]), ("backup", qualcomm.LINK_LOST))
         self.assertEqual(finished["where"], plan.LINK_LOST_WHERE)
         self.assertIn("goes on from where it stopped", plan.LINK_LOST_WHERE)
+        # The port or the cable is almost always the cause: the hint starts with them.
+        self.assertTrue(plan.LINK_LOST_WHERE.split(". ")[1].startswith("Plug the cable into another USB port"))
+        self.assertIn("another USB-C data cable", plan.LINK_LOST_WHERE)
 
     def test_declining_the_consent_writes_nothing(self):
         answers = self.yes("plug-in")

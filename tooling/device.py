@@ -476,16 +476,28 @@ def parser() -> argparse.ArgumentParser:
     return ap
 
 
+class DumpError(ValueError):
+    """An EDL dump that failed: the message ends with its output's last part, @p output holds all of it.
+
+    The backup's edl.log takes the whole output (overpressure's capture_backup, since interface 1.5).
+    """
+
+    def __init__(self, msg: str, output: str) -> None:
+        """Keep the whole @p output for the backup's log; the message stays short."""
+        super().__init__(msg)
+        self.output = output
+
+
 def run_dump(command: list[str], timeout: int = 60) -> str:
     """Run an EDL dump as android.run does, the partition it reads shown as it goes (qualcomm.DumpProgress)."""
     print(">> " + subprocess.list2cmdline(command), file=sys.stderr)
     try:
         output = process.run_streamed(command, timeout, DumpProgress())
     except RuntimeError as exc:
-        raise ValueError(str(exc)) from exc
+        raise DumpError(str(exc), getattr(exc, "output", "")) from exc
     if re.search(r"\b(?:FAILED|ERROR)\b", output, re.IGNORECASE):
         msg = f"Command failed: {output[-800:]}"
-        raise ValueError(msg)
+        raise DumpError(msg, output)
     return output
 
 

@@ -196,10 +196,13 @@ read that fails, so every partition whose file has the map's size counts as read
 again. A complete backup, or another headset's, is never written to. The installer resumes by itself: a try after a
 stopped backup goes on with it, where an older or another headset's folder stays and a new one is started.
 
-A stopped backup is mostly the USB link: Windows' Qualcomm serial driver gives edl-ng a second for each transfer,
-and a transfer that times out in the middle of the session ends it (`QUD write to \\.\COM5 timed out`). The
-loader keeps running but answers no new session, so the headset has to restart (hold the power button for about
-10 s) before EDL mode works again; the installer says so, and the next try goes on from where it stopped.
+A stopped backup is almost always the USB port or the cable. Windows' Qualcomm serial driver gives edl-ng a second
+for each transfer, and a transfer that times out in the middle of the session ends it (`QUD write to \\.\COM5 timed
+out`); a reply can also arrive garbled, as zeros that edl-ng's XML reader refuses (`'.', hexadecimal value 0x00, is
+an invalid character`). Either way the loader keeps running but answers no new session, so the headset has to
+restart (hold the power button for about 10 s) before EDL mode works again. The installer says so, and asks for
+another USB port directly on the computer (no hub, dock or front panel) or another cable first; the next try goes on
+from where it stopped. A failed command's whole output goes into the backup's `edl.log`.
 
 A manifest is written only when the dump has `abl`, `boot` and `devinfo` images, the GPT (`gpt_main*`), the
 rawprogram maps and, when requested, userdata; a failed dump has none and cannot be used later. `edl.log` keeps
