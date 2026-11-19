@@ -537,6 +537,32 @@ decoder and shows it through the local SteamVR. The PC's `driver_vrlink` knows t
 | The picture's start | about 12 s after `vrlink`'s start, with a decoder reset at the first video |
 | Frame times, POOLS | game frame start to illumination 73 ms median (67–78 ms, 5th–95th percentile): encode 11–22 ms, network 4 ms, decode 6 ms, decode end to illumination 30 ms. At 22 ms encode the stream runs at about 67 frames/s, at 11 ms at 90 |
 
+### The desktop
+
+KDE Plasma as on the Frame. Valve's `steamdeck-kde-presets` puts **Desktop** into Steam's
+**+ → Launch Program** (`deckard-nested-desktop.desktop`, `X-Steam-Special=Desktop`). Steam starts it like
+any other app in the running session:
+
+- `steamos-nested-desktop` gives Plasma its own runtime directory, shares the audio sockets into it, and
+  starts `startplasma-wayland` in its own D-Bus session.
+- kwin runs nested as a 1280×800 window of gamescope, without a lock screen.
+- **Return to Gaming Mode** on the desktop ends it.
+
+The package also brings Valve's Plasma defaults and look-and-feel packages, and Steam's autostart inside Plasma.
+
+- **Plasma is Holo's** (6.5.3, Qt 6.10). The Frame's own build (6.2.5) needs its private base's Qt 6.8.
+  The image adds Dolphin and Konsole, about 1.3 GiB in all: the system image is 6,005 MiB of `super`'s
+  8 GiB.
+- **`plasma.desktop` is Valve's** (`start-gamescope-session plasma-session.target`), as on the Frame,
+  whose Plasma build leaves it out. Holo's `plasma-workspace` ships its own, which starts Plasma
+  without SteamVR. `build-userspace.sh` installs Valve's over it and checks the owner.
+- **Desktop mode** (Steam's **Switch to Desktop**, a relogin into `plasma-session.target` with Plasma as
+  the overlay `valve.plasma.desktopmode`) needs `pico4-session` to follow sddm's autologin, as sddm does on
+  the Frame. It doesn't yet.
+
+`pico4-userspace-check` requires the Desktop entry, `steamos-nested-desktop`, `startplasma-wayland` and
+`kwin_wayland_wrapper`. Plasma on the headset is not verified yet.
+
 ## Build
 
 The session's parts are packages of the userspace archive (`scripts/build-userspace.sh`,
@@ -549,6 +575,7 @@ The session's parts are packages of the userspace archive (`scripts/build-usersp
 | `pico4-monado` | [PKGBUILD](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/PKGBUILD) and patches, [pico4-monado](https://github.com/overpressure/packages/tree/main/phoenix/pico4-monado) | `monado-service`, the OpenXR runtime, `driver_monado` |
 | `overpressure-gamescope` | upstream gamescope at `ea3579ed` and one patch | gamescope |
 | `deckard-steamvr-rel`, `deckard-steamvr-session` | the Frame's repository | SteamVR in `/opt/steamvr`; the session's scripts and user units |
+| `steamdeck-kde-presets`; Plasma, kwin, Dolphin, Konsole | the Frame's repository; Holo's | [the desktop](#the-desktop) |
 
 [`pico4-session`](https://github.com/overpressure/packages/tree/main/phoenix/pico4-session) adds the units, drop-ins, PAM stack, session script and the SteamVR
 files, [`pico4-xr`](https://github.com/overpressure/packages/tree/main/phoenix/pico4-xr) the udev rules, [`pico4-checks`](https://github.com/overpressure/packages/tree/main/phoenix/pico4-checks) `pico4-valve-session-check`.

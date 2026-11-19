@@ -266,7 +266,13 @@ base=$B/base
 # changed sources keeps its version, so a copy there would no longer match the repository
 # (a corrupt package for pacman, the wrong file for the manifest): only the repositories have them.
 while read -r file; do rm -f "$B/var/cache/pico4-pkgs/${file##*/}"; done < <(project_packages)
-base_key=$(cat "$definition/packages.txt" "$definition/pacman.conf" | sha256sum | cut -d' ' -f1)
+# Valve's session ships plasma.desktop (Plasma in Valve's session: plasma-session.target), and so does
+# Holo's plasma-workspace (Plasma alone); the Frame's own Plasma build leaves it out. Valve's copy is
+# installed again over Holo's, so that it owns the file as on the Frame. The base root's key covers
+# how it is installed, too.
+valve_session=(--overwrite '*usr/share/wayland-sessions/plasma.desktop')
+base_key=$({ cat "$definition/packages.txt" "$definition/pacman.conf"; printf '%s\n' "${valve_session[@]}" valve-session-owner; } |
+    sha256sum | cut -d' ' -f1)
 if [[ $refresh == 1 || ! -d "$base" || "$(cat "$build_root/base.key" 2>/dev/null)" != "$base_key" ]]; then
     phase "installing packages.txt into a new base root"
     rm -f "$build_root/base.key"
@@ -293,7 +299,11 @@ if [[ $refresh == 1 || ! -d "$base" || "$(cat "$build_root/base.key" 2>/dev/null
     # The session user, whom steamos-customizations' tmpfiles entries name, comes from pico4-session's
     # sysusers file in the same transaction: pacman's sysusers hook runs before its tmpfiles hook.
     in_b pacman --config /etc/pico4/pacman.conf -r /base --cachedir /var/cache/pico4-pkgs \
-        "-S$sync" --noconfirm --needed "${assumed[@]}" "${packages[@]}"
+        "-S$sync" --noconfirm --needed "${valve_session[@]}" "${assumed[@]}" "${packages[@]}"
+    in_b pacman --config /etc/pico4/pacman.conf -r /base --cachedir /var/cache/pico4-pkgs \
+        -S --noconfirm "${valve_session[@]}" "${assumed[@]}" deckard-arch-hotfixes-release-0.3/deckard-steamvr-session
+    owner=$(chroot "$base" /usr/bin/pacman -Qqo /usr/share/wayland-sessions/plasma.desktop)
+    [[ $owner == deckard-steamvr-session ]] || { echo "plasma.desktop is $owner's, not Valve's session's" >&2; exit 1; }
     unmount_below "$base" inner
     systemd_version=$(chroot "$base" /usr/bin/pacman -Q systemd | cut -d' ' -f2)
     [[ "$systemd_version" == 257.* ]] || { echo "systemd $systemd_version was selected; the image stays on the Frame's 257.x" >&2; exit 1; }
@@ -362,6 +372,10 @@ mapfile -t foreign < <(in_b pacman --config /etc/pico4/pacman.conf -r /target -S
 # LD_LIBRARY_PATH for the rest. (Python regular expression.)
 optional='^(systemd /usr/lib/systemd/systemd-journal-(gatewayd|remote)|libinput /usr/lib/libinput/libinput-debug-gui'
 optional+='|v4l-utils /usr/bin/qv4l2|v4l-utils /usr/bin/qvidcap'
+# The desktop's: KRunner's plugin installer needs PackageKit, the SCIM input panel SCIM (the session's
+# input method is IBus), Qt's spatial audio for Qt Quick 3D, which no installed program uses.
+optional+='|plasma-desktop /usr/bin/krunner-plugininstaller|plasma-desktop /usr/lib/kimpanel-scim-panel'
+optional+='|qt6-multimedia /usr/lib/libQt6Quick3DSpatialAudio\.so\.[0-9.]+'
 # Valve's Mesa's freedreno debugging tools.
 optional+='|deckard-mesa-linux-aarch64 /usr/bin/(cffdump|crashdec|fdperf|qrisc-asm|qrisc-disasm|rddecompiler)'
 optional+='|deckard-steamvr-rel /opt/steamvr/bin/linuxarm64/(vrmonitor|overlay_viewer|hellovr_sdl)):'
