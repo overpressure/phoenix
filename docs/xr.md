@@ -155,10 +155,13 @@ The lens model is the stock compositor's (`libpxrcompositor.so`), like the Oculu
   `t = p / F`, `s` a polynomial K0…K10. `F` and `A0`…`A10` come per eye from `distortion_parameter`
   in `pvr/OpticalCalibrationData.json` (on this unit the stock table entry for its lens model and
   mould cavity).
-- **Lens centre.** The panel centre plus `lens_center_gos` in millimetres, with the stock compositor's
-  signs: −`centerx`, +`centery` (its distortion mesh scales them by 0.001 and −0.001 and adds them to
-  the panel point). Worn, a lens centre moved 2 mm along `centerx` or `centery` moves that eye's picture
-  the way stock's would only with these signs. The offsets differ per headset: on one, the two eyes'
+- **Lens centre.** The panel centre plus `lens_center_gos` in millimetres, in the stock compositor's
+  directions: a larger `centerx` moves it to the wearer's left, a larger `centery` up, in both eyes (in
+  the driver's panel coordinates, y down: −`centerx`, −`centery`). As in stock, the offset moves only the
+  lens model; the field of view stays symmetric. On SteamVR an asymmetric vertical field of view moves
+  the picture by its asymmetry, several times the offset. Measured on the scanout, a right lens centre
+  moved 2 mm moves that eye's picture 93 px up along `centery` and 98 px left along `centerx`, stock's
+  94 px (47 px per mm), and worn it moves slightly. The offsets differ per headset: on one, the two eyes'
   `centery` differ by 0.05 mm, on another by 0.33 mm. Stock's compositor reads no other field of the
   file's lens geometry (`rotation_binocular`, `decenter_lineangle`, `lens_center_through_lens`). The
   panels move with the lenses, so the IPD does not change the distortion.
@@ -170,8 +173,8 @@ The lens model is the stock compositor's (`libpxrcompositor.so`), like the Oculu
 [pico4_lens.c](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4_lens.c) feeds Monado's distortion mesh (one UV per channel). The
 polynomial is fitted only inside the panel's inscribed circle (2% beyond allowed); outside it the
 driver evaluates it at the circle and lets the tan-angle grow steeply, so the image ends cleanly.
-The field of view, from the panel edges (2160 px at 21.3 µm) through the green channel, is about
-±53.3° per eye.
+The field of view, from the panel centre to its edges (2160 px at 21.3 µm) through the green
+channel, is about ±53.3° per eye, the same to every side.
 
 **IPD read.** The GD32 MCU on `/dev/ttyHS1` (115200 8N1, raw). [pico4_ipd.c](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4_ipd.c)
 sends `A0 08 00 00 00 A8` (get position; the last byte is the XOR of the others) and waits up to
@@ -860,7 +863,7 @@ otherwise.
 | Head pose, 3DoF, 60 s at 100 Hz | none invalid after the first second; heading −0.0001°/s; tilt within 0.2° of the accelerometer |
 | Latency, IMU sample to pose | 0.94–1.16 ms |
 | Scanned-out image and lenses | red L only in the left eye, blue R only in the right; grid lines straight, steady at 90 Hz; the checkerboard stays fixed in the room with no visible latency |
-| Field of view from the lens data | left eye −53.32/+53.38° horizontal, +53.58/−53.12° vertical; right eye −53.49/+53.17°, +53.41/−53.25° |
+| Field of view from the lens data | ±53.35° per side in the left eye, ±53.33° in the right |
 | IPD | 71.99 mm (Hall 888) with the lenses at their widest, 72 mm |
 | Station | power cycle, announcement and frame-rate answer every time; firmware 2.96 |
 | Cameras | slot mapping by cover test; a pen at 0.15–0.18 m triangulates with 1–2 mm ray gaps; metadata line decodes the commanded exposure and gain, 50 scene and 50 LED frames of 100, 0 errors at 49.8 Hz |
