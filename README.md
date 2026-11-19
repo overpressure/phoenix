@@ -119,6 +119,9 @@ start the window again. To report a problem, click **Save logs…** on the PICO 
 the file to [an issue](https://github.com/overpressure/phoenix/issues/new/choose); it leaves out your headset's
 serial numbers.
 
+Questions and quick help: the [PICO 4 room](https://matrix.to/#/#overpressure-phoenix:matrix.org) and the
+[Help room](https://matrix.to/#/#overpressure-help:matrix.org) of the project's Matrix space.
+
 ## For developers
 
 How it works, how it is built and how it is tested: [docs/](docs/), starting with

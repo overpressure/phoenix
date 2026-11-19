@@ -3,6 +3,9 @@ contact_links:
   - name: Security vulnerability
     url: https://github.com/overpressure/phoenix/security/advisories/new
     about: Report it privately, not in a public issue.
+  - name: A question about the PICO 4
+    url: https://matrix.to/#/#overpressure-phoenix:matrix.org
+    about: Ask in the PICO 4 room of the project's Matrix space; issues are for bugs and features.
   - name: Documentation
     url: https://github.com/overpressure/phoenix#readme
     about: How to install, upgrade and go back to stock.
