@@ -26,6 +26,8 @@ src=$base/src host=$base/host
 : "${SOURCE_DATE_EPOCH:?the commit time of the tree}" "${OVERPRESSURE_COMMIT:?the commit of the tree}"
 log() { printf '>> %s\n' "$*"; }
 die() { echo "build-on-headset: $*" >&2; exit 1; }
+# shellcheck source=fetch.sh
+. "$(dirname "$0")/fetch.sh"
 
 # One build at a time: the build roots are shared.
 exec 9> "$base/.lock"
@@ -74,8 +76,9 @@ in_host() {
 field() { sed -n "s/^ *\"$1\": *\"\([^\"]*\)\".*/\1/p" "$src/devices/phoenix/userspace/packages.json"; }
 repository=$(field repository) commit=$(field commit)
 [ -n "$repository" ] && [ ${#commit} = 40 ] || die "no packages pin in $src"
-setup=$(curl -fsSL --retry 3 "https://raw.githubusercontent.com/$repository/$commit/build/packages.sh") ||
+fetch "https://raw.githubusercontent.com/$repository/$commit/build/packages.sh" "$base/packages.sh" ||
 	die "could not fetch $repository's build/packages.sh at $commit"
+setup=$(cat "$base/packages.sh")
 pin() { printf '%s\n' "$setup" | sed -n "s/^$1=//p"; }
 snapshot=$(pin HOLO_SNAPSHOT) sha=$(pin HOLO_SHA256)
 url=$(pin HOLO_URL | sed "s/\$HOLO_SNAPSHOT/$snapshot/")
@@ -88,8 +91,7 @@ archive=$base/root/packages/holo-$snapshot.rootfs.zst
 if [ "$(cat "$host/.overpressure-host" 2>/dev/null)" != "$sha" ]; then
 	if [ "$(sha256sum "$archive" 2>/dev/null | cut -d' ' -f1)" != "$sha" ]; then
 		log "downloading Holo Core aarch64 $snapshot"
-		curl -fsSL --retry 3 -o "$archive.part" "$url"
-		mv "$archive.part" "$archive"
+		fetch "$url" "$archive" || die "could not download Holo Core aarch64 $snapshot"
 	fi
 	[ "$(sha256sum "$archive" | cut -d' ' -f1)" = "$sha" ] || die "$archive is not the pinned Holo rootfs"
 	log "making the build host: Holo Core aarch64 $snapshot with python"
@@ -112,8 +114,8 @@ api "$host"
 # drives it: the maintenance stage 1 runs no fan service, and the build's compression took the headset
 # to 88 °C without it. The installed system's service drives it there. Stopped, it keeps its duty.
 if [ -e /sys/class/tty/ttyHS1 ] && ! pgrep -f "pico4-fan run" > /dev/null; then
-	curl -fsSL --retry 3 -o "$host/run/pico4-fan-run" \
-		"https://raw.githubusercontent.com/$repository/$commit/phoenix/pico4-power/pico4-fan"
+	fetch "https://raw.githubusercontent.com/$repository/$commit/phoenix/pico4-power/pico4-fan" \
+		"$host/run/pico4-fan-run" || die "could not fetch $repository's pico4-fan at $commit"
 	mkdir -p "$host/run/pico4-fan"
 	# Its last-resort power-off reaches no systemd from the build host: it signals PID 1 instead, which
 	# powers off on SIGUSR2 in the maintenance stage 1 (pico4-init) and on SIGRTMIN+4 under systemd.

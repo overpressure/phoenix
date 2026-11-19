@@ -50,6 +50,8 @@
 set -euo pipefail
 source_dir=$(cd "$(dirname "$0")/.." && pwd)   # devices/phoenix
 repo=$(cd "$source_dir/../.." && pwd)            # overpressure (its package, cache/)
+# shellcheck source=fetch.sh
+source "$source_dir/scripts/fetch.sh"
 build_root=${1:?specify an isolated Linux-filesystem build directory}
 output=${2:?specify an output directory}
 shift 2
@@ -137,8 +139,9 @@ if [[ ! -f $pinned/.overpressure-commit ]]; then
     else
         # Without git (the headset builds its own system): GitHub's archive of that commit.
         mkdir -p "$pinned.new"
-        curl -fsSL --retry 3 "https://github.com/$packages_repository/archive/$packages_commit.tar.gz" |
-            tar -xz --strip-components=1 -C "$pinned.new"
+        fetch "https://github.com/$packages_repository/archive/$packages_commit.tar.gz" "$pinned.tar.gz"
+        tar -xzf "$pinned.tar.gz" --strip-components=1 -C "$pinned.new"
+        rm -f "$pinned.tar.gz"
     fi
     rm -rf "$pinned.new/.git" "$pinned"
     echo "$packages_commit" > "$pinned.new/.overpressure-commit"
@@ -198,15 +201,14 @@ if [[ $packages_release == 1 ]]; then
     release=$repo/cache/packages-release/$packages_tag
     url=https://github.com/$packages_repository/releases/download/$packages_tag
     mkdir -p "$release"
-    [[ -s $release/SHA256SUMS ]] || curl -fsSL --retry 3 -o "$release/SHA256SUMS" "$url/SHA256SUMS"
+    [[ -s $release/SHA256SUMS ]] || fetch "$url/SHA256SUMS" "$release/SHA256SUMS"
     printf '%s  %s\n' "$packages_sums" "$release/SHA256SUMS" | sha256sum --check --quiet ||
         { echo "the release's SHA256SUMS is not the pinned one" >&2; exit 1; }
     while read -r sum name; do
         [[ $name == *.pkg.tar.zst || $name == overpressure-*.db ]] || continue
         if ! printf '%s  %s\n' "$sum" "$release/$name" | sha256sum --check --quiet --status 2>/dev/null; then
             log "downloading $name"
-            curl -fsSL --retry 3 -o "$release/$name.part" "$url/$name"
-            mv "$release/$name.part" "$release/$name"
+            fetch "$url/$name" "$release/$name"
         fi
         printf '%s  %s\n' "$sum" "$release/$name" | sha256sum --check --quiet
     done < "$release/SHA256SUMS"

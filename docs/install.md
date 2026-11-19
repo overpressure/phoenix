@@ -240,7 +240,10 @@ files the image shares; about 1 MB) goes over SSH, and
   file that a base root's history or a random key could change.
 - **The network.** Everything comes through the PC's connection: `ssh -R` gives the headset a SOCKS proxy on
   `127.0.0.1:1080`, names resolved on the PC (`socks5h`), 18 to 29 MB/s. The build's chroots pass `ALL_PROXY`
-  on.
+  on. Every download goes through [`scripts/fetch.sh`](../scripts/fetch.sh), which rides out a short outage of
+  GitHub's downloads: server errors (408, 429, 5xx) and failed or dropped connections are tried again for three
+  minutes, 5 s apart at first and up to 30 s; any other answer fails at once, with the URL and the error in the
+  log. What a stopped build downloaded stays, checked by its hash, so a new start fetches only the rest.
 - **Where it runs.** `dev install --on-headset` (the installer's install and upgrade) builds in the installed system
   when it runs and keeps its data (its fan service runs); otherwise, as at the first install, the maintenance
   stage 1 formats the data partition first and builds there through `pico4-install build`, which takes the PC's
