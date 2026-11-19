@@ -62,9 +62,10 @@ count the session as active. gamescope opens the seat through logind (libseat). 
 
 The script waits up to 10 s for the user manager, waits until a previous session's SteamVR has stopped,
 resets the user units' failure counters (`systemctl --user reset-failed`) and execs Valve's
-`start-gamescope-session` with `gamescope-session.target`, or the target `/etc/pico4/session.conf`
-names (`PICO4_SESSION_TARGET=...`). SteamVR's first start links it as the OpenXR runtime. There is no
-session without SteamVR.
+`start-gamescope-session` with the target `session-switch` recorded: the one `/etc/pico4/session.conf`
+names (`PICO4_SESSION_TARGET=...`), else the one sddm's autologin names, as on the Frame. That is
+`gamescope-session.target`, or `plasma-session.target` in [desktop mode](#the-desktop). SteamVR's first
+start links it as the OpenXR runtime. There is no session without SteamVR.
 
 Restarts:
 
@@ -556,12 +557,35 @@ The package also brings Valve's Plasma defaults and look-and-feel packages, and 
 - **`plasma.desktop` is Valve's** (`start-gamescope-session plasma-session.target`), as on the Frame,
   whose Plasma build leaves it out. Holo's `plasma-workspace` ships its own, which starts Plasma
   without SteamVR. `build-userspace.sh` installs Valve's over it and checks the owner.
-- **Desktop mode** (Steam's **Switch to Desktop**, a relogin into `plasma-session.target` with Plasma as
-  the overlay `valve.plasma.desktopmode`) needs `pico4-session` to follow sddm's autologin, as sddm does on
-  the Frame. It doesn't yet.
+**Desktop mode** works as sddm runs it on the Frame:
+
+1. Steam's **Switch to Desktop** asks steamos-manager, which writes a one-shot autologin
+   (`/etc/sddm.conf.d/zzt-steamos-temp-login.conf`, `Session=plasma.desktop`) and ends the session.
+   **Default to Desktop Mode on startup** writes `zz-steamos-autologin.conf` instead.
+2. `pico4-session.service` starts the next session after 5 s. Its `session-target` takes the target from
+   sddm's autologin, read as sddm reads it: `/usr/lib/sddm/sddm.conf.d`, then `/etc/sddm.conf.d`, then
+   `/etc/sddm.conf`, with a later setting winning. It follows that session's `start-gamescope-session TARGET`
+   line: `plasma.desktop` gives `plasma-session.target`. `PICO4_SESSION_TARGET` in
+   `/etc/pico4/session.conf` overrides it.
+3. `plasma-session.target` is SteamVR and gamescope without the Steam client. `steamvr-nested-desktop.service`
+   runs `steamos-nested-desktop`, and Plasma floats at 1920×1080 as the overlay `valve.plasma.desktopmode`.
+   steamos-manager removes the one-shot login in the new session.
+4. **Return to Gaming Mode** (`steamosctl switch-to-game-mode`) goes back the same way.
+
+`session-switch` runs as root around each session:
+
+- At the first start of a boot, it removes a one-shot login left from before, as sddm's
+  `reset-oneshot-boot.conf` does.
+- It records the running target in `/run/pico4/session-target`.
+- A session that ends because the next one starts another target is a switch, not a crash: it resets the
+  session's start limit (`systemctl reset-failed`).
+
+`steamvr-ended` and `pico4-steamvr-failed.service` stop the running target, from
+`$GAMESCOPE_SESSION_TARGET`. The room view, Overpressure Settings and the VR CPU limits run with SteamVR,
+so they run in both sessions.
 
 `pico4-userspace-check` requires the Desktop entry, `steamos-nested-desktop`, `startplasma-wayland` and
-`kwin_wayland_wrapper`. Plasma on the headset is not verified yet.
+`kwin_wayland_wrapper`, and checks the recorded target. Plasma on the headset is not verified yet.
 
 ## Build
 
