@@ -1,5 +1,9 @@
 # PICO 4
 
+[![Newest release](https://img.shields.io/github/v/release/overpressure/phoenix?include_prereleases&label=release&color=2a66ec)](https://github.com/overpressure/phoenix/releases)
+[![CI on main](https://github.com/overpressure/phoenix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/overpressure/phoenix/actions/workflows/ci.yml?query=branch%3Amain)
+[![Chat: the PICO 4 room on Matrix](https://img.shields.io/badge/chat-PICO%204%20room-2a66ec?logo=matrix&logoColor=white)](https://matrix.to/#/#overpressure-phoenix:matrix.org)
+
 **Linux and Valve's SteamVR on the PICO 4 (2022, Snapdragon XR2), installed with
 [overpressure](https://github.com/overpressure/overpressure).** It replaces PICO OS with a system built on Valve's
 Steam Frame software: SteamVR, the Steam client and its games run on the headset itself, without a PC. The way back
@@ -8,7 +12,7 @@ to PICO OS is part of it.
 | | |
 | --- | --- |
 | **Status** | Beta: for owners who are fine with an early release and can report what they find |
-| **Newest release** | [1.0 beta 3](https://github.com/overpressure/phoenix/releases) |
+| **Newest release** | [1.0 beta 4](https://github.com/overpressure/phoenix/releases) |
 | **Your headset** | The original PICO 4, not the PICO 4 Pro or Ultra; PICO OS global build 5.13.3, 5.13.7 or 5.13.8, not a China build ([why](docs/device-preparation.md#other-pico-os-builds)) |
 | **Your computer** | Windows ✅ · Linux ✅ · macOS ❔ |
 | **Tested on** | 1 headset |
