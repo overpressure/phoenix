@@ -465,9 +465,21 @@ in_t usermod -a -G wheel,video,render,input,audio "$user"
 # subuid and subgid files, Holo's empty ones.
 for f in subuid subgid; do [[ -e "$T/etc/$f" ]] || install -m 0644 /dev/null "$T/etc/$f"; done
 grep -q "^$user:" "$T/etc/subuid" 2>/dev/null || in_t usermod --add-subuids 100000-165535 --add-subgids 100000-165535 "$user"
-# No password logs in, here or through su: SSH takes keys, the session logs in by itself.
+# No password logs in, here or through su: SSH takes keys, the session logs in by itself. Root has
+# none. The session user has none until its owner sets one (passwd, or Steam's Developer > Set user
+# password), as on SteamOS: its empty password lets that first passwd skip the current one, and
+# authenticates nothing, as system-auth's auth takes no empty password (nullok stays for passwd's
+# password stack only). So sudo, polkit and su refuse it until then, and take the owner's password after.
 in_t usermod -p '*' root
-in_t usermod -p '*' "$user"
+in_t usermod -p '' "$user"
+sed -i '/^auth[[:space:]].*pam_unix\.so/s/[[:space:]]nullok\b//' "$T/etc/pam.d/system-auth"
+if grep -qE '^auth[[:space:]].*pam_unix\.so.*\bnullok\b' "$T/etc/pam.d/system-auth" ||
+    ! grep -qE '^auth[[:space:]].*pam_unix\.so' "$T/etc/pam.d/system-auth"; then
+    echo "system-auth's auth still takes an empty password, or has no pam_unix line" >&2
+    exit 1
+fi
+# The wheel group, the session user's, runs sudo with that user's own password, as on SteamOS.
+install -m 0440 /dev/stdin "$T/etc/sudoers.d/10-pico4-wheel" <<< '%wheel ALL=(ALL:ALL) ALL'
 echo pico4-steamos > "$T/etc/hostname"
 echo LANG=C.UTF-8 > "$T/etc/locale.conf"
 rm -f "$T/etc/machine-id"   # written from the headset serial during the handoff

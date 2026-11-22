@@ -135,7 +135,8 @@ python -m overpressure cycle --restore-only              # verified stock boot a
 
 ## Hard rules
 
-- **Access.** SSH takes keys only, on USB and Wi-Fi, and no account has a password; keys are per PC, written
+- **Access.** SSH takes keys only, on USB and Wi-Fi; no account has a password until its owner sets one for
+  `steamos` (sudo then takes it), and an empty one authenticates nothing; keys are per PC, written
   by `dev install` to the data partition (`pico4-install keys`), never into the system image or a boot image
   ([docs/security.md](docs/security.md)).
 - **Verified hardware.** The tools refuse firmware, headsets and panels the whole path hasn't run on

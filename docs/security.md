@@ -5,7 +5,7 @@ and holds the owner's Steam login and Wi-Fi passwords.
 
 | | |
 | --- | --- |
-| Access | SSH with enrolled keys only (`sshd_config.d/50-pico4.conf`), on USB and Wi-Fi; no account has a password |
+| Access | SSH with enrolled keys only (`sshd_config.d/50-pico4.conf`), on USB and Wi-Fi; no account has a password until its owner sets one, and none logs in over SSH |
 | Network | nothing else of ours listens; `pico4-listeners` checks it; no firewall, no forwarding |
 | Not protected | a person holding the headset (unlocked bootloader); data at rest is not encrypted |
 
@@ -13,8 +13,8 @@ and holds the owner's Steam login and Wi-Fi passwords.
 
 | Who | Protected | How |
 | --- | --- | --- |
-| Someone on the same network | yes | SSH takes only the keys enrolled at install; no account has a password; nothing else of ours listens |
-| A program of the session user | as on a desktop | `steamos` has no way to root: no password, and `sudoers` grants only root. It can read everything the session user owns, such as Steam's login data |
+| Someone on the same network | yes | SSH takes only the keys enrolled at install, never a password; nothing else of ours listens |
+| A program of the session user | as on a desktop | `steamos` has no way to root until its owner sets a password, and then only through sudo or polkit with that password. It can read everything the session user owns, such as Steam's login data |
 | Someone holding the headset | no | the bootloader is unlocked by design ([device-preparation.md](device-preparation.md)): with a cable anyone can boot their own image and read the data partition |
 
 ## Logins
@@ -25,9 +25,15 @@ and holds the owner's Steam login and Wi-Fi passwords.
 | Installed system | `steamos` | no remote login; the session logs in by itself |
 | Maintenance stage 1 in `recovery` | root | dropbear on the USB link with a key or the empty password, telnet, a web page and a serial shell, all without a password |
 
-Root and `steamos` have no password in the image (`*` in `/etc/shadow`), so `su` gives nothing. From the
+Root has no password (`*` in `/etc/shadow`). `steamos` has none either until its owner sets one, as on
+SteamOS: its entry is empty, so the first `passwd` in Desktop mode, or Steam's *Developer > Set user password*
+(the Frame's `steamos-passwd`, which hands it to `passwd`), asks for no current one. An empty password
+authenticates nothing: `system-auth`'s auth line has no `nullok` (the image build removes it and stops when it
+is there), so sudo, polkit and `su` refuse until a password is set.
+Then the `wheel` group, `steamos`'s, runs sudo with it (`/etc/sudoers.d/10-pico4-wheel`), as on SteamOS. The
+password is kept in the `/etc` overlay's upper layer on the data partition, so it survives upgrades. From the
 PC a password login or a key that was not enrolled is refused for both, on USB and Wi-Fi
-(`Permission denied (publickey)`).
+(`Permission denied (publickey)`), with or without a password.
 
 **The keys.** `python -m overpressure dev image` makes this PC's key once, `out/dev/id_ed25519`;
 `PICO4_SSH_PUBLIC_KEY` in `.env` adds the owner's own public key: the install's *Your SSH key* step saves a pasted

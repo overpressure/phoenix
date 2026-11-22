@@ -72,11 +72,18 @@ class SshAccessTests(unittest.TestCase):
         self.assertIn("readonly_again", keys)
         self.assertNotIn("dropbear-convert", (self.ROOT / "tooling/image.py").read_text(encoding="utf-8"))
 
-    def test_no_account_has_a_usable_password(self):
+    def test_no_account_has_a_usable_password_until_its_owner_sets_one(self):
         build = (self.ROOT / "scripts/build-userspace.sh").read_text(encoding="utf-8")
         self.assertNotIn("passwd -d", build)
         self.assertIn("in_t usermod -p '*' root", build)
-        self.assertIn("in_t usermod -p '*' \"$user\"", build)
+        # The session user's empty password only lets its owner's first passwd skip the current one:
+        # authentication takes no empty password, and the build stops when it would.
+        self.assertIn("in_t usermod -p '' \"$user\"", build)
+        self.assertIn(
+            "sed -i '/^auth[[:space:]].*pam_unix\\.so/s/[[:space:]]nullok\\b//' \"$T/etc/pam.d/system-auth\"", build
+        )
+        self.assertIn("system-auth's auth still takes an empty password", build)
+        self.assertIn("'%wheel ALL=(ALL:ALL) ALL'", build)
 
 
 class PowerWarningTests(unittest.TestCase):
