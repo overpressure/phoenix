@@ -7,8 +7,8 @@
 #
 #   scripts/build-system-image.sh out/userspace/pico4-userspace.tar.zst out/userspace/pico4-system.img [--keep]
 #
-# ext4 without a journal (it is never written on the headset) and without the features the stock
-# kernel, under the maintenance stage 1, cannot mount. /data is the data partition's mount point; the image names the
+# ext4 with a journal (steamos-readonly disable makes it writable until the next upgrade) and without the
+# features the stock kernel, under the maintenance stage 1, cannot mount. /data is the data partition's mount point; the image names the
 # archive it came from in /usr/share/pico4. What is kept is what dev install sends: IMAGE.zst, the image
 # compressed, IMAGE.zst.sha256 the hash of the image it holds and IMAGE.json the image's size, hash and its first
 # MiB's hash (dev install's check of what super holds). The image itself and the archive go, unless --keep: the
@@ -41,13 +41,16 @@ echo "$sha" > "$tree/usr/share/pico4/system-image"
 touch -h -d "@$epoch" "$tree" "$tree/data" "$tree/usr/share/pico4" "$tree/usr/share/pico4/userspace-archive.sha256" \
 	"$tree/usr/share/pico4/system-image"
 
-# The content plus a margin, rounded to MiB: free space on a read-only file system is unused.
+# The content plus a margin and the journal, rounded to MiB: free space on a read-only file system is unused,
+# and steamos-readonly disable grows it to the whole partition.
+JOURNAL_MIB=64
 used_mib=$(( $(du -sk "$tree" | cut -f1) / 1024 ))
-size_mib=$(( used_mib * 110 / 100 + 128 ))
+size_mib=$(( used_mib * 110 / 100 + 128 + JOURNAL_MIB ))
 [ "$size_mib" -le "$SUPER_MIB" ] || { echo "the system ($size_mib MiB) does not fit super" >&2; exit 1; }
 rm -f "$image"
-E2FSPROGS_FAKE_TIME=$epoch mkfs.ext4 -q -F -L pico4-system -m 0 -O ^has_journal,^orphan_file,^metadata_csum_seed \
-	-U "$(uuid "$sha")" -E lazy_itable_init=0,root_owner=0:0,hash_seed="$(uuid "${sha:32}")" -d "$tree" "$image" "${size_mib}M"
+E2FSPROGS_FAKE_TIME=$epoch mkfs.ext4 -q -F -L pico4-system -m 0 -O ^orphan_file,^metadata_csum_seed \
+	-J size=$JOURNAL_MIB -U "$(uuid "$sha")" -E lazy_itable_init=0,lazy_journal_init=0,root_owner=0:0,hash_seed="$(uuid "${sha:32}")" \
+	-d "$tree" "$image" "${size_mib}M"
 # mke2fs takes each file's change and access times from the tree, where the extraction set them to now.
 if find "$tree" -mindepth 1 -name '*"*' -print -quit | grep -q .; then
 	echo "a path in the archive holds a double quote, which debugfs cannot name" >&2

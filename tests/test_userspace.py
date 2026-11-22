@@ -72,6 +72,17 @@ class SshAccessTests(unittest.TestCase):
         self.assertIn("readonly_again", keys)
         self.assertNotIn("dropbear-convert", (self.ROOT / "tooling/image.py").read_text(encoding="utf-8"))
 
+    def test_steamos_readonly_is_the_pico_4s_and_the_image_can_be_written(self):
+        # Valve's handles btrfs only: not extracted, and pico4-base's in its place. The image has a journal for
+        # the time steamos-readonly disable makes it writable, and stays reproducible (zeroed at mkfs).
+        build = (self.ROOT / "scripts/build-userspace.sh").read_text(encoding="utf-8")
+        self.assertIn('ln -s ../libexec/pico4/steamos-readonly "$T/usr/bin/steamos-readonly"', build)
+        image = (self.ROOT / "scripts/build-system-image.sh").read_text(encoding="utf-8")
+        self.assertNotIn("^has_journal", image)
+        self.assertIn("-J size=$JOURNAL_MIB", image)
+        self.assertIn("lazy_journal_init=0", image)
+        self.assertIn("E2FSPROGS_FAKE_TIME=$epoch mkfs.ext4", image)
+
     def test_pacmans_database_is_part_of_the_image(self):
         # It describes the image's packages: moved into it once the build's own pacman runs are done, named by
         # the image's pacman.conf, and no copy left under /var, which is the data partition's on the headset.

@@ -17,7 +17,7 @@ installed system runs on Valve's kernel ([kernel.md](kernel.md)).
 | --- | --- | --- | --- |
 | `boot` | 96 MiB | kernel and first-stage ramdisk | Valve's kernel, its device tree and the command line that starts the system image; no ramdisk ([the boot image](#install-and-update)) |
 | `recovery` | 100 MiB | recovery | the maintenance stage 1 on Valve's kernel: development, installs and the headset's own build, rescue |
-| `super` | 8 GiB | the read-only system (system, vendor, product, odm) | the system image: read-only ext4, about 4.6 GiB |
+| `super` | 8 GiB | the read-only system (system, vendor, product, odm) | the system image: read-only ext4 with a journal, about 4.6 GiB; writable after `steamos-readonly disable` until the next upgrade |
 | `userdata` | 106 GiB | apps and data (f2fs, file-based encryption) | the data: ext4 `pico4-data`, mounted at `/data` |
 | `misc` | 1 MiB | the bootloader message | the same: it selects the maintenance mode |
 | `metadata` | 16 MiB | userdata's encryption metadata | unused; wiped on the way back |
@@ -104,7 +104,9 @@ pico4.autoreboot=0` to the kernel's own words (`clk_ignore_unused`, `pd_ignore_u
    leaves it).
 2. `devnode sweep` switches every disk and partition read-only and makes the `/dev/block/by-name` links before
    anything is mounted writable: one `blockdev` call, 0.03 s for about 120 devices (`pico4-storage-ro.service`
-   runs it again before `local-fs-pre.target`).
+   runs it again before `local-fs-pre.target`). While `steamos-readonly disable` holds (`/.pico4-writable` in the
+   image), it leaves `super` writable, and preinit remounts the root writable
+   ([userspace.md](userspace.md#a-writable-system)).
 3. It makes `userdata` writable, and its disk too (a mainline kernel counts a disk's read-only flag for its
    partitions; the other partitions keep their own flags), and mounts it at `/data`. Outside charger mode it
    counts the boot ([boot attempts](#boot-attempts)).

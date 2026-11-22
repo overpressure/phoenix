@@ -101,6 +101,29 @@ SteamOS's offload binds put under `/home`), its log (`/var/log/pacman.log`) and 
 in the `/etc` overlay). Systems before this kept a copy at `/var/lib/pacman` on the data partition; preinit
 removes it.
 
+### A writable system
+
+As on SteamOS, the system is read-only until its owner makes it writable with `sudo steamos-readonly disable`
+(sudo takes the owner's password, [security.md](security.md#logins)), and pacman installs packages into it then. The
+next upgrade writes a fresh image, read-only again, and whatever was installed meanwhile is gone with its
+database entries ([pacman's database](#pacmans-database)), as after a SteamOS update. Valve's `steamos-readonly`
+handles a btrfs root only; the image's is pico4-base's
+([steamos-readonly](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/steamos-readonly)), with
+SteamOS's commands, messages, exit codes and `/.ROOTFS_RW` marker:
+
+| Command | What it does |
+| --- | --- |
+| `steamos-readonly disable` | `super` and the root writable, now and at every boot until `enable`; the file system grows to the whole partition (online) |
+| `steamos-readonly enable` | synced, then the root and `super` read-only again (a file still open for writing keeps it writable until the next start) |
+| `steamos-readonly status` | `enabled` (read-only, exit status 0) or `disabled` (exit status 1) |
+| `steamos-readonly toggle` | the other one, then the status |
+
+SteamOS keeps the setting in its btrfs root's `ro` property; here it is a file in the image, `/.pico4-writable`,
+which preinit and the storage policy read at every boot, so a fresh image starts read-only. Only `super` changes:
+`boot`, `recovery`, `misc` and every other partition stay read-only in both states. The image has a journal for it.
+What a package writes to `/etc` goes into the `/etc` overlay's upper layer and to `/var` onto the data partition,
+as on SteamOS, so it stays after the upgrade has removed the package.
+
 ### Valve's Mesa
 
 The system's Mesa is Valve's `deckard-mesa-linux-aarch64` ([kernel.md](kernel.md#valves-mesa)): Turnip on msm and
@@ -157,6 +180,8 @@ What the system keeps:
   partition read-only (`pico4.rw=1` disables this, as in stage 1). The exception is the data partition (`userdata`,
   file system `pico4-data`, booted with `pico4.root=installed`), which preinit makes writable: switched read-only
   under the mounted file system, its writeback fails and data is lost. `pico4-userspace-check` requires it writable.
+  `steamos-readonly disable` leaves `super` writable too, until `enable` or the next upgrade
+  ([a writable system](#a-writable-system)).
   No fstab entries; the GPT auto-generator is disabled; `systemd-repart` and `systemd-boot-update` are masked.
 - **Recovery.** `pico4-recovery-watch.service` runs stage 1's `recovery-watch` and `recovery-policy.sh` and survives
   isolation; with `pico4.autoreboot=0` and no test run it sets no deadline. Emergency and rescue mode log the failed
@@ -289,7 +314,8 @@ JSON, exit status 0 when it passed. It waits up to 180 s for the boot to settle,
 
 - systemd 257 as PID 1, state `running`, no failed units;
 - `/dev` the kernel's devtmpfs with a node for every kernel device, and a populated udev database;
-- the root read-only from `super`, `/data` on `userdata` the only writable partition;
+- the root read-only from `super`, `/data` on `userdata` the only writable partition (with `steamos-readonly
+  disable`, the root and `super` writable too);
 - D-Bus, logind's seat0 and sshd;
 - the USB link as `pico4-usb-gadget` recorded it (interface, MAC, address);
 - the session user logged in with its session target active, Monado's socket listening, the XR device nodes

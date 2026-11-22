@@ -35,6 +35,10 @@ password is kept in the `/etc` overlay's upper layer on the data partition, so i
 PC a password login or a key that was not enrolled is refused for both, on USB and Wi-Fi
 (`Permission denied (publickey)`), with or without a password.
 
+**A writable system.** With a password set, `sudo steamos-readonly disable` makes the system image writable
+until `enable` or the next upgrade, as on SteamOS ([userspace.md](userspace.md#a-writable-system)). It changes only
+`super`: every other partition stays read-only.
+
 **The keys.** `python -m overpressure dev image` makes this PC's key once, `out/dev/id_ed25519`;
 `PICO4_SSH_PUBLIC_KEY` in `.env` adds the owner's own public key: the install's *Your SSH key* step saves a pasted
 one as `out/dev/owner-key.pub` and names it there. `dev install` writes both, with the

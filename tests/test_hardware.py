@@ -398,13 +398,20 @@ class HarnessTests(unittest.TestCase):
                 return "0"
             if "SHELL-" in command:
                 return "SHELL-42"
+            if command.startswith("[ -e /.pico4-writable ]"):
+                return {"writable": "/dev/sda7", "writable-elsewhere": "/dev/sda7", "writable-other-root": "other"}.get(
+                    self.scenario or "", ""
+                )
             if command.startswith("for d in /sys/class/block"):
                 if self.installed_system:
-                    return "BLOCK sda 0\nBLOCK sda7 " + ("0" if self.scenario == "storage" else "1") + "\nBLOCK sda16 0"
+                    system = "0" if self.scenario in ("storage", "writable", "writable-elsewhere") else "1"
+                    other = "0" if self.scenario == "writable-elsewhere" else "1"
+                    return f"BLOCK sda 0\nBLOCK sda7 {system}\nBLOCK sda16 0\nBLOCK sda9 {other}"
                 return "BLOCK sda 1\nBLOCK sda1 " + ("0" if self.scenario == "storage" else "1")
             if command == "cat /proc/mounts":
                 if self.installed_system:
-                    return "/dev/sda7 / ext4 ro,noatime 0 0\n/dev/sda16 /data ext4 rw,noatime 0 0"
+                    root = "rw" if self.scenario in ("writable", "writable-elsewhere") else "ro"
+                    return f"/dev/root / ext4 {root},noatime 0 0\n/dev/sda16 /data ext4 rw,noatime 0 0"
                 return "rootfs / rootfs rw 0 0"
             if command.startswith("head -c "):
                 return ("bad" if self.scenario == "readback" else self.runner.result["boot_sha256"]) + "  -"
@@ -496,6 +503,21 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(state["check"]["fan"], {"service": "active", "state": self.FAN_STATE})
         self.assertTrue((self.runner.folder / "userspace-check.json").exists())
         self.assertTrue((self.runner.folder / "storage-userspace.txt").exists())
+
+    def test_the_system_made_writable_passes_the_stage2_checks(self):
+        # steamos-readonly disable: super and the root writable until enable or the next upgrade.
+        self.scenario = "writable"
+        self.assertEqual(self.stage2_checks()["check"]["status"], "passed")
+
+    def test_a_writable_root_that_is_not_super_fails_the_stage2_checks(self):
+        self.scenario = "writable-other-root"
+        with self.assertRaisesRegex(ValueError, "not the system image in super"):
+            self.stage2_checks()
+
+    def test_with_the_system_writable_every_other_partition_stays_read_only(self):
+        self.scenario = "writable-elsewhere"
+        with self.assertRaisesRegex(ValueError, "writable disk or partition"):
+            self.stage2_checks()
 
     def test_a_writable_partition_fails_the_stage2_checks(self):
         self.scenario = "storage"

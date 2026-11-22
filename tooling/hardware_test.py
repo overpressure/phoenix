@@ -210,6 +210,31 @@ def prepare_restore_image(backup: Path, folder: Path, serial: str, identity: dic
     return {"source": str(original.resolve()), "path": str(target.resolve()), **expected}
 
 
+def system_counted_read_only(mounts: str, storage: str, system: str) -> tuple[str, str]:
+    """Return /proc/mounts and the block inventory with the writable system image counted read-only.
+
+    steamos-readonly disable makes the root, the image in super (@p system, /dev/sda7, which the headset
+    confirmed is the root's device), writable until enable or the next upgrade (docs/userspace.md#a-writable-system).
+    The root is one mount of a device (/proc/mounts names it /dev/root or by its node); every other device and mount
+    is then checked by the storage policy as always.
+    """
+    name = system.removeprefix("/dev/")
+    rows = [line.split() for line in mounts.splitlines()]
+    roots = [row for row in rows if len(row) > 1 and row[1] == "/"]
+    require(
+        len(roots) == 1 and roots[0][0] in ("/dev/root", f"/dev/{name}"),
+        "The writable system's root is not the system image in super",
+    )
+    view = []
+    for row in rows:
+        if row in roots:
+            options = ["ro" if option == "rw" else option for option in row[3].split(",")]
+            row = [*row[:3], ",".join(options), *row[4:]]  # noqa: PLW2901  # the root's copy, counted read-only
+        view.append(" ".join(row))
+    blocks = [f"BLOCK {name} 1" if line.split()[:2] == ["BLOCK", name] else line for line in storage.splitlines()]
+    return "\n".join(view), "\n".join(blocks)
+
+
 class Runner(evidence.Runner):
     """The bounded acceptance run on one headset: every step recorded, the headset always brought back."""
 
@@ -472,6 +497,18 @@ class Runner(evidence.Runner):
         (self.folder / f"storage{suffix}.txt").write_text(storage + "\n", encoding="utf-8")
         mounts = self.ssh("cat /proc/mounts")
         (self.folder / f"mounts{suffix}.txt").write_text(mounts + "\n", encoding="utf-8")
+        if installed:
+            # steamos-readonly disable makes the system image writable until enable or the next upgrade: then
+            # the root must be super, and everything else is held to the policy as always.
+            # The headset names super only when the root is that device (/proc/mounts calls it /dev/root).
+            system = self.ssh(
+                "[ -e /.pico4-writable ] || exit 0; s=$(readlink -f /dev/block/by-name/super); "
+                '[ "$(findmnt -fno MAJ:MIN / | tr -d "[:space:]")" = "$(cat "/sys/class/block/${s##*/}/dev")" ] '
+                '&& echo "$s" || echo other'
+            ).strip()
+            require(system != "other", "The writable system's root is not the system image in super")
+            if system:
+                mounts, storage = system_counted_read_only(mounts, storage, system)
         validate_mounts(mounts, installed=installed)
         validate_storage(storage, data_device(mounts) if installed else "")
         if self.flash_mode:

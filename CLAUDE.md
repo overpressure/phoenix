@@ -158,7 +158,9 @@ python -m overpressure cycle --restore-only              # verified stock boot a
   backup-validated paths: `dev flash` (recovery), `pico4-install` in the maintenance
   stage 1 (boot, super, formatting userdata, wiping userdata and metadata, misc's bootloader
   message), `dev restore`/`dev restore-partition` and the EDL tools. `recovery` and `misc`
-  must never be written by anything else: the ABL checks recovery's AVB chain on every boot.
+  must never be written by anything else: the ABL checks recovery's AVB chain on every boot. The one
+  exception is the owner's: `steamos-readonly disable` makes `super` and the root writable until `enable` or
+  the next upgrade, as on SteamOS; every other partition stays read-only in both states.
 - **Hardware actions need a recoverable path.** Boot flashing goes through
   `python -m overpressure hwtest flash-run`, `python -m overpressure cycle`, `python -m overpressure dev flash` or the
   documented fastboot sequence. Check every write against the backup hash and verify it by

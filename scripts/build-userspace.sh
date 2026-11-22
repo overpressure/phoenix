@@ -480,6 +480,13 @@ if grep -qE '^auth[[:space:]].*pam_unix\.so.*\bnullok\b' "$T/etc/pam.d/system-au
 fi
 # The wheel group, the session user's, runs sudo with that user's own password, as on SteamOS.
 install -m 0440 /dev/stdin "$T/etc/sudoers.d/10-pico4-wheel" <<< '%wheel ALL=(ALL:ALL) ALL'
+# SteamOS's steamos-readonly handles a btrfs root only (the image's pacman.conf does not extract it):
+# pico4-base's, for this ext4 image in super, in its place (docs/userspace.md#a-writable-system).
+[[ -x "$T/usr/libexec/pico4/steamos-readonly" && ! -e "$T/usr/bin/steamos-readonly" ]] || {
+    echo "no pico4-base steamos-readonly, or Valve's was extracted" >&2
+    exit 1
+}
+ln -s ../libexec/pico4/steamos-readonly "$T/usr/bin/steamos-readonly"
 echo pico4-steamos > "$T/etc/hostname"
 echo LANG=C.UTF-8 > "$T/etc/locale.conf"
 rm -f "$T/etc/machine-id"   # written from the headset serial during the handoff
