@@ -174,6 +174,9 @@ systemd   257.7: udev devnode rules, read-only sweep, pico4-usb-gadget (USB NCM 
 device monitor listens to udev only when `/dev` is a devtmpfs or udev already runs; the stock kernel has no devtmpfs,
 so the system runs only on Valve's kernel.
 
+Apps the owner adds come from Flathub through Discover in Desktop mode, as on SteamOS
+([session.md](session.md#the-desktop)), or as containers through Podman; the system image stays read-only.
+
 What the system keeps:
 
 - **Storage.** preinit's devnode sweep, `pico4-storage-ro.service` and the udev helper keep every physical disk and

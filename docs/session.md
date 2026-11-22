@@ -563,8 +563,15 @@ any other app in the running session:
 The package also brings Valve's Plasma defaults and look-and-feel packages, and Steam's autostart inside Plasma.
 
 - **Plasma is Holo's** (6.5.3, Qt 6.10). The Frame's own build (6.2.5) needs its private base's Qt 6.8.
-  The image adds Dolphin and Konsole, about 1.3 GiB in all: the system image is 6,007 MiB of `super`'s
+  The image adds Dolphin and Konsole, about 1.3 GiB in all: the system image is 6,432 MiB of `super`'s
   8 GiB.
+- **Software, as on SteamOS: Discover and Flathub.** Holo's `flatpak` and `discover` (6.5.3, matching its
+  Plasma) install, update and remove Flathub apps system-wide, in `/var/lib/flatpak`, which the Frame's offload
+  binds (`var-lib-flatpak.mount`) put on the data partition; an app's own data is in `~/.var/app`. `steamos`
+  needs no password for it: flatpak's polkit rule lets the `wheel` group's active local session install. Both
+  stay through reboots and upgrades. An app starts from Plasma's menu, and in Gaming Mode from Steam's
+  + menu. The system image itself stays read-only
+  ([userspace.md](userspace.md#a-writable-system)).
 - **`plasma.desktop` is Valve's** (`start-gamescope-session plasma-session.target`), as on the Frame,
   whose Plasma build leaves it out. Holo's `plasma-workspace` ships its own, which starts Plasma
   without SteamVR. `build-userspace.sh` installs Valve's over it and checks the owner.
