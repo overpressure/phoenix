@@ -72,6 +72,16 @@ class SshAccessTests(unittest.TestCase):
         self.assertIn("readonly_again", keys)
         self.assertNotIn("dropbear-convert", (self.ROOT / "tooling/image.py").read_text(encoding="utf-8"))
 
+    def test_pacmans_database_is_part_of_the_image(self):
+        # It describes the image's packages: moved into it once the build's own pacman runs are done, named by
+        # the image's pacman.conf, and no copy left under /var, which is the data partition's on the headset.
+        build = (self.ROOT / "scripts/build-userspace.sh").read_text(encoding="utf-8")
+        move = build.index('mv "$T/var/lib/pacman" "$T/usr/lib/holo/pacmandb"')
+        self.assertLess(build.index('in_t pacman -Q > "$build_root/packages.txt"'), move)
+        self.assertLess(build.index('"$T"/var/lib/pacman/local/*/desc'), move)
+        self.assertLess(move, build.index("archive=$output/pico4-userspace.tar.zst"))
+        self.assertIn("sed -i '/^\\[options\\]$/a DBPath = /usr/lib/holo/pacmandb/' \"$T/etc/pacman.conf\"", build)
+
     def test_no_account_has_a_usable_password_until_its_owner_sets_one(self):
         build = (self.ROOT / "scripts/build-userspace.sh").read_text(encoding="utf-8")
         self.assertNotIn("passwd -d", build)

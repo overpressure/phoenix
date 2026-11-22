@@ -611,6 +611,17 @@ unmount_below "$T" inner
 rm -rf "$T/var/cache/pacman/pkg"/* "$T/var/log/pacman.log"
 # pacman records when it installed each package and has no SOURCE_DATE_EPOCH.
 sed -i "/^%INSTALLDATE%\$/{n;s/.*/$SOURCE_DATE_EPOCH/}" "$T"/var/lib/pacman/local/*/desc
+# pacman's database describes the image's packages, so it is part of the image, as on SteamOS: DBPath
+# /usr/lib/holo/pacmandb/, read-only with the system and replaced whole by an upgrade. /var, the data
+# partition's on the headset, keeps no copy. The build's own pacman runs keep the default path above: a DBPath
+# from pacman.conf is not taken below --root.
+install -d -m 0755 "$T/usr/lib/holo"
+mv "$T/var/lib/pacman" "$T/usr/lib/holo/pacmandb"
+sed -i '/^\[options\]$/a DBPath = /usr/lib/holo/pacmandb/' "$T/etc/pacman.conf"
+[[ $(grep -c '^DBPath = /usr/lib/holo/pacmandb/$' "$T/etc/pacman.conf") == 1 ]] || {
+    echo "the image's pacman.conf names no DBPath, or more than one" >&2
+    exit 1
+}
 archive=$output/pico4-userspace.tar.zst
 # No time after SOURCE_DATE_EPOCH, and no access or change times. The build environment's tar and zstd
 # (Holo's, pinned), not the host's: the same bytes wherever it is built, in the container or on the headset.

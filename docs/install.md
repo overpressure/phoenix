@@ -42,8 +42,9 @@ Every other partition stays read-only; the calibration and firmware the system n
   bind `/srv`, `/var/log`, `/var/tmp`, the pacman cache, flatpak and container storage from
   `/home/.steamos/offload`, so they land on the data partition too.
 - **PICO OS's files.** The image holds none of them, only links ([below](#pico-oss-files)).
-- **Updates.** A new system image replaces `super` whole; the data stays. On an image it has not booted
-  before, preinit takes `/var/lib/pacman` (which describes the image) from the new image.
+- **Updates.** A new system image replaces `super` whole; the data stays. pacman's database is part of the
+  image ([userspace.md](userspace.md#pacmans-database)), so it always lists the running image's packages; preinit
+  removes the copy on the data partition that systems before it kept (`/var/lib/pacman`).
 - **Boot indication.** [`pico4-splash`](../src/splash/pico4-splash.c) draws the logo's headset
   ([docs/logo](https://github.com/overpressure/overpressure/blob/main/docs/logo/README.md)), 320 pixels wide (about a seventh of a lens), the name in
   Inter and a moving bar in the middle of both lenses while the system starts
@@ -107,8 +108,8 @@ pico4.autoreboot=0` to the kernel's own words (`clk_ignore_unused`, `pd_ignore_u
 3. It makes `userdata` writable, and its disk too (a mainline kernel counts a disk's read-only flag for its
    partitions; the other partitions keep their own flags), and mounts it at `/data`. Outside charger mode it
    counts the boot ([boot attempts](#boot-attempts)).
-4. On the first boot it copies `/var`, `/root` and `/home` from the image (`cp -a -n`); after a new system
-   image it takes the package database from the image.
+4. On the first boot it copies `/var`, `/root` and `/home` from the image (`cp -a -n`). It removes the copy of
+   pacman's database that systems before kept on the data partition: the database is the image's.
 5. It mounts the `/etc` overlay, binds `/var`, `/home` and `/root`, and writes `/etc/machine-id` from the
    headset serial, so that journals of different boots belong together.
 6. It executes systemd, in charger mode with `--unit=pico4-charger.target` ([charger mode](#charger-mode)).

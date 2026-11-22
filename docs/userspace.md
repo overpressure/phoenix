@@ -90,6 +90,17 @@ The build takes `systemd`, `systemd-libs` and `systemd-sysvcompat` 257.7 from th
 installed systemd is not 257.x. The headset's `/etc/pacman.conf` is the build's without the project's local
 repositories and with `IgnorePkg = systemd systemd-libs systemd-sysvcompat systemd-resolvconf`, so an upgrade cannot pull 258.
 
+### pacman's database
+
+pacman's database lists the image's packages, so it is part of the image, as on SteamOS: the headset's
+`/etc/pacman.conf` names `DBPath = /usr/lib/holo/pacmandb/`, and the build moves the database there at its end
+(its own pacman runs keep the default path, which `--root` places in the build root). It is read-only with the
+system, and an upgrade replaces it with the image, so `pacman -Q` always lists exactly the running image's
+packages. What pacman writes besides stays on the data partition: its cache (`/var/cache/pacman/pkg`, which
+SteamOS's offload binds put under `/home`), its log (`/var/log/pacman.log`) and its keys (`/etc/pacman.d/gnupg`,
+in the `/etc` overlay). Systems before this kept a copy at `/var/lib/pacman` on the data partition; preinit
+removes it.
+
 ### Valve's Mesa
 
 The system's Mesa is Valve's `deckard-mesa-linux-aarch64` ([kernel.md](kernel.md#valves-mesa)): Turnip on msm and
@@ -251,7 +262,7 @@ clone, `headset.json`'s `date` in a release zip), as `SOURCE_DATE_EPOCH` (set it
 | --- | --- |
 | project packages' build dates and file times | makepkg takes `SOURCE_DATE_EPOCH`; with the same compiler the packages are identical |
 | fontconfig caches, the Java keystore of `ca-certificates` | the chroots and pacman's hooks get `SOURCE_DATE_EPOCH`, which fc-cache and p11-kit's `trust` take |
-| pacman's install dates | written as `SOURCE_DATE_EPOCH` into `/var/lib/pacman/local/*/desc` |
+| pacman's install dates | written as `SOURCE_DATE_EPOCH` into the database's `local/*/desc` |
 | the project repositories' databases (`repo-add` records when it ran) | not in the image: the headset's `pacman.conf` has none of them |
 | ldconfig's `aux-cache` (inode numbers, change times) | removed; it only speeds up the next ldconfig run |
 | file times, access and change times | the archive clamps every time to `SOURCE_DATE_EPOCH` and keeps no access or change times |
