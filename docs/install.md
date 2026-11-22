@@ -253,6 +253,10 @@ files the image shares; about 1 MB) goes over SSH, and
   stage 1 formats the data partition first and builds there through `pico4-install build`, which takes the PC's
   clock and renews its deadline while it runs. Stage 1 then writes the image from the data partition
   (`write super --from-data`).
+- **A package change.** `dev install --on-headset --packages DIR` sends a checkout of overpressure/packages along
+  (without its `.git`), and the headset's build takes its recipes that differ from the pinned commit's
+  (`build-userspace.sh --packages`), as in the build container: a package change is tried on the headset without
+  a container on the PC.
 - **Its own mount namespace.** The build's binds of `/sys` and `/dev` live in a private mount namespace
   (`unshare --propagation private`): on the installed system `/` is a shared mount, and the lazy unmount of a
   recursive bind of `/sys` once took the system's own cgroup and configfs mounts with it.

@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -1147,6 +1148,33 @@ class DevTests(HeadsetFixture):
         self.assertIn(f"pico4-install hash super {len(data)}", seen[1])
         self.assertTrue(seen[-1].endswith(f"--bytes {len(data)} --sha256 {sha} --zstd"))
 
+    def test_the_headsets_build_takes_a_packages_checkout_along_without_its_git(self):
+        dev, _ = self.install_setup()
+        packages = Path(self.root) / "packages"
+        for name in (
+            "headsets/phoenix/layers",
+            "phoenix/pico4-base/PKGBUILD",
+            ".git/config",
+            "build/__pycache__/x.pyc",
+        ):
+            (packages / name).parent.mkdir(parents=True, exist_ok=True)
+            (packages / name).write_text("x", encoding="utf-8")
+        for name in devloop.BUILD_TREE:
+            (Path(self.root) / name).mkdir(parents=True, exist_ok=True)
+        with patch.object(devloop, "ROOT", Path(self.root)), tempfile.TemporaryFile() as tree:
+            dev.build_tree(tree, packages=packages)
+            tree.seek(0)
+            with tarfile.open(fileobj=tree, mode="r:gz") as tar:
+                names = tar.getnames()
+        self.assertIn("packages/headsets/phoenix/layers", names)
+        self.assertIn("packages/phoenix/pico4-base/PKGBUILD", names)
+        self.assertFalse([n for n in names if ".git" in n or "__pycache__" in n])
+        script = (Path(__file__).resolve().parents[1] / "scripts/build-on-headset.sh").read_text(encoding="utf-8")
+        self.assertIn('packages="--packages /build/src/packages"', script)
+        # Only the headset's build takes it: the container's build has its own --packages.
+        with self.assertRaises(ValueError):
+            dev.install(Path(self.root) / "system.img", packages=packages)
+
     def test_the_headset_builds_its_system_and_stage_1_writes_it_from_the_data_partition(self):
         dev, _ = self.install_setup()
         record = {"bytes": 4096, "sha256": "d" * 64, "prefix_bytes": 1024, "prefix_sha256": "e" * 64}
@@ -1175,7 +1203,7 @@ class DevTests(HeadsetFixture):
             patch.object(devloop, "ROOT", self.root),
             patch.object(devloop, "source_date_epoch", lambda: 1700000000),
             patch.object(devloop, "source_commit", lambda: "abc123"),
-            patch.object(devloop.Dev, "build_tree", lambda _self, target: target.write(b"tree")),
+            patch.object(devloop.Dev, "build_tree", lambda _self, target, **_: target.write(b"tree")),
         ):
             # From the installed system (its session stops), and from stage 1 (pico4-install build).
             installed = dev.build_on_headset(stage1=False)

@@ -132,5 +132,9 @@ for d in src cache root out; do
 	mkdir -p "$host/build/$d"
 	mnt -o bind "$base/$d" "$host/build/$d"
 done
-in_host bash -c 'bash /build/src/devices/phoenix/scripts/build-userspace.sh /build/root /build/out &&
-	bash /build/src/devices/phoenix/scripts/build-system-image.sh /build/out/pico4-userspace.tar.zst /build/out/pico4-system.img'
+# A checkout of overpressure/packages the PC sent along (dev install --on-headset --packages DIR): its
+# recipes that differ from the pinned commit's are built here, as in the build container.
+packages=""
+[ ! -f "$src/packages/headsets/phoenix/layers" ] || packages="--packages /build/src/packages"
+in_host bash -c "bash /build/src/devices/phoenix/scripts/build-userspace.sh /build/root /build/out $packages &&
+	bash /build/src/devices/phoenix/scripts/build-system-image.sh /build/out/pico4-userspace.tar.zst /build/out/pico4-system.img"

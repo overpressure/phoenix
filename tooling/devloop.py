@@ -19,7 +19,8 @@ results live in out/dev/.
                                                on the stock kernel)
   python -m overpressure dev recovery          into the maintenance stage 1, until dev normal
   python -m overpressure dev install [SYSTEM]  boot, super and data from it; starts the installed system
-                                               (--on-headset: the headset builds the system image itself)
+                                               (--on-headset: the headset builds the system image itself;
+                                               --packages DIR: with its changed recipes from that checkout)
   python -m overpressure dev normal            from the maintenance stage 1 into the installed system
   python -m overpressure dev installed         connect to the running installed system
   python -m overpressure dev check             the acceptance checks on the installed system
@@ -761,13 +762,24 @@ class Dev(Headset):
             msg = f"the headset did not confirm {name}"
             raise RuntimeError(msg)
 
-    def build_tree(self, target: IO[bytes]) -> None:
-        """Write what the headset's build reads of this repository (BUILD_TREE) as a gzip-compressed tar."""
+    def build_tree(self, target: IO[bytes], packages: Path | None = None) -> None:
+        """Write what the headset's build reads of this repository (BUILD_TREE) as a gzip-compressed tar.
+
+        @p packages, a checkout of overpressure/packages, goes along as packages/: the build takes its recipes that
+        differ from the pinned commit's (build-userspace.sh --packages), as in the build container.
+        """
+
+        def keep(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
+            parts = Path(info.name).parts
+            return None if "__pycache__" in parts or ".git" in parts or ".ruff_cache" in parts else info
+
         with tarfile.open(fileobj=target, mode="w:gz") as tar:
             for name in BUILD_TREE:
-                tar.add(ROOT / name, arcname=name, filter=lambda i: None if "__pycache__" in i.name else i)
+                tar.add(ROOT / name, arcname=name, filter=keep)
+            if packages is not None:
+                tar.add(packages, arcname="packages", filter=keep)
 
-    def build_on_headset(self, *, stage1: bool) -> dict:
+    def build_on_headset(self, *, stage1: bool, packages: Path | None = None) -> dict:
         """Build the system on the headset itself (docs/install.md#built-on-the-headset).
 
         This repository's build part goes over SSH, and scripts/build-on-headset.sh runs it on the
@@ -799,7 +811,7 @@ class Dev(Headset):
         print("building the system on the headset", flush=True)
         started = time.monotonic()
         with tempfile.TemporaryFile() as tree:
-            self.build_tree(tree)
+            self.build_tree(tree, packages=packages)
             tree.seek(0)
             process.run_streamed(argv, HEADSET_BUILD_SECONDS, lambda line: print(line, flush=True), stdin=tree)
         print(f"built on the headset in {time.monotonic() - started:.0f} s", flush=True)
@@ -811,7 +823,9 @@ class Dev(Headset):
         manifest.write_text(self.ssh(f"{read}out/pico4-userspace.manifest.json", 30) + "\n", encoding="utf-8")
         return record
 
-    def install_inputs(self, system: Path, boot: Path, *, on_headset: bool, format_data: bool) -> dict | None:
+    def install_inputs(
+        self, system: Path, boot: Path, *, on_headset: bool, format_data: bool, packages: Path | None = None
+    ) -> dict | None:
         """Check the install's images; with @p on_headset, the record of what the installed system built.
 
         The installed system builds when it runs and its data stays (its fan runs there); otherwise
@@ -836,7 +850,7 @@ class Dev(Headset):
             raise RuntimeError(msg)
         if format_data or not self.installed_running():
             return None
-        return self.build_on_headset(stage1=False)
+        return self.build_on_headset(stage1=False, packages=packages)
 
     def format_userdata(self, *, always: bool) -> None:
         """Format userdata from the maintenance stage 1 when it holds no data yet, or @p always."""
@@ -849,7 +863,13 @@ class Dev(Headset):
                 raise RuntimeError(msg)
 
     def install(
-        self, system: Path = SYSTEM, *, format_data: bool = False, boot: Path | None = None, on_headset: bool = False
+        self,
+        system: Path = SYSTEM,
+        *,
+        format_data: bool = False,
+        boot: Path | None = None,
+        on_headset: bool = False,
+        packages: Path | None = None,
     ) -> None:
         """Install from the maintenance stage 1, then start the installed system.
 
@@ -857,10 +877,17 @@ class Dev(Headset):
         formatted if it holds no data yet (or when asked); the enrolled keys and the install ID go
         onto it. @p boot replaces the boot image. @p on_headset: the headset builds the system
         image itself (build_on_headset), its installed system when it runs and keeps its data, else
-        the maintenance stage 1 after formatting, and stage 1 writes it from the data partition.
+        the maintenance stage 1 after formatting, and stage 1 writes it from the data partition; @p packages, a
+        checkout of overpressure/packages, gives that build its changed recipes.
         """
+        if packages is not None and not on_headset:
+            msg = "--packages goes with --on-headset: the build container takes it from build-userspace.sh"
+            raise ValueError(msg)
+        if packages is not None and not (packages / "headsets/phoenix/layers").is_file():
+            msg = f"{packages} is no checkout of overpressure/packages"
+            raise ValueError(msg)
         boot = boot or self.work.parent / "kernel/valve-boot.img"
-        built = self.install_inputs(system, boot, on_headset=on_headset, format_data=format_data)
+        built = self.install_inputs(system, boot, on_headset=on_headset, format_data=format_data, packages=packages)
         # A repeat after an install that got as far as starting the system: back into stage 1 first.
         if self.in_fastboot():
             print("the headset is in fastboot: into the maintenance system to repeat the install", flush=True)
@@ -888,7 +915,7 @@ class Dev(Headset):
             # The build lives on the data partition: formatted first, then built there by stage 1.
             self.format_userdata(always=format_data)
             format_data = False
-            built = self.build_on_headset(stage1=True)
+            built = self.build_on_headset(stage1=True, packages=packages)
         # The writes are most of the install: up to WRITES of its progress, the short steps after them the rest.
         sizes = {"boot": self.stream_size(boot), "super": 0 if built else self.stream_size(system)}
         current = {"name": "boot"}
@@ -1352,6 +1379,12 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per 
     inst.add_argument(
         "--on-headset", action="store_true", help="the headset builds the system image itself, no build here"
     )
+    inst.add_argument(
+        "--packages",
+        type=Path,
+        metavar="DIR",
+        help="with --on-headset: a checkout of overpressure/packages, whose changed recipes the headset builds",
+    )
     restore = sub.add_parser("restore", help="back to PICO OS from the backup: system, boot, recovery, fresh data")
     restore.add_argument(
         "--installed", action="store_true", help="the system is installed, also where this computer did not record it"
@@ -1376,7 +1409,13 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per 
         elif args.command == "check":
             return dev.check(installer=args.installer, part=args.part)
         elif args.command == "install":
-            dev.install(args.system, format_data=args.format_data, boot=args.boot, on_headset=args.on_headset)
+            dev.install(
+                args.system,
+                format_data=args.format_data,
+                boot=args.boot,
+                on_headset=args.on_headset,
+                packages=args.packages,
+            )
         elif args.command == "boot-image":
             print(dev.boot_image())
         elif args.command == "release-check":
