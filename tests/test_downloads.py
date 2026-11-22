@@ -1,12 +1,11 @@
 # SPDX-License-Identifier: Unlicense
-"""The PICO 4's downloads: through overpressure's web (interface 1.5) where it is, urllib before it."""
+"""The PICO 4's downloads: through overpressure's web (headset interface 1.5)."""
 
 from __future__ import annotations
 
 import tempfile
 import types
 import unittest
-import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -28,11 +27,6 @@ class ReachTests(unittest.TestCase):
             self.assertEqual(
                 devloop.answers("https://github.com", 5), "the name does not resolve (https://github.com, 5)"
             )
-
-    def test_an_older_overpressure_checks_with_urllib(self):
-        refused = urllib.error.URLError(ConnectionRefusedError(10061, "refused"))
-        with mock.patch.object(devloop, "web", None), mock.patch("urllib.request.urlopen", side_effect=refused):
-            self.assertEqual(devloop.answers("https://github.com"), "[Errno 10061] refused")
 
 
 class KernelFileTests(unittest.TestCase):

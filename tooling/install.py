@@ -824,7 +824,7 @@ class Plan:
         except Failed as exc:
             if qualcomm.unanswered(str(exc)):
                 raise Failed(qualcomm.NO_ANSWER, STALE_EDL_WHERE) from exc
-            if device.RESUMABLE and qualcomm.link_lost(str(exc)):
+            if qualcomm.link_lost(str(exc)):
                 raise Failed(qualcomm.LINK_LOST, LINK_LOST_WHERE) from exc
             raise
         ctx.progress(None, "Checking the backup")
@@ -864,10 +864,8 @@ class Plan:
 
     @staticmethod
     def unfinished_here(ctx: Context) -> bool:
-        """Tell whether .env's backup folder holds this headset's unfinished backup, which can go on (since 1.5)."""
+        """Tell whether .env's backup folder holds this headset's unfinished backup, which can go on."""
         settings = ctx.settings(Settings)
-        if not device.RESUMABLE:
-            return False
         try:
             identity = device.read_identity(settings.path("identity"))
         except (OSError, ValueError, KeyError):

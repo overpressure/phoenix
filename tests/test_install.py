@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from unittest import mock
 
 from devices.phoenix import tooling
-from devices.phoenix.tooling import HEADSET, device, devloop, localconfig
+from devices.phoenix.tooling import HEADSET, devloop, localconfig
 from devices.phoenix.tooling import doctor as checks
 from devices.phoenix.tooling import install as plan
 from overpressure.api.v1 import backup as backups
@@ -654,7 +654,6 @@ class PlanTests(unittest.TestCase):
         self.assertTrue(new.startswith("backup/stock-"), new)
         self.assertTrue((self.backup / "edl.log").exists())
 
-    @unittest.skipUnless(device.RESUMABLE, "this overpressure has no resumed backup (interface 1.5)")
     def test_this_headsets_unfinished_backup_goes_on_where_it_stopped(self):
         self.saved_identity("5.13.7")
         self.backup.mkdir(parents=True)
@@ -673,7 +672,6 @@ class PlanTests(unittest.TestCase):
         backup = next(argv for argv, _, _ in self.spawned if "backup" in argv and "--execute" in argv)
         self.assertNotIn("--resume", backup)
 
-    @unittest.skipUnless(device.RESUMABLE, "this overpressure has no resumed backup (interface 1.5)")
     def test_a_link_that_timed_out_mid_backup_says_to_restart_and_that_it_goes_on(self):
         original = self.spawn
 

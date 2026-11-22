@@ -81,7 +81,8 @@ only refreshes pacman's keys). What moves lives in the data partition:
 
 Holding the client at a tested version is open: whether an older client keeps working against Steam's servers is not
 known. The image reports this repository's version (`headset.json`) and commit, and overpressure's version, in
-`/usr/share/pico4/version` (`version=`, `commit=`, `overpressure=`).
+`/usr/share/pico4/version` (`version=`, a preview's with its commit's time, `commit=`, `overpressure=`, `kernel=`
+the kernel's tag, `packages=` the packages' release).
 
 ### systemd stays at 257.x
 

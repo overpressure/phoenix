@@ -35,12 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from overpressure.api.v1 import REPO, tools
-
-try:  # interface 1.5: TLS verified by the system's own verifier, a short outage tried again, failures that say why
-    from overpressure.api.v1 import web
-except ImportError:  # an older overpressure downloads with urllib, as before
-    web = None
+from overpressure.api.v1 import REPO, tools, web
 
 Log = Callable[[str], None]
 Opener = Callable[..., object]
@@ -327,10 +322,10 @@ def kernel_file(path: str, pin: Release | None = None, *, cache: Path = CACHE, o
     kept = cache / pin.commit / path
     if not kept.is_file():
         url = pin.source_url(path)
-        if opener is None and web is not None:
+        if opener is None:
             data = web.read(url, 60)
         else:
-            with (opener or urllib.request.urlopen)(url, timeout=60) as response:  # ty: ignore[invalid-context-manager]  # urlopen's response
+            with opener(url, timeout=60) as response:  # ty: ignore[invalid-context-manager]  # urlopen's response
                 data = response.read()
         kept.parent.mkdir(parents=True, exist_ok=True)
         kept.write_bytes(data)

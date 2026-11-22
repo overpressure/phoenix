@@ -188,6 +188,12 @@ fi
 commit=${OVERPRESSURE_COMMIT:-$commit}
 SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-${epoch:-$(date +%s)}}
 export SOURCE_DATE_EPOCH
+# A preview (main between releases holds a development version) is named by its commit's time, as overpressure names
+# one: 2026.11.0.dev0 becomes 2026.11.0.dev202611221154 (overpressure's docs/releasing.md, versions).
+if [[ $version == *.dev* ]]; then
+    version="${version%.dev*}.dev$(date -u -d "@$SOURCE_DATE_EPOCH" +%Y%m%d%H%M)"
+fi
+kernel=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["tag"])' "$source_dir/kernel/release.json")
 
 # -- 1. build environment and project packages --------------------------------------------
 # The image's definition and its layers, from the snapshot of overpressure/packages.
@@ -587,7 +593,8 @@ done
 python3 "$source_dir/scripts/check-package-lock.py" "$build_root/upstream-hashes.txt" "$definition/packages.lock" \
     ${update_lock:+--write "$output/packages.lock"}
 install -d -m 0755 "$T/usr/share/pico4"
-printf 'version=%s\ncommit=%s\noverpressure=%s\n' "$version" "$commit" "$overpressure" > "$T/usr/share/pico4/version"
+printf 'version=%s\ncommit=%s\noverpressure=%s\nkernel=%s\npackages=%s\n' "$version" "$commit" "$overpressure" \
+    "$kernel" "$packages_tag" > "$T/usr/share/pico4/version"
 unmount_below "$T" inner
 rm -rf "$T/var/cache/pacman/pkg"/* "$T/var/log/pacman.log"
 # pacman records when it installed each package and has no SOURCE_DATE_EPOCH.

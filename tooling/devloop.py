@@ -44,8 +44,6 @@ import sys
 import tarfile
 import tempfile
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Callable
 
@@ -60,6 +58,7 @@ from overpressure.api.v1 import (
     qualcomm,
     ssh,
     usbaccess,
+    web,
     windows_ncm,
 )
 from overpressure.api.v1 import (
@@ -72,11 +71,6 @@ from overpressure.api.v1.headset import manifest
 from . import FASTBOOT_MODE, USB_MODES, device, localconfig, stockfiles
 from . import hardware_test as hw
 from .cycle import Headset, run
-
-try:  # interface 1.5: TLS verified by the system's own verifier, failures that say why
-    from overpressure.api.v1 import web
-except ImportError:  # an older overpressure: urllib, as before
-    web = None
 
 if TYPE_CHECKING:
     from overpressure.api.v1.process import Timing
@@ -133,6 +127,7 @@ BUILD_TREE = (
     "devices/phoenix/initramfs/usr/libexec/pico4",
     "devices/phoenix/prebuilt",
     "devices/phoenix/headset.json",
+    "devices/phoenix/kernel/release.json",  # the kernel's tag, which the image's version file names
 )
 
 
@@ -156,16 +151,8 @@ def _git(*words: str) -> str:
 
 
 def answers(url: str, timeout: float = 15) -> str:
-    """Return "" when this PC gets an answer from @p url (any HTTP status is one), else why not."""
-    if web is not None:  # interface 1.5: TLS verified as the system does, and the reason
-        return web.answers(url, timeout)
-    try:
-        urllib.request.urlopen(urllib.request.Request(url, method="HEAD"), timeout=timeout).close()  # noqa: S310  # fixed https URLs
-    except urllib.error.HTTPError:
-        return ""
-    except (urllib.error.URLError, OSError) as exc:
-        return str(getattr(exc, "reason", exc))
-    return ""
+    """Return "" when this PC gets an answer from @p url (any HTTP status is one), else why not, TLS verified."""
+    return web.answers(url, timeout)
 
 
 def unreachable(urls: tuple[str, ...] = DOWNLOAD_HOSTS) -> list[str]:
