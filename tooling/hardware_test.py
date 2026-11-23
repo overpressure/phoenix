@@ -903,7 +903,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # every option ch
         p.add_argument(
             "--serial", required=name != "preflight", help="authorized ADB serial (preflight can select a sole device)"
         )
-        p.add_argument("--adb", default="adb")
+        p.add_argument("--adb", help="adb to run (default: the settings' tool)")
         p.add_argument(
             "--out",
             type=Path,
@@ -918,7 +918,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # every option ch
             )
         else:
             p.add_argument("--image", type=Path, required=True)
-            p.add_argument("--fastboot", default="fastboot")
+            p.add_argument("--fastboot", help="fastboot to run (default: the settings' tool)")
             p.add_argument("--fastboot-serial", help="explicit fastboot serial if different from ADB")
             p.add_argument("--ssh", default="ssh")
             p.add_argument("--ssh-keygen", default="ssh-keygen")
@@ -932,6 +932,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # every option ch
             p.add_argument("--backup", type=Path, required=True, help="verified original device backup")
             p.add_argument("--confirm-device", required=True, help="repeat --serial to authorize boot writes")
     args = ap.parse_args(argv)
+    device.default_tools(args)
     if args.command == "preflight" and args.rootfs is None:
         args.rootfs = newest_rootfs()
     try:

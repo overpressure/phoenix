@@ -129,13 +129,13 @@ python -m overpressure hwtest flash-run --serial ADB_SERIAL --fastboot-serial FA
 | --- | --- | --- |
 | `--serial` | required; `preflight` takes the only authorized ADB device | ADB serial |
 | `--out` | `out/hardware-<random>` | new [result directory](#result-directory) |
-| `--adb` | `adb` | executable, checked before anything runs |
+| `--adb`, `--fastboot` | the settings' tool: `.env`'s platform-tools, the fetched ones, then `PATH` | executables, checked before anything runs |
 | `--rootfs` | `preflight` only: the newest `out/pico4-stage1-*-rootfs.tar` | the image's userspace |
 | `--image`, `--backup` | required for `flash-run` | stage-1 image; verified EDL backup |
 | `--confirm-device` | required for `flash-run` | repeats `--serial` to authorize the boot write |
 | `--fastboot-serial` | `--serial` | fastboot serial if it differs; also the stage-1 gadget's USB serial |
 | `--host` | `172.16.42.1` | the headset's USB IPv4 address |
-| `--fastboot`, `--ssh`, `--ssh-keygen` | the names on `PATH` | executables, checked before anything runs |
+| `--ssh`, `--ssh-keygen` | the names on `PATH` | executables, checked before anything runs |
 | `--windows-ncm-python` | off | Windows only: [NCM initialization](#windows-ncm-initialization) |
 | `--boot-timeout`, `--report-timeout`, `--recovery-timeout` | 180, 180, 420 | [limits](#failure-and-timeout-behavior) in seconds |
 

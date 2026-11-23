@@ -275,11 +275,19 @@ def confirm(args: argparse.Namespace, identity: dict) -> None:
         raise ValueError(msg)
 
 
-def dispatch(args: argparse.Namespace) -> None:  # noqa: C901, PLR0911, PLR0912, PLR0915  # the unlock workflow's commands, kept as verified on hardware
-    """Run one device command; previews unless --execute."""
-    for tool in ("adb", "fastboot"):  # not named: the settings' tool, as every other command runs it
+def default_tools(args: argparse.Namespace) -> None:
+    """Fill an --adb or --fastboot not given with the settings' tool, as the installer runs it.
+
+    That is .env's platform-tools, else the fetched ones (python -m overpressure tools), else PATH.
+    """
+    for tool in ("adb", "fastboot"):
         if hasattr(args, tool) and getattr(args, tool) is None:
             setattr(args, tool, localconfig.load().tool(tool))
+
+
+def dispatch(args: argparse.Namespace) -> None:  # noqa: C901, PLR0911, PLR0912, PLR0915  # the unlock workflow's commands, kept as verified on hardware
+    """Run one device command; previews unless --execute."""
+    default_tools(args)
     if args.command == "token":
         print("fastboot oem " + unlock_token(chip_id(args.chip_id)) + " unlock")
         return

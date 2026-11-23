@@ -4,6 +4,7 @@
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -11,7 +12,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from devices.phoenix.tooling import device, unlockfiles
+from devices.phoenix.tooling import device, hardware_test, localconfig, unlockfiles
+from overpressure import tools
 
 
 class ProtocolTests(unittest.TestCase):
@@ -287,6 +289,49 @@ class WorkflowTests(unittest.TestCase):
             self.call(["probe", "--adb", "adb", "--output", str(output)])
         record = json.loads(output.read_text())
         self.assertEqual((record["model"], record["ddr_type"]), ("PICO 4", "DDR4"))
+
+    def test_the_probe_runs_the_settings_adb_unless_one_is_named(self):
+        # With platform-tools fetched and none on PATH, as docs/device-preparation.md runs it.
+        fetched = self.root / "cache" / "tools" / "platform-tools" / "adb"
+        settings = localconfig.load(self.root / ".env", {})
+        seen: list[str] = []
+
+        def run(argv: list[str], *_: object, **__: object) -> str:
+            seen.append(argv[0])
+            return "0x1234"
+
+        output = self.identity.with_name("probed.json")
+        with (
+            patch.object(device, "run", side_effect=run),
+            patch.object(device, "select_device", return_value="ABC") as select,
+            patch.object(device.localconfig, "load", return_value=settings),
+            patch.object(tools, "program", return_value=fetched),
+            patch.dict(os.environ, {"PATH": ""}),
+        ):
+            self.call(["probe", "--output", str(output)])
+            self.assertEqual(select.call_args.args[0], str(fetched))
+            self.assertEqual(set(seen), {str(fetched)})
+            seen.clear()
+            self.call(["probe", "--adb", "/opt/adb", "--output", str(output)])
+            self.assertEqual(set(seen), {"/opt/adb"})
+
+    def test_hwtest_runs_the_settings_adb_and_fastboot_unless_named(self):
+        class ParsedError(Exception):
+            pass
+
+        given: list[tuple[object, object]] = []
+
+        def stop(args: object) -> None:
+            given.append((getattr(args, "adb", None), getattr(args, "fastboot", "-")))
+            raise ParsedError
+
+        preflight = ["preflight", "--rootfs", "x.tar"]
+        flash = ["flash-run", "--serial", "A", "--image", "i", "--backup", "b", "--confirm-device", "A"]
+        with patch.object(device, "default_tools", side_effect=stop):
+            for argv in (preflight, flash, [*flash, "--adb", "/opt/adb"]):
+                with self.assertRaises(ParsedError):
+                    hardware_test.main(argv)
+        self.assertEqual(given, [(None, "-"), (None, None), ("/opt/adb", None)])
 
     def test_the_panel_decides(self):
         sharp = "console=x msm_drm.dsi_display0=qcom,mdss_dsi_sharp_ls026b3sa_90_video: pico4.part=recovery"
