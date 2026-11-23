@@ -608,6 +608,28 @@ class PlanTests(unittest.TestCase):
         self.assertIn("power button", finished["where"])
         self.assertNotIn("device backup", self.commands())
 
+    def test_a_sahara_handshake_that_fails_again_says_how_to_start_afresh_without_a_reset_first(self):
+        # edl-ng 1.6 on macOS, a session that no longer answers: libusb fails the handshake with a stalled pipe,
+        # and a reset into EDL would need the very session that does not answer.
+        original = self.capture
+
+        def capture(argv: list[str], timeout: float) -> tuple[int, str]:
+            if "printgpt" in argv or "reset" in argv:
+                self.captured.append(argv)
+                return 1, (
+                    "[ERROR] Handshake failed: LibUsbDotNet error: Pipe\n"
+                    "[WARN] Initial Sahara handshake failed, attempting reset and retry...\n"
+                    "[ERROR] An unexpected error occurred in 'printgpt': Sahara handshake failed even after reset."
+                )
+            return original(argv, timeout)
+
+        self.capture = capture  # ty: ignore[invalid-assignment]  # the test's own capture in the method's place
+        ui = self.run_stages(("connect", "prepare"), self.yes("plug-in", "consent"))
+        finished = ui.finished()
+        self.assertEqual((finished["error"], finished["where"]), (qualcomm.NO_ANSWER, plan.STALE_EDL_WHERE))
+        self.assertFalse(any("reset --mode Edl" in " ".join(map(str, c)) for c in self.captured))
+        self.assertNotIn("device backup", self.commands())
+
     def test_a_loader_left_running_is_restarted_into_a_fresh_session_for_the_serial(self):
         original, replies = (
             self.capture,
