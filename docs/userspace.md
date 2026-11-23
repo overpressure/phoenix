@@ -465,8 +465,11 @@ The headset has 7.6 GiB of RAM, shared with the GPU. Valve's idle VR session lea
 processes (steamwebhelper, vrwebhelper, steam) hold about 1.4 GB, GPU memory about 0.7 GB, the page cache about
 2.7 GB.
 
-- **Swap as on the Frame and PICO OS.** The Frame's `holo-zram-swap` configures `zram0` at half the RAM, `lzo-rle`,
-  zswap off; PICO OS swaps to zram the same way (`init.qcom.post_boot.sh`: half the RAM, at most 4 GiB). zram-generator
+- **Swap on zram, as big as the RAM, with `zstd`.** The Frame's `holo-zram-swap` configures `zram0` at half the RAM
+  with `lzo-rle`, and PICO OS does the same (`init.qcom.post_boot.sh`: half the RAM, at most 4 GiB). But the Frame has
+  16 GB, and PICO OS runs only Android apps, not PC games under Proton and FEX.
+  [`50-pico4-zram.conf`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/50-pico4-zram.conf)
+  sizes it to the RAM with `zstd`; zswap stays off. zram takes RAM only for what it holds, compressed. zram-generator
   is masked because its swap unit has no priority;
   [`pico4-zram-swap.service`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/pico4-zram-swap.service) runs its
   `--setup-device zram0` and `swapon` at PICO OS's priority 32758. GPU memory cannot be swapped.
@@ -478,13 +481,21 @@ processes (steamwebhelper, vrwebhelper, steam) hold about 1.4 GB, GPU memory abo
 - **A game larger than the free memory.** POOLS under Proton and FEX takes about 3 GB of GPU memory and 1.5 GB of its
   own. Without swap the headset froze for minutes (head tracking lost, compositor and gamescope crashed) until the
   OOM killer killed the game. With swap it runs: 1.5 GB went to zram, at most 2.3 % memory pressure, no kill.
+- **A game larger than the RAM: H3VR.** It takes about 3 GB of GPU memory and 3 GB of its own, about 11 GB with the
+  session. With the Frame's half-the-RAM zram the swap filled about 3 minutes after the start, and the headset froze
+  for about 110 s (head tracking lost, SteamVR's server crashed) until the OOM killer killed the game. With zram as
+  big as the RAM it reaches its menu and keeps running, at about 6 fps: 4.1 GB of memory and 3.4 GB of swap at its
+  peak, memory pressure at most 25 %, no kill. The GPU is at its highest clock and the game's cores are about 60 %
+  idle, so the game itself is GPU-bound there; it swaps about 0.4 MB/s once it runs. `zstd` held the swapped data at
+  2.7 : 1 against `lzo-rle`'s 2.0 : 1, about 0.7 GB more RAM free. PC games this large are better streamed from a PC.
 - **A game larger than memory and swap.** A process filling memory with incompressible data at `oom_score_adj` 900
   (Steam's games' value) in a VR session is killed 8–10 s after its start. No process waits longer than 4.3 s;
   gamescope, Xwayland, SteamVR's server and compositor and the head tracker keep running; the tracker may report
   tracking lost and relocalises.
 
 ```sh
-swapon --show                              # /dev/zram0, partition, about 3.8G, prio 32758
+swapon --show                              # /dev/zram0, partition, about 7.3G, prio 32758
+zramctl                                    # zstd, the data it holds and its compressed size
 cat /proc/pressure/memory                  # memory pressure (PSI)
 ```
 
