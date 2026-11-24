@@ -316,7 +316,7 @@ for Arabic, and the SC face and Naskh for CJK and Arabic text in another languag
 | Stage 2: controller pairing | the PICO 4's controllers, as above |
 | Stage 2: underscan | none: no television |
 | Stage 2: audio | none: the headset's speakers; other devices in the client's settings |
-| (none) | the lens distance, 62 to 72 mm in 0.5 mm steps, through `pico4-lens` |
+| (none) | the lens distance, 58 to 72 mm in 0.5 mm steps, through `pico4-lens`; closer than 62 mm once the box of the warning about the nose is ticked, as on PICO OS ([xr.md](xr.md#lens-distortion-and-ipd)) |
 
 Done on the last page, or Skip on the first, writes `~/.local/share/pico4/setup-done` and the client
 starts.
@@ -342,7 +342,7 @@ pico4-onboarding.strings.
 
 | Page | Why | What |
 | --- | --- | --- |
-| Lens distance | the lenses have no wheel, and SteamVR shows the IPD but has no control that sets it | a slider, ±0.5 mm buttons and four presets ([xr.md](xr.md#lens-distortion-and-ipd)) |
+| Lens distance | the lenses have no wheel, and SteamVR shows the IPD but has no control that sets it | a slider, ±0.5 mm buttons and four presets, 58 to 72 mm; closer than 62 mm after PICO OS's warning ([xr.md](xr.md#lens-distortion-and-ipd)) |
 | Controllers | SteamVR cannot pair the PICO 4's controllers | each one's state, and Pair for a missing one through the driver's pairing socket ([xr.md](xr.md#pairing)) |
 
 With no controller connected 20 s after the start, and the first-run setup over (it pairs itself), the

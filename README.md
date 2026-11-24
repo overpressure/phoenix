@@ -31,7 +31,7 @@ to PICO OS is part of it.
 | Feature | | Notes |
 | --- | --- | --- |
 | Both displays | ✅ | 2160 × 2160 per eye at 90 or 72 Hz, switchable in SteamVR's settings |
-| Lens distance (IPD) | ✅ | The wheel moves the lenses; the picture follows |
+| Lens distance (IPD) | ✅ | Overpressure Settings moves the lenses, 58 to 72 mm as on PICO OS; the picture follows |
 | Standby when taken off | ✅ | Dark when taken off, back within seconds when put on |
 | Cooling | ✅ | The fan runs as on PICO OS |
 
