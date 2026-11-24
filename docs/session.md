@@ -456,7 +456,8 @@ SteamVR's dashboard has default bindings only for some controller types, so
 [`pico4-vrcompositor-bindings.json`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4-vrcompositor-bindings.json)
 is the profile's `default_bindings` for `openvr.component.vrcompositor`: a press of `/input/system` (PICO
 button right, menu button left) toggles the dashboard, a double press the room view
-([xr.md](xr.md#passthrough)), and holding the PICO button recenters. The aim pose is the laser. Each hand has
+([xr.md](xr.md#passthrough)), and holding the PICO button recenters; the right controller's Capture button
+(`/input/menu`) takes a screenshot, as on PICO OS. The aim pose is the laser. Each hand has
 the whole laser mouse, as Valve binds the Touch controllers, which share the PICO 4's layout; one controller
 is enough for the desktop:
 
@@ -487,7 +488,8 @@ The driver therefore reports `pico_controller` with
 (installed as `pico4_controller_profile.json`), whose `remapping` is SteamVR's own file.
 `monado-steamvr-pico-controller.patch` names the inputs as SteamVR's profile does: trigger (value, click,
 touch), grip (value, click), joystick (x, y, click, touch), A/B or X/Y (click, touch), `/input/system`
-(menu button left, PICO button right) and the haptic output. The poses are the render model's components
+(menu button left, PICO button right), `/input/menu` on the right (the Capture button; on the left it is the
+same button as `/input/system`, so the profile names it once) and the haptic output. The poses are the render model's components
 (`aim`, `tip`, `grip`, `handgrip`, `openxr_aim`, `openxr_grip`; `tooling/controllermodel.py`).
 
 The Frame's Android games (Cubism) bind only the Frame controller
