@@ -102,7 +102,7 @@ if [ "$(cat "$host/.overpressure-host" 2>/dev/null)" != "$sha" ]; then
 	rm -f "$host/etc/resolv.conf"
 	: > "$host/etc/resolv.conf"
 	api "$host"
-	in_host pacman -Sy --noconfirm --needed python >/dev/null
+	fetch_pacman in_host pacman -Sy --noconfirm --needed python >/dev/null
 	cleanup
 	echo "$sha" > "$host/.overpressure-host"
 fi

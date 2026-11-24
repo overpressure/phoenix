@@ -246,7 +246,10 @@ files the image shares; about 1 MB) goes over SSH, and
   on. Every download goes through [`scripts/fetch.sh`](../scripts/fetch.sh), which rides out a short outage of
   GitHub's downloads: server errors (408, 429, 5xx) and failed or dropped connections are tried again for three
   minutes, 5 s apart at first and up to 30 s; any other answer fails at once, with the URL and the error in the
-  log. What a stopped build downloaded stays, checked by its hash, so a new start fetches only the rest. Before
+  log. pacman's downloads from Valve's package server, its only one, go through the same file's `fetch_pacman`: a
+  pacman that failed on a download (a package or database cut short or answered with an error) runs again on
+  the same schedule, fetching only what its cache still lacks; any other failure of pacman fails at once. What a
+  stopped build downloaded stays, checked by its hash, so a new start fetches only the rest. Before
   anything is written, the PC checks that it reaches GitHub and Valve's package servers; a host it doesn't reach
   is named with why (TLS, the name, a timeout, the connection). With an overpressure of interface 1.5 or later,
   this check and the kernel's download verify TLS with the PC's own verifier, as overpressure's downloads do

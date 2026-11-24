@@ -306,9 +306,10 @@ if [[ $refresh == 1 || ! -d "$base" || "$(cat "$build_root/base.key" 2>/dev/null
     mount_api "$base"
     # The session user, whom steamos-customizations' tmpfiles entries name, comes from pico4-session's
     # sysusers file in the same transaction: pacman's sysusers hook runs before its tmpfiles hook.
-    in_b pacman --config /etc/pico4/pacman.conf -r /base --cachedir /var/cache/pico4-pkgs \
+    # Valve's server is the only one in pacman.conf: a download it cuts short is tried again (scripts/fetch.sh).
+    fetch_pacman in_b pacman --config /etc/pico4/pacman.conf -r /base --cachedir /var/cache/pico4-pkgs \
         "-S$sync" --noconfirm --needed "${valve_session[@]}" "${assumed[@]}" "${packages[@]}"
-    in_b pacman --config /etc/pico4/pacman.conf -r /base --cachedir /var/cache/pico4-pkgs \
+    fetch_pacman in_b pacman --config /etc/pico4/pacman.conf -r /base --cachedir /var/cache/pico4-pkgs \
         -S --noconfirm "${valve_session[@]}" "${assumed[@]}" deckard-arch-hotfixes-release-0.3/deckard-steamvr-session
     owner=$(chroot "$base" /usr/bin/pacman -Qqo /usr/share/wayland-sessions/plasma.desktop)
     [[ $owner == deckard-steamvr-session ]] || { echo "plasma.desktop is $owner's, not Valve's session's" >&2; exit 1; }
@@ -350,14 +351,15 @@ if [[ ${#changed[@]} -gt 0 ]]; then
         layer=${file#/var/cache/overpressure/}
         names+=("overpressure-${layer%%/*}/$(in_b bsdtar -xOf "$file" .PKGINFO | sed -n 's/^pkgname = //p')")
     done
-    in_b pacman --config /etc/pico4/pacman.conf -r /target --cachedir /var/cache/pico4-pkgs -S --noconfirm "${names[@]}"
+    fetch_pacman in_b pacman --config /etc/pico4/pacman.conf -r /target --cachedir /var/cache/pico4-pkgs -S --noconfirm \
+        "${names[@]}"
 fi
 # adb (android-platform-tools, with which Lepton installs Android games) was built against
 # protobuf 25; the base has 33. The Frame repository's protobuf 25 libraries go where adb's
 # own libraries are (its RUNPATH), not over the base's; only its libraries are wanted, so its
 # dependencies are not resolved (the ELF check below covers what the libraries need).
-in_b pacman --config /etc/pico4/pacman.conf -r /target --cachedir /var/cache/pico4-pkgs -Sw -dd --noconfirm \
-    deckard-arch-hotfixes-release-0.3/protobuf >/dev/null
+fetch_pacman in_b pacman --config /etc/pico4/pacman.conf -r /target --cachedir /var/cache/pico4-pkgs \
+    -Sw -dd --noconfirm deckard-arch-hotfixes-release-0.3/protobuf >/dev/null
 protobuf=$(cd "$B/var/cache/pico4-pkgs" && ls protobuf-25.*-aarch64.pkg.tar.zst | sort -V | tail -n 1)
 in_b bsdtar -xf "/var/cache/pico4-pkgs/$protobuf" -C /target/usr/lib/aarch64/android \
     --strip-components 2 'usr/lib/libprotobuf.so.25*'

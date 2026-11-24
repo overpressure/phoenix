@@ -1,7 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: Unlicense
 # scripts/fetch.sh against a fake server: server errors and cut answers are tried again, a refusal of the
-# file fails at once, a server that stays down is given up on after FETCH_SECONDS.
+# file fails at once, a server that stays down is given up on after FETCH_SECONDS. fetch_pacman against a fake
+# pacman: a failed download is run again, any other failure fails at once.
 set -eu
 cd "$(dirname "$0")/.."
 . scripts/fetch.sh
@@ -87,5 +88,37 @@ wait "$server" 2>/dev/null || true
 server=""
 if FETCH_SECONDS=2 fetch "$url/flaky-0" "$work/e" 2> "$work/log"; then exit 1; fi
 grep -q "fetch: $url/flaky-0: curl error 7, given up after 2 s" "$work/log" && ok
-[ "$checks" = 8 ] || { echo "fetch: $checks of 8 checks passed" >&2; exit 1; }
-echo 'fetch: 8 checks passed'
+
+# fetch_pacman against a fake pacman: its first N passes fail as pacman does on a cut download, then it
+# installs; "conflict" fails as pacman does on anything else.
+pacman_fake() {
+	_passes=$(($(cat "$work/passes" 2> /dev/null || echo 0) + 1))
+	echo "$_passes" > "$work/passes"
+	case $1 in
+	conflict)
+		echo "error: failed to prepare transaction (conflicting dependencies)" >&2
+		return 1
+		;;
+	esac
+	if [ "$_passes" -le "$1" ]; then
+		echo "error: failed retrieving file 'serd-0.32.6-1-aarch64.pkg.tar.zst' from holo-packages.steamos.cloud : end of response with 58720 bytes missing" >&2
+		echo "warning: failed to retrieve some files" >&2
+		echo "error: failed to commit transaction (download library error)" >&2
+		return 1
+	fi
+	echo installed
+}
+# Two cut downloads, then the transaction.
+rm -f "$work/passes"
+[ "$(fetch_pacman pacman_fake 2 2> "$work/log")" = installed ] && [ "$(cat "$work/passes")" = 3 ] && ok
+[ "$(grep -c 'fetch: pacman: a download failed, again in' "$work/log")" = 2 ] && grep -q 'failed retrieving file' "$work/log" && ok
+# Any other failure fails at once, with pacman's own message and status.
+rm -f "$work/passes"
+if fetch_pacman pacman_fake conflict 2> "$work/log"; then exit 1; fi
+[ "$(cat "$work/passes")" = 1 ] && grep -q 'conflicting dependencies' "$work/log" && ! grep -q 'again in' "$work/log" && ok
+# A download that keeps failing is given up on after FETCH_SECONDS.
+rm -f "$work/passes"
+if FETCH_SECONDS=2 fetch_pacman pacman_fake 99 > /dev/null 2> "$work/log"; then exit 1; fi
+grep -q 'fetch: pacman: a download failed, given up after 2 s' "$work/log" && ok
+[ "$checks" = 12 ] || { echo "fetch: $checks of 12 checks passed" >&2; exit 1; }
+echo 'fetch: 12 checks passed'
