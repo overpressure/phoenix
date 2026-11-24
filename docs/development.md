@@ -281,14 +281,17 @@ development mode; returning to stock is a separate step, for when PICO OS is nee
 
 ### Power while tethered
 
-Tethered work needs a charging USB port (CDP) or a wall charger. The headset's charger sets its input by BC1.2
-detection, also through a USB-C to USB-A adapter; Type-C's "high current" is the adapter's pull-up resistor,
-which the charger rightly ignores.
+Tethered work needs a charging USB port (CDP), a USB-C port or a wall charger. Through a USB-C to USB-A adapter
+the headset's charger sets its input by BC1.2 detection; Type-C's "high current" there is the adapter's pull-up
+resistor, which the charger rightly ignores. On a USB-C port the port's own current counts: the input limit
+follows it, and the charger's AICL finds what the port gives. A USB PD charger negotiates a contract.
 
 | Port | Charger input | Battery |
 | --- | --- | --- |
 | Standard port (`real_type` `USB`) | 0.49 A at 4.74 V, about 2.3 W | drains during a session, 0.29–0.78 A |
 | Charging downstream port (`USB_CDP`) | settles at 1.5 A and draws 1.49 A at 4.49 V, about 6.7 W | session stopped: +1.13 A; Valve's session in standby: +0.78 A; rendering: drains, about 0.37 A |
+| USB-C port advertising 3 A | limit 3 A, AICL settles at 1.4–1.95 A at 4.1–4.4 V | Valve's session running: charges |
+| USB PD charger (5/9 V, 3 A) | 5 V, then 9 V once the input is current-limited: 14.2 W on average on the table, 18.6 W while playing | on the table 26 to 37 % in 15 minutes; while playing 38 to 47 % in 17 minutes |
 
 On a CDP the input is the limit (`input_current_limited` 1, `input_current_settled` 1.5 A): 6.7 W is about what
 Valve's session draws while it renders. The charger reports "Charging" also while the battery drains; the

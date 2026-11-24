@@ -69,7 +69,7 @@ to PICO OS is part of it.
 | --- | --- | --- |
 | Wi-Fi | ✅ | Set up in the first-run setup |
 | Bluetooth | ✅ | A Nintendo Switch Pro controller pairs; headphones are not tested yet |
-| Battery and charging | ✅ | Plugged in while off, the lenses show the battery |
+| Battery and charging | ✅ | Plugged in while off, the lenses show the battery; USB PD chargers at up to 9 V |
 | Sleep | ✅ | |
 | Battery life | ❔ | Not measured yet ([#31](https://github.com/overpressure/phoenix/issues/31)) |
 
