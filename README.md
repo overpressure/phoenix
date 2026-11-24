@@ -12,7 +12,7 @@ to PICO OS is part of it.
 | | |
 | --- | --- |
 | **Status** | Beta: for owners who are fine with an early release and can report what they find |
-| **Newest release** | [2026.11.0 beta 0](https://github.com/overpressure/phoenix/releases) |
+| **Newest release** | [2026.11.0 beta 1](https://github.com/overpressure/phoenix/releases) |
 | **Your headset** | The original PICO 4, not the PICO 4 Pro or Ultra; PICO OS global build 5.13.3, 5.13.7 or 5.13.8, not a China build ([why](docs/device-preparation.md#other-pico-os-builds)) |
 | **Your computer** | Windows ✅ · Linux ✅ · macOS ❔ |
 | **Tested on** | 1 headset |
