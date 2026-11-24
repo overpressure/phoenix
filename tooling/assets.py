@@ -13,7 +13,8 @@ manifest.json with its sources and every file's SHA-256, which scripts/build-use
   graphics-firmware  a650_gmu.bin, a650_sqe.fw, a650_zap.mdt and .b00-.b02 (vendor /firmware),
                      venus.mdt and .bNN, the video codec (modem /image)
   sensor-data        firmware/slpi*: the sensor DSP (modem); sensors/config/ and sns_reg.conf
-                     (vendor /etc/sensors); calibration/pxrconfig/SDK_Lens_ConfigFile.txt (system);
+                     (vendor /etc/sensors); calibration/pxrconfig/SDK_Lens_ConfigFile.txt and
+                     SDK_Lens_Distortion_MatchConfigFile.txt, the table of lens batches (system);
                      calibration/controllers/led-models.json, aim-to-grip.json, lever-arm.json,
                      read from PICO OS's tracking libraries (system); rendermodels/: SteamVR's
                      models of both controllers (system /system/pre_resource); camera/imx471-mode.bin:
@@ -72,6 +73,10 @@ GPU_FIRMWARE = ("a650_gmu.bin", "a650_sqe.fw", "a650_zap.mdt", "a650_zap.b00", "
 VENUS = ("venus.*",)
 SENSOR_DSP = ("slpi*",)
 LENS_CONFIG = "/system/etc/pxrconfig/config/SDK_Lens_ConfigFile.txt"
+#: PICO OS's table of lens batches: the lens profile by the lens's serial number for an eye whose factory
+#: file carries no polynomial (docs/xr.md#lens-distortion-and-ipd). Taken where the firmware has it: without it,
+#: such an eye gets the lens configuration's generic profile, as without this file.
+LENS_BATCHES = "/system/etc/pxrconfig/rule/SDK_Lens_Distortion_MatchConfigFile.txt"
 LED_LIBRARY = "/system/lib64/libpico_controller_tracking.pxr.so"
 AIM_GRIP_LIBRARY = "/system/lib64/libpvrtrackingservice.so"
 LEVER_ARM_LIBRARY = "/system/lib64/libpico_controller_tracking.client.so"
@@ -171,6 +176,12 @@ def sensor_data(s: StockFolder, out: Path, log: Log) -> None:
 
     log(">> system: lens configuration, controller LED models, aim-to-grip transforms, lever arms, controller models")
     dump(system, LENS_CONFIG, out / "calibration/pxrconfig/SDK_Lens_ConfigFile.txt")
+    try:
+        system.lookup(LENS_BATCHES)
+    except Ext4Error:
+        log(f"no {LENS_BATCHES} in this firmware: an eye without a factory polynomial takes the generic profile")
+    else:
+        dump(system, LENS_BATCHES, out / "calibration/pxrconfig/SDK_Lens_Distortion_MatchConfigFile.txt")
     controllers = out / "calibration/controllers"
     try:
         library = system.read(LED_LIBRARY)

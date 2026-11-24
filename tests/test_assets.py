@@ -69,10 +69,12 @@ def vendor() -> bytes:
     return img.build()
 
 
-def system() -> bytes:
-    """Return a system partition with what the kinds take."""
+def system(*, lens_batches: bool = True) -> bytes:
+    """Return a system partition with what the kinds take (the table of lens batches when @p lens_batches)."""
     img = Ext4Image(inodes_per_group=64)
     img.file(assets.LENS_CONFIG, b"lens")
+    if lens_batches:
+        img.file(assets.LENS_BATCHES, b"batches")
     for path in (assets.LED_LIBRARY, assets.AIM_GRIP_LIBRARY, assets.LEVER_ARM_LIBRARY):
         img.file(path, b"\x7fELF " + path.encode())
     img.file(assets.CONTROLLER_MODELS + "/60.obj", b"o")
@@ -237,6 +239,7 @@ class AssetsTests(unittest.TestCase):
             "sensors/config/kona_irq.json",
             "sensors/sns_reg.conf",
             "calibration/pxrconfig/SDK_Lens_ConfigFile.txt",
+            "calibration/pxrconfig/SDK_Lens_Distortion_MatchConfigFile.txt",
             "calibration/controllers/led-models.json",
             "calibration/controllers/aim-to-grip.json",
             "calibration/controllers/lever-arm.json",
@@ -248,6 +251,30 @@ class AssetsTests(unittest.TestCase):
         table = assets.imx471_mode.table([(0x1000, 0x11), (0x1001, 0x66)])
         self.assertEqual((out / "camera/imx471-mode.bin").read_bytes(), table)
         self.assertNotIn(b"\r", (out / "calibration/controllers/aim-to-grip.json").read_bytes())
+        # The table of lens batches beside the lens configuration, where the driver reads both.
+        self.assertEqual(
+            (out / "calibration/pxrconfig/SDK_Lens_Distortion_MatchConfigFile.txt").read_bytes(), b"batches"
+        )
+
+    def test_a_firmware_without_the_table_of_lens_batches_still_gives_the_sensor_data(self):
+        images = {**self.images, "system.img": system(lens_batches=False)}
+        stock = stock_folder(self.root / "older", images, firmware="5.13.7-global-seko")
+        lines = []
+        with (
+            mock.patch.multiple(
+                assets.ledmodel, models=lambda _e: {}, normals=lambda _e, _r: {}, to_json=lambda *_a: "{}\n"
+            ),
+            mock.patch.multiple(assets.aimgrip, transforms=lambda _e: {}, to_json=lambda *_a: "{}\n"),
+            mock.patch.multiple(assets.leverarm, lever_arms=lambda _e: {}, to_json=lambda *_a: "{}\n"),
+            mock.patch.object(assets.controllermodel, "convert", return_value={}),
+            KNOWN_CAMERA,
+            StockFolder(stock) as folder,
+        ):
+            assets.extract("sensor-data", folder, self.root / "sensor-data", log=lines.append)
+        found = files(self.root / "sensor-data")
+        self.assertIn("calibration/pxrconfig/SDK_Lens_ConfigFile.txt", found)
+        self.assertNotIn("calibration/pxrconfig/SDK_Lens_Distortion_MatchConfigFile.txt", found)
+        self.assertTrue(any(assets.LENS_BATCHES in line and "generic profile" in line for line in lines))
 
     def test_an_unknown_camera_module_is_refused(self):
         with (

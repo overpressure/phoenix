@@ -152,9 +152,19 @@ largest distance). Exit 0 means every location after the first second had a vali
 The lens model is the stock compositor's (`libpxrcompositor.so`), like the Oculus mobile SDK's:
 
 - **Distortion.** A panel point `p` metres from the lens centre is seen at tan-angle `t·s(|t|²)`,
-  `t = p / F`, `s` a polynomial K0…K10. `F` and `A0`…`A10` come per eye from `distortion_parameter`
-  in `pvr/OpticalCalibrationData.json` (on this unit the stock table entry for its lens model and
-  mould cavity).
+  `t = p / F`, `s` a polynomial K0…K10. Each eye's `F` and `A0`…`A10` come from one profile, picked as
+  PICO OS's `ConfigServerService` picks it:
+  1. `distortion_parameter` in `pvr/OpticalCalibrationData.json`, the lens's factory polynomial;
+  2. else the lens's batch in PICO OS's table of lens batches (`SDK_Lens_Distortion_MatchConfigFile.txt`,
+     about 100 batches by mould, cavity and date, and `default`). The factory file's `lens_data` gives
+     the lens's serial number, `m<lens_model>_h<lens_hole>_d<lens_date>`. Of the entries whose serial
+     number contains `<lens_model>_h<lens_hole>`, and `default`, the one that sorts last at or below
+     the lens's in plain string order: the newest batch of that mould and cavity dated on or before
+     the lens, `default` for an unlisted mould or cavity or an older lens;
+  3. else the generic profile of `SDK_Lens_ConfigFile.txt`.
+
+  Factory files exist without `distortion_parameter`, and a headset's two eyes can carry lenses of
+  different batches. Where a file has the polynomial, it equals its lens's batch entry, `F` included.
 - **Lens centre.** The panel centre plus `lens_center_gos` in millimetres, in the stock compositor's
   directions: a larger `centerx` moves it to the wearer's left, a larger `centery` up, in both eyes (in
   the driver's panel coordinates, y down: −`centerx`, −`centery`). As in stock, the offset moves only the
@@ -722,7 +732,8 @@ python -m overpressure assets sensor-data stock-slam [--backup DIR]
 | --- | --- |
 | `firmware/slpi.mdt`, `slpi.bNN`, `slpi*.jsn` | sensor DSP image and protection-domain maps (modem) |
 | `sensors/config/*.json`, `sensors/sns_reg.conf` | sensor driver configuration and registry layout (vendor) |
-| `calibration/pxrconfig/SDK_Lens_ConfigFile.txt` | stock lens configuration with the chromatic aberration terms (system) |
+| `calibration/pxrconfig/SDK_Lens_ConfigFile.txt` | stock lens configuration with the chromatic aberration terms and the generic lens profile (system) |
+| `calibration/pxrconfig/SDK_Lens_Distortion_MatchConfigFile.txt` | PICO OS's table of lens batches, where the firmware has it (system) |
 | `calibration/controllers/led-models.json`, `aim-to-grip.json`, `lever-arm.json` | LED rings, grip transforms and lever arm from PICO OS's tracking libraries (system) |
 | `rendermodels/pico4_controller_*/` | SteamVR render models from PICO OS's controller models (system) |
 | `manifest.json` | sources and SHA-256 of every file |
