@@ -29,7 +29,7 @@ As shipped:
 
 | File | Purpose |
 | --- | --- |
-| [release.json](../kernel/release.json) | the pin: overpressure/linux's tag (`phoenix/7.2-7`), its commit, the build image it was built with, and the SHA-256 of `Image.gz`, the device tree, `config` and `version` |
+| [release.json](../kernel/release.json) | the pin: overpressure/linux's tag (`phoenix/7.2-8`), its commit, the build image it was built with, and the SHA-256 of `Image.gz`, the device tree, `config` and `version` |
 | [tooling/kernel.py](../tooling/kernel.py) | `kernel fetch` (the installer's step: the release's files into `out/kernel`), `kernel build` (the pinned commit built here in the release's build image, [below](#building-it-yourself)), `kernel check DIR`, `kernel contracts` ([below](#contracts)) |
 | [build-tree.sh](../kernel/build-tree.sh) | a checkout of overpressure/linux's `phoenix/7.2` to `Image.gz`, the device tree, `config`, `version` and `build.json` (release, commit, banner, camera table, the tooling's commit, the build image, hashes); `uname -v` names the commit. That repository's CI builds each change with it once, through ccache when `CCACHE_DIR` is set (its check builds), and each tag twice on two machines without it, and releases a tag whose builds agree |
 | [imx471_mode.py](../kernel/imx471_mode.py) | the RGB camera's register table, from the camera module in the stock vendor image: the file the driver loads |
