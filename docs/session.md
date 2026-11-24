@@ -299,8 +299,10 @@ The client's own words come from its files at runtime (localization files and la
 `~/.local/share/Steam/steamui`): its welcome, language and zone names, the network page's texts and the
 buttons. The panel's other texts are [pico4-onboarding.strings](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4-onboarding.strings), in
 all 31 of the client's languages; English is the reference, the others are machine-assisted translations
-awaiting a native speaker's review. Pango lays them out; the image's fonts cover Latin, Greek and
-Cyrillic, the client's Noto font (`clientui/fonts`) every other script.
+awaiting a native speaker's review. Pango lays them out in the image's Noto fonts, which cover the scripts
+of all 31 languages: Chinese, Japanese and Korean through `noto-fonts-cjk`. pico4-base's fontconfig rules
+give each language its own face, as PICO OS does: the SC, TC, JP or KR face for the text's language, Naskh
+for Arabic, and the SC face and Naskh for CJK and Arabic text in another language's page.
 
 | The client's page | Here |
 | --- | --- |
