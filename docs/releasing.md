@@ -51,7 +51,9 @@ release in `/usr/share/pico4/version`; a release build's commit carries no `-dir
    - writes the notes and the zip's `CHANGELOG.md` with overpressure's `scripts/release.py notes`, from the
      conventional commits (git-cliff, [cliff.toml](../cliff.toml)): the changelog starts at the first release,
      whose notes are its tag's own words; a beta's notes list what changed since the release before it, a stable
-     release's what changed since the stable release before it (or the first release), its betas included. The
+     release's what changed since the stable release before it (or the first release), its betas included. Both
+     name the contributors: each feature and fix the account that opened its pull request, each release everyone
+     whose pull requests it brings (from GitHub, with the workflow's token). The
      notes open with the oldest overpressure release that runs `api` (`notes --api`), and the release stops while
      none does: overpressure is released first. Both are scanned for private data before anything is published;
    - makes the zip with `git archive`: the tagged tree under `phoenix-VERSION/`, with `CHANGELOG.md`, and

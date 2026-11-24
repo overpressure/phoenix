@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read # the notes name each change's pull request and its author
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,6 +58,8 @@ jobs:
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::$GITHUB_REF_NAME is not on main"; exit 1; }
       - name: Notes and changelog
         id: notes
+        env:
+          GH_TOKEN: ${{ github.token }} # the contributors: each commit's pull request and its author
         run: |
           api=$(python3 -c 'import json; print(json.load(open("headset.json"))["api"])')
           title=$(python3 .overpressure/scripts/release.py notes "$GITHUB_REF_NAME" --title "PICO 4" --api "$api")
