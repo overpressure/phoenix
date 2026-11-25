@@ -715,6 +715,7 @@ class DevTests(HeadsetFixture):
                 "pico4-install stock --": f"stock {stock_sha}",
                 "pico4-install bootmode normal": "bootmode normal",
                 "cat /proc/1/comm /etc/pico4/install-id": "systemd\ndev-loop\n1234567",
+                "rm -rf --one-file-system": "removed",
             }
         )
         self.fastboot_listed = False  # stage 1 runs: the headset is not in fastboot
@@ -768,8 +769,22 @@ class DevTests(HeadsetFixture):
                 "adding this computer's key",
                 "PICO OS's files from the backup",
                 "starting the installed system",
+                "removing the build's files",
             ],
         )
+
+    def test_install_leaves_no_build_files_on_the_headset(self):
+        dev, system = self.install_setup()
+        dev.install(system)
+        # The last thing it does, in the installed system: the whole build folder goes, never through a mount.
+        last = self.texts()[-1]
+        self.assertIn(f"rm -rf --one-file-system /data/{devloop.HEADSET_BUILD}", last)
+        self.assertIn(f"grep -q ' /data/{devloop.HEADSET_BUILD}/' /proc/mounts", last)
+
+    def test_the_build_folder_is_not_removed_while_something_is_mounted_below_it(self):
+        dev = self.make({"rm -rf --one-file-system": "mounted"})
+        with self.assertRaisesRegex(RuntimeError, "something is still mounted below it"):
+            dev.remove_build()
 
     def test_install_refuses_keys_the_headset_did_not_confirm(self):
         dev, system = self.install_setup()

@@ -273,15 +273,19 @@ files the image shares; about 1 MB) goes over SSH, and
   pinned overpressure/packages, in the build host for as long as it runs. Its last-resort power-off for a stalled
   fan or a silent MCU ([cooling.md](cooling.md#pico4-fan)) signals PID 1 there: stage 1's `pico4-init` stops
   the build, syncs and powers the headset off.
-- **Disk.** The build folder keeps the build host (1.4 GB), the build root (7.6 GB) and the compressed image
-  (1.7 GB) for the next upgrade: 10.7 GB of the 104 GB data partition.
+- **Nothing left behind.** A build takes the build host (1.4 GB), the build root (7.6 GB), the compressed image
+  (1.7 GB) and the downloads (3 GB) on the data partition. Once the installed system runs, the install removes the
+  whole build folder (`rm -rf --one-file-system`, never while anything is mounted below it, which it then names): the
+  install and the upgrade leave nothing of the build on the headset. What a later upgrade needs is kept on the PC
+  ([downloads first](#downloads-first)), so it builds from an empty folder and downloads nothing again. A build that
+  stopped keeps its folder until the next install finishes, which goes on from it.
 
 | Run | Time | Hottest zone |
 | --- | --- | --- |
 | From an empty build folder, installed system (fan service) | 507 s, 2.2 GB downloaded | 74 °C |
 | From an empty build folder, maintenance stage 1 (Valve's kernel, the build's fan): the first install | 504 s, 2.2 GB downloaded | 73.6 °C |
 | From an empty build folder, installed system, with the PC's downloads ([downloads first](#downloads-first)) | 912 s with sending the 3 GB (about 18 MB/s); nothing downloaded | |
-| Again, incremental (a new pin or tree), maintenance stage 1 | 174 to 256 s | 76 °C |
+| Again, after a stopped build (its folder kept), maintenance stage 1 | 174 to 256 s | 76 °C |
 | Writing `super` from the data partition, then the keys and the start | about 90 s | |
 
 The archive is the same, byte for byte, from all three and from the build container (one commit, one pin). An
@@ -305,7 +309,7 @@ again fetches only what is missing. It works on every host: Python reads Valve's
 About 3 GB, kept in `cache/headset/phoenix` for the next upgrade, laid out as the build folder holds them; files of
 an earlier pin go. A package whose version has an epoch (`1:1.6.8`) lies there with `%3A` for the colon, which Windows
 allows in no file name; the headset gets the name pacman gives it. The install sends the files in the tree's stream
-(`src/prefetch`), the maintenance stage 1 all of them, the installed system those its build folder lacks, and
+(`src/prefetch`), all of them to an empty build folder, only those it lacks to one a stopped build left, and
 [build-on-headset.sh](../scripts/build-on-headset.sh) moves each into place before the build starts. The upstream
 packages lie beside the build environment (`root/downloads/packages`), whose package cache a new environment empties:
 `build-userspace.sh` links them into it. The build then
@@ -364,7 +368,7 @@ the others' recorded progress (the install starts afresh after a restore).
 | --- | --- | --- | --- |
 | Upgrade | Check this computer | `tools`, the doctor's checks, `dev prefetch` (what changed) | not needed |
 | Upgrade | Prepare the upgrade | the install's images from the backup; Valve's kernel and the boot image are made every time | not needed |
-| Upgrade | Install the upgrade | an action ask (switched on, on the cable); `dev flash` (this version's maintenance stage 1 into `recovery`, whose tools the build and the write need), `dev connect`, `dev install --on-headset` (stage 1 builds on the data partition, incrementally; data kept), `dev installed`; its page offers *Check the headset* too | installed system, fastboot, maintenance stage 1 |
+| Upgrade | Install the upgrade | an action ask (switched on, on the cable); `dev flash` (this version's maintenance stage 1 into `recovery`, whose tools the build and the write need), `dev connect`, `dev install --on-headset` (stage 1 builds on the data partition, from the PC's downloads; data kept, the build folder removed at the end), `dev installed`; its page offers *Check the headset* too | installed system, fastboot, maintenance stage 1 |
 | Check | Check the headset | an action ask: the headset on a stable table, its front cameras facing the room, the controllers on beside it if wanted, untouched until the last check; `dev installed`; `dev check --installer --part system`, `--part imu` and `--part session`, each its own task (controllers SteamVR does not see, missed performance limits, and a headset that moved during each of three IMU measurements 10 s apart are a warning in the window, not a failure; everything else counts as in `dev check`); then "Checked" | installed system, on the cable |
 | Restore | Check the backup | `tools`; `device verify-backup` of `PICO4_BACKUP`, which must be the headset `PICO4_IDENTITY` describes, and of the build PICO OS runs when it answers (another build's backup would put its system next to this build's firmware) | not needed |
 | Restore | Restore PICO OS | one consent (it erases the system and its data); an action ask; a headset that answers `adb devices` with its serial runs PICO OS already and is left alone, any other is taken into the maintenance stage 1 by the installer itself (`dev recovery`'s steps), then one task per part, `dev restore --installed --only system`, `data` and `recovery` ([back to stock](#back-to-stock)): a retry goes on from the part that failed | maintenance stage 1, fastboot |
@@ -499,7 +503,7 @@ it. This follows from the order and the boot rules; it was not tried with a pull
 | System image from the 1,701 MiB archive | 4,707 MiB ext4; capabilities of gamescope, newuidmap and newgidmap kept |
 | Install | `boot` (24 MiB) and `super` (4,706 MiB) written and read back, `userdata` formatted (104 GiB for data); keys and install ID written, and `dev installed` logs in with them |
 | Install time | `dev install` of a new system image: 2 min 22 s from the maintenance stage 1 to the running system; `super` from the 1,808 MiB compressed image written and read back in 101 s (the USB link carries 26 to 28 MB/s with any SSH cipher); unchanged `boot` skipped after its first MiB's hash |
-| Built on the headset | `dev install --on-headset` from the maintenance stage 1 on Valve's kernel: the build from an empty folder in 504 s (hottest zone 73.6 °C, the build's fan), an incremental one in 3 to 4 minutes; `super` written from the data partition; the archive identical with the build container's; `dev check` passes ([above](#built-on-the-headset)) |
+| Built on the headset | `dev install --on-headset` from the maintenance stage 1 on Valve's kernel: the build from an empty folder in 504 s (hottest zone 73.6 °C, the build's fan), one going on from a stopped build in 3 to 4 minutes, the build folder removed at the end; `super` written from the data partition; the archive identical with the build container's; `dev check` passes ([above](#built-on-the-headset)) |
 | Restore, install and upgrade through the installer | on Windows, on the command line, with the maintenance stage 1 on Valve's kernel: the restore wrote PICO OS's system, boot and recovery back in 7 min 45 s and its bootloader in 45 s; the install from PICO OS took a new backup in 4 min 27 s (9.77 GiB, 6.78 GiB on disk, cache and the crash dumps left out), then the engineering bootloader, the unlock, the images from that backup and the maintenance system in under 2 minutes; the upgrade ran in 7 min 7 s, its build and install 4 min 51 s; `dev check` passed at 72 Hz, the default a fresh install gets (72.04 commits/s, hottest 57 °C) |
 | Direct boot | the ABL boots a boot image without a ramdisk; `root=PARTLABEL=super` mounts the system image (`sda7`) read-only 1.43 s after the kernel starts; the display and the GPU bind |
 | Windows NCM on Valve's kernel | after a reboot the installed system answers SSH without the NCM initialization; no `Wrong NDP SIGN` |

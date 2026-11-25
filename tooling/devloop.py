@@ -1014,6 +1014,31 @@ class Dev(Headset):
         self.write_stock()
         progress.say("starting the installed system", INSTALL_WRITES + 0.05)
         self.normal()
+        progress.say("removing the build's files", INSTALL_WRITES + 0.08)
+        self.remove_build()
+
+    def remove_build(self) -> None:
+        """Remove the headset's build folder, once the installed system runs: the install leaves nothing of it.
+
+        The folder holds the build host, the build root, the image and the PC's downloads, about 15 GB of a data
+        partition of 104 GB. The PC keeps the downloads, so the next upgrade builds from scratch without downloading
+        them again. It runs here in the installed system, whose data partition is writable, so it also clears what an
+        install that stopped left. Nothing may be mounted below it (a build that stopped binds /sys and /dev there):
+        then it refuses, and rm never crosses into another file system anyway.
+        """
+        folder = f"/data/{HEADSET_BUILD}"
+        output = self.ssh(
+            f"if grep -q ' {folder}/' /proc/mounts; then echo mounted; "
+            f"else rm -rf --one-file-system {folder} && [ ! -e {folder} ] && echo removed; fi",
+            600,
+        )
+        if output.splitlines()[-1:] != ["removed"]:
+            msg = f"the build's files in {folder} were not removed" + (
+                ": something is still mounted below it (restart the headset, then install again)"
+                if "mounted" in output.split()
+                else ""
+            )
+            raise RuntimeError(msg)
 
     def normal(self) -> None:
         """From the maintenance stage 1 into the installed system: clear the recovery request."""
