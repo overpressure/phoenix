@@ -13,7 +13,7 @@ from typing import Any
 from unittest.mock import patch
 
 from devices.phoenix.tooling import device, hardware_test, localconfig, unlockfiles
-from overpressure import tools
+from overpressure.api.v1 import tools
 
 
 class ProtocolTests(unittest.TestCase):

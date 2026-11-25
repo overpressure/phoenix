@@ -390,7 +390,7 @@ class Dev(Headset):
         is the headset, and its serial is learnt (learn_fastboot_serial); with none or several, it is not.
         """
         output = self.run([self.s.tool("fastboot"), "devices"], 30, check=False)
-        rows = [words[0] for words in map(str.split, output.splitlines()) if words[1:2] == ["fastboot"]]
+        rows = list(device.device_rows(output, ("fastboot",)))
         if self.s.fastboot_serial:
             return self.s.fastboot_serial in rows
         if len(rows) == 1:
@@ -560,8 +560,8 @@ class Dev(Headset):
         if usbaccess.denied(FASTBOOT_MODE):  # in fastboot already, not usable yet
             self.until("fastboot", 180, ready)
             return
-        adb_rows = [line.strip() for line in self.run([self.s.tool("adb"), "devices"], 30, check=False).splitlines()]
-        pico_os = bool(self.s.adb_serial) and f"{self.s.adb_serial}\tdevice" in adb_rows
+        adb_rows = device.device_rows(self.run([self.s.tool("adb"), "devices"], 30, check=False), ("device",))
+        pico_os = bool(self.s.adb_serial) and self.s.adb_serial in adb_rows
         # That look started the adb server again, which on Linux holds the headset in fastboot.
         self.release_adb()
         if pico_os:
@@ -644,12 +644,7 @@ class Dev(Headset):
 
     def authenticate(self) -> None:
         """Refuse an SSH endpoint that is not this headset's dev image; mark the stage 1 authenticated."""
-        lines = self.ssh("; ".join(f"cat {path}" for path in hw.STAGE1_PROOF), 10).splitlines()
-        if (
-            len(lines) != len(hw.STAGE1_PROOF)
-            or lines[0] != RUN_ID
-            or qualcomm.chip_id(lines[1]) != self.identity()["chip_id"]
-        ):
+        if not hw.proven(self.ssh(hw.PROOF_COMMAND, 10), RUN_ID, self.identity()["chip_id"]):
             msg = "the SSH endpoint is not this headset's dev image"
             raise RuntimeError(msg)
         self.ssh("touch /run/pico4/test-authenticated", 10)

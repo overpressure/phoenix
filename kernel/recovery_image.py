@@ -161,24 +161,13 @@ WLAN_FIRMWARE = {
 }
 
 
-def tree_with_dirs(paths: Iterable[str]) -> cpio.Tree:
-    """Start an archive with the parent directories of every path."""
-    tree = cpio.Tree()
-    for path in sorted({str(Path(p).parent) for p in paths}):
-        parts = Path(path).parts
-        for i in range(1, len(parts) + 1):
-            if not tree.exists("/".join(parts[:i])):
-                tree.mkdir("/".join(parts[:i]))
-    return tree
-
-
 def stage1_archive(ramdisk: bytes) -> cpio.Tree:
     """Archive the --debug changes to stage 1."""
     nodes = dict(cpio.read_cpio(compress.decompress(ramdisk)[0]))
     if REBOOT not in nodes or CONNECT_TIMEOUT not in nodes:
         msg = "stage 1's ramdisk has no pico4-reboot or test runner timeout"
         raise ValueError(msg)
-    tree = tree_with_dirs((REBOOT, REBOOT_REAL, CONNECT_TIMEOUT))
+    tree = cpio.Tree()
     tree.add_file(REBOOT_REAL, nodes[REBOOT].data, 0o755)
     tree.add_file(REBOOT, f'{REBOOT_HEADER}{REBOOT_PANIC}exec /{REBOOT_REAL} "$@"\n'.encode(), 0o755)
     udc = int({k: v for k, _, v in (e.partition("=") for e in EXTRA)}["pico4.udc_timeout"])
@@ -210,7 +199,7 @@ def wlan_firmware_archive(directory: Path) -> cpio.Tree:
 
 def files_archive(files: dict[str, Path]) -> cpio.Tree:
     """Archive each file at its path."""
-    tree = tree_with_dirs(files)
+    tree = cpio.Tree()
     for path, source in files.items():
         tree.add_file(path, source.read_bytes())
     return tree
@@ -241,7 +230,7 @@ def build_info(ramdisk: bytes, kernel: bytes) -> dict[str, Any] | None:
 
 def build_info_archive(info: dict[str, Any]) -> cpio.Tree:
     """Archive stage 1's build information, which replaces the base ramdisk's."""
-    tree = tree_with_dirs((BUILD_INFO,))
+    tree = cpio.Tree()
     tree.add_file(BUILD_INFO, json.dumps(info, indent=2).encode() + b"\n", 0o644)
     return tree
 

@@ -52,6 +52,7 @@ from overpressure.api.v1.process import Final, until
 from . import ADB_MODE, CHECK_WORKFLOW, FASTBOOT_MODE, USB_MODES, device, devloop, localconfig, unlockfiles, usblink
 from . import doctor as checks
 from . import kernel as pinned_kernel
+from .device import device_rows
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -372,16 +373,6 @@ class AskingDev(devloop.Dev):
         self.ctx.set_setting(KEY("fastboot_serial"), serial)
 
 
-def device_rows(output: str, states: Sequence[str] = ("device", "unauthorized", "offline")) -> dict[str, str]:
-    """Return the serial and state of each device that adb or fastboot devices lists in @p states."""
-    rows = {}
-    for line in output.splitlines():
-        words = line.split()
-        if len(words) >= 2 and words[1] in states:  # noqa: PLR2004  # a serial and a state
-            rows[words[0]] = words[1]
-    return rows
-
-
 def edl_serial(output: str) -> str:
     """Return the serial number edl-ng reports when it connects, or empty."""
     found = re.search(r"Serial Number:\s*(\S+)", output)
@@ -590,7 +581,7 @@ class Plan:
     def unlock_files_there(ctx: Context) -> bool:
         """Tell whether the unlock files are where .env names them, with their known hashes."""
         settings = ctx.settings(Settings)
-        return all(_sha256(settings.path(f.setting)) == f.sha256 for f in unlockfiles.FILES)
+        return all(file_sha256(settings.path(f.setting)) == f.sha256 for f in unlockfiles.FILES)
 
     def check_computer(self, ctx: Context) -> None:
         """Run the doctor's checks; what the installer does not provide itself and fails stops the run."""
@@ -1573,8 +1564,6 @@ def build_version(fingerprint: str) -> str:
     return parts[3] if len(parts) > 3 else fingerprint  # noqa: PLR2004  # the version's place in a fingerprint
 
 
-def _sha256(path: Path) -> str:
-    """Return a small file's SHA-256, empty when it is not there."""
-    import hashlib  # noqa: PLC0415  # only here
-
-    return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ""
+def file_sha256(path: Path) -> str:
+    """Return a file's SHA-256, empty when it is not there or empty."""
+    return backups.digest(path)["sha256"] if path.is_file() and path.stat().st_size else ""

@@ -23,7 +23,6 @@ that userspace/packages.json pins; a renamed side fails before anything is insta
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -35,7 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from overpressure.api.v1 import REPO, tools, web
+from overpressure.api.v1 import REPO, backup, tools, web
 
 Log = Callable[[str], None]
 Opener = Callable[..., object]
@@ -87,8 +86,8 @@ def packages_release(path: Path = PACKAGES) -> Release:
 
 
 def sha256(path: Path) -> str:
-    """Return @p path's SHA-256."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """Return @p path's SHA-256 (empty for an empty file, which no pin names)."""
+    return backup.digest(path)["sha256"] if path.stat().st_size else ""
 
 
 #: What a build of the pinned commit gives that the release does not: Valve's configuration signs modules

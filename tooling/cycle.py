@@ -212,7 +212,7 @@ class Headset:
         deadline = self.clock.monotonic() + ADB_LIST_SECONDS
         while True:
             output = self.run([adb, "devices"], 15, check=False)
-            serials = [w[0] for w in map(str.split, output.splitlines()[1:]) if w[1:2] == ["device"]]
+            serials = list(device.device_rows(output, ("device",)))
             if serials or self.clock.monotonic() >= deadline:
                 return serials
             self.clock.sleep(1)
@@ -268,7 +268,7 @@ class Headset:
         self.release_adb()  # Linux: adb's server would keep hold of a headset in fastboot
         fastboot = self.s.tool("fastboot")
         output = self.run([fastboot, "devices"], 30, check=False)
-        rows = [words[0] for words in map(str.split, output.splitlines()) if words[1:2] == ["fastboot"]]
+        rows = list(device.device_rows(output, ("fastboot",)))
         serial = self.s.fastboot_serial or (rows[0] if len(rows) == 1 else "")
         if not serial or serial not in rows:
             return None

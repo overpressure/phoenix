@@ -20,7 +20,6 @@ from typing import Any
 
 from overpressure.api.v1 import REPO, android, bootimg, evidence, qualcomm, windows_ncm
 from overpressure.api.v1 import backup as backups
-from overpressure.api.v1.android import fastboot_value
 from overpressure.api.v1.evidence import require, utc
 from overpressure.api.v1.storage import data_device, validate_mounts, validate_storage
 
@@ -38,6 +37,13 @@ IDENTITY_COMMANDS = (
 )
 #: What stage 1 shows to prove it is this test run on this headset: the run ID and the SoC serial.
 STAGE1_PROOF = ("/etc/pico4/test-run", "/sys/devices/soc0/serial_number")
+PROOF_COMMAND = "; ".join(f"cat {path}" for path in STAGE1_PROOF)
+
+
+def proven(output: str, run_id: str, chip_id: int) -> bool:
+    """Tell whether stage 1's answer to PROOF_COMMAND is run @p run_id's on the headset with SoC ID @p chip_id."""
+    lines = output.splitlines()
+    return len(lines) == len(STAGE1_PROOF) and lines[0] == run_id and qualcomm.chip_id(lines[1]) == chip_id
 
 
 def validate_preflight(output: str) -> None:
@@ -397,16 +403,9 @@ class Runner(evidence.Runner):
         self.check_restore_image()
         self.check_fastboot_unlock()
         # This engineering ABL lists every partition but lacks getvar has-slot.
-        inventory = self.fastboot("getvar", "all")
-        require(
-            android.partition_names(inventory, "boot") == ["boot"],
-            "Flash tests only support a non-slotted boot partition",
-        )
-        size = fastboot_value(inventory, "partition-size:boot")
-        require(
-            re.fullmatch(r"0x[0-9a-fA-F]+", size) and int(size, 16) == self.result["stock_boot"]["size"],
-            "Live boot partition size differs from its original backup",
-        )
+        size = android.single_partition_size(self.fastboot("getvar", "all"), "boot")
+        require(size is not None, "Flash tests only support a non-slotted boot partition")
+        require(size == self.result["stock_boot"]["size"], "Live boot partition size differs from its original backup")
         # Engineering ABL's per-session command authorization; no flashing unlock/reset.
         self.fastboot("oem", device.unlock_token(self.stock_identity()["chip_id"]), "unlock")
 
@@ -418,10 +417,7 @@ class Runner(evidence.Runner):
 
         def detect(timeout: float) -> None:
             output = self.command([self.args.fastboot, "devices"], timeout)
-            require(
-                any(line.split()[:2] == [serial, "fastboot"] for line in output.splitlines()),
-                "Selected fastboot serial is missing",
-            )
+            require(serial in device.device_rows(output, ("fastboot",)), "Selected fastboot serial is missing")
 
         self.wait("fastboot", self.args.boot_timeout, detect)
         self.check_fastboot_unlock()
@@ -461,12 +457,8 @@ class Runner(evidence.Runner):
 
     def authenticate(self, timeout: float) -> None:
         """Refuse an SSH endpoint that is not this run on this headset; cancel its connection deadline."""
-        output = self.ssh("; ".join(f"cat {path}" for path in STAGE1_PROOF), timeout)
-        lines = output.splitlines()
         require(
-            len(lines) == len(STAGE1_PROOF)
-            and lines[0] == self.run_id
-            and qualcomm.chip_id(lines[1]) == self.stock_identity()["chip_id"],
+            proven(self.ssh(PROOF_COMMAND, timeout), self.run_id, self.stock_identity()["chip_id"]),
             "SSH endpoint is not the expected test run and headset",
         )
         self.authenticated = True
@@ -809,7 +801,7 @@ class Runner(evidence.Runner):
                 if not rebooted_fastboot:
                     serial = self.args.fastboot_serial or self.args.serial
                     output = self.command([self.args.fastboot, "devices"], timeout)
-                    if any(line.split()[:2] == [serial, "fastboot"] for line in output.splitlines()):
+                    if serial in device.device_rows(output, ("fastboot",)):
                         self.fastboot("reboot", timeout=timeout)
                         rebooted_fastboot = True
                 msg = "Waiting for original PICO OS to complete boot"
@@ -829,7 +821,7 @@ class Runner(evidence.Runner):
 
         def ready(timeout: float) -> None:
             output = self.command([self.args.fastboot, "devices"], timeout)
-            if any(line.split()[:2] == [serial, "fastboot"] for line in output.splitlines()):
+            if serial in device.device_rows(output, ("fastboot",)):
                 return
             # A partial/failed write could still have left a bootable stock image.
             identity = self.identity(timeout)

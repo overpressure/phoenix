@@ -56,14 +56,6 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaises(tarfile.TarError):
             hw.validate_report(b"not a report", "current")
 
-    def test_fastboot_variables_reject_missing_and_ambiguous_values(self):
-        self.assertEqual(
-            hw.fastboot_value("(bootloader) partition-size:boot: 0x6000000\nOKAY", "partition-size:boot"), "0x6000000"
-        )
-        for output in ("", "has-slot:boot: no\nhas-slot:boot: yes", "has-slot:boot: \nOKAY"):
-            with self.assertRaises(ValueError):
-                hw.fastboot_value(output, "has-slot:boot")
-
 
 class FakeClock:
     """Virtual time for the runner: waits and deadlines pass without real sleeping."""
