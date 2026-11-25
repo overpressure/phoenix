@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   checks:
-    uses: overpressure/overpressure/.github/workflows/headset-ci.yml@feat/headset-workflows
+    uses: overpressure/overpressure/.github/workflows/headset-ci.yml@main
     with:
       codename: phoenix
       kernel: true

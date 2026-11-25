@@ -24,7 +24,7 @@ jobs:
 
   release:
     needs: checks
-    uses: overpressure/overpressure/.github/workflows/headset-release.yml@feat/headset-workflows
+    uses: overpressure/overpressure/.github/workflows/headset-release.yml@main
     permissions:
       contents: write
       pull-requests: read # the notes name each change's pull request and its author
