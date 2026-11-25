@@ -24,6 +24,7 @@
 # overpressure's build/build-kernel-tree.sh does the build: reproducibly, in the build container (python -m
 # overpressure container run), incrementally, through ccache with CCACHE_DIR (CI's check and push builds use it, a
 # tag's own build does not).
+# shellcheck disable=SC2034  # DTB, KERNEL_HOST, KERNEL_RECORD, work, out: build-kernel-tree.sh, sourced below, reads them
 set -euo pipefail
 
 DTB=sm8250-pico4-phoenix FRAGMENT=pico4.config KERNEL_HOST=pico4

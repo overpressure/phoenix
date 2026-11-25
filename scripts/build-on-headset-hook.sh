@@ -3,6 +3,7 @@
 # The PICO 4's part of overpressure's build/build-on-headset.sh, sourced by it (POSIX sh: stage 1 has no bash).
 # before_build starts the fan where nothing drives it; after_build stops it. The variables are the build's:
 # base, host, repository and commit (the overpressure/packages pin), and fetch (fetch.sh).
+# shellcheck disable=SC2154  # base, host, repository, commit: build-on-headset.sh's, which sources this
 fan=""
 before_build() {
 	# The fan, with the installed system's program and policy (pico4-fan, PICO OS's table), where nothing
