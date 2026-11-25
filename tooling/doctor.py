@@ -23,10 +23,9 @@ from typing import TYPE_CHECKING, Callable
 from overpressure.api.v1 import REPO, backup, doctor
 from overpressure.api.v1.doctor import HEADSET, MISSING, OK, OPTIONAL, WARNING, Check, Host
 
-from . import FIRMWARE, USB_MODES, device, localconfig, usblink
+from . import FIRMWARE, GADGET, USB_MODES, device, localconfig
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from pathlib import Path
 
     from .localconfig import Settings
@@ -116,22 +115,9 @@ def usb_checks(host: Host) -> list[Check]:
     return doctor.usb_check(host, USB_MODES)
 
 
-def link_checks(host: Host, found: Sequence[usblink.Link] | None = None) -> list[Check]:
-    """Linux only, while the headset's own system is plugged in: its USB link has the headset's address.
-
-    Another NetworkManager profile can take the headset's interface (usblink); nothing to check without it.
-    """
-    if host.platform != "linux":
-        return []
-    found = usblink.links() if found is None else found
-    if not found:
-        return []
-    name = "the headset's USB network link"
-    wrong = usblink.problem(found, platform=host.platform, nmcli=host.which("nmcli") is not None)
-    if not wrong:
-        return [Check(name, HEADSET, OK, f"{found[0].name} has {usblink.HOST_IP}")]
-    detail, _, commands = wrong.partition("\n\n")
-    return [Check(name, HEADSET, MISSING, detail, commands.replace("\n", " && "))]
+def link_checks(host: Host) -> list[Check]:
+    """Linux only, while the headset's own system is plugged in: its USB link has the headset's address."""
+    return doctor.link_check(host, GADGET)
 
 
 def probes() -> tuple[Callable[[Host], list[Check]], ...]:

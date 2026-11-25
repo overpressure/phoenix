@@ -405,9 +405,10 @@ The headset's own systems are one composite gadget on USB (`1d6b:0104`, product 
 function hands the PC one DHCP lease, `172.16.42.2` (the headset is `172.16.42.1`). NetworkManager can put another
 profile on that interface instead: a wired profile with a fixed address that is bound to no network port takes every
 new one. The link is then up, but the PC has no address in `172.16.42.0/24`, and SSH finds no route.
-[`tooling/usblink.py`](../tooling/usblink.py) finds the headset's interface in `/sys/class/net` by the gadget's IDs and
-product, reads its addresses (`ip -j`) and the profile on it (`nmcli`). A wait for the headset's own system that runs
-out with such a link asks for its fix instead of a replug, `dev connect` and `dev installed` name it in their error,
+overpressure's [`usblink`](https://github.com/overpressure/overpressure/blob/main/overpressure/usblink.py), with the
+PICO 4's gadget (`GADGET` in [`tooling/__init__.py`](../tooling/__init__.py)), finds the headset's interface in
+`/sys/class/net` by the gadget's IDs and product, reads its addresses (`ip -j`) and the profile on it (`nmcli`). A
+wait for the headset's own system that runs out with such a link asks for its fix instead of a replug, `dev connect` and `dev installed` name it in their error,
 and `python -m overpressure doctor` checks it while the headset is plugged in. The fix is a profile for the headset's
 interface alone, matched by its MAC (the headset's serial gives it), which takes the lease and leaves the PC's own
 routes and DNS alone; overpressure changes nothing on the PC itself, it names the commands:

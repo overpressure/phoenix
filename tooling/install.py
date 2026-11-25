@@ -31,8 +31,8 @@ unless PICO OS runs already), waits for PICO OS's setup and USB debugging, and r
 bootloader (cycle --restore-only).
 
 The waits for the headset in a new USB mode (fastboot, the maintenance system) run here, not in a
-child program: one that runs out asks the owner to plug the headset in again and waits once more
-(replug_until), instead of failing the task.
+child program: one that runs out asks the owner to plug the headset in again, or to fix a USB link that
+has no address, and waits once more (overpressure's install.replug_until), instead of failing the task.
 """
 
 from __future__ import annotations
@@ -44,15 +44,14 @@ import sys
 import uuid
 from typing import TYPE_CHECKING, Callable, ClassVar, TypeVar
 
-from overpressure.api.v1 import REPO, android, doctor, install, qualcomm, runner, ssh, tools, usbaccess
+from overpressure.api.v1 import REPO, android, doctor, install, qualcomm, runner, ssh, tools, usbaccess, usblink, wifi
 from overpressure.api.v1 import backup as backups
-from overpressure.api.v1.install import Ask, Context, Failed, Field, NoBackup, Stage, Task
-from overpressure.api.v1.process import Final, until
+from overpressure.api.v1.install import Ask, Context, Failed, NoBackup, Stage, Task
+from overpressure.api.v1.process import until
 
-from . import ADB_MODE, CHECK_WORKFLOW, FASTBOOT_MODE, USB_MODES, device, devloop, localconfig, unlockfiles, usblink
+from . import ADB_MODE, CHECK_WORKFLOW, FASTBOOT_MODE, GADGET, USB_MODES, device, devloop, localconfig, unlockfiles
 from . import doctor as checks
 from . import kernel as pinned_kernel
-from .device import device_rows
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -78,13 +77,6 @@ PROVIDED = {
 #: headset (the build container is for builds on this computer), and every stage 1 it starts runs on Valve's
 #: kernel, which takes Windows' NCM driver as it is (the initialization is the acceptance runner's alone).
 NOT_INSTALLED = {doctor.BUILDS, checks.STOCK_KERNEL_LINK}
-#: The connection file the installer writes on the headset (one, replaced by the next install).
-WIFI_FILE = "/etc/NetworkManager/system-connections/overpressure-wifi.nmconnection"
-WIFI_COMMAND = f"install -D -m 600 /dev/stdin {WIFI_FILE} && nmcli connection reload"
-#: An SSID's length in bytes, and a WPA passphrase's in characters (64: the hexadecimal key).
-SSID_BYTES = 32
-PSK_LENGTHS = (8, 63)
-PSK_HEX = 64
 #: How long the owner has to plug in and accept the prompt, and the headset to reach fastboot.
 PLUG_IN_SECONDS = 600
 FASTBOOT_SECONDS = 180
@@ -151,33 +143,8 @@ FACTORY_RESET = Ask(
     "the headset's lens and fan controller. Then turn on developer mode and USB debugging again and accept the "
     "prompt.",
 )
-WIFI = Ask(
-    "wifi",
-    "form",
-    "Wi-Fi",
-    "The headset can join your Wi-Fi network as soon as it starts. The network name and password go to "
-    "the headset only; this computer does not keep them. Leave both empty to skip: the headset's settings "
-    "join a network later too.",
-    (Field("ssid", "Network name", optional=True), Field("password", "Password", secret=True, optional=True)),
-)
-SSH_KEY = Ask(
-    "ssh-key",
-    "form",
-    "Your SSH key",
-    "To log in to the headset from your own computer over SSH, paste your public key: the one line of your "
-    "id_ed25519.pub (or another .pub file) in your .ssh folder, starting with ssh-ed25519, ssh-rsa or "
-    "ecdsa-sha2. The headset takes it besides this computer's own key; it takes no password. Leave it empty "
-    "to skip.",
-    (Field("key", "Public key", optional=True),),
-)
-NO_PUBLIC_KEY = (
-    "That is no public key: paste the one line of a .pub file, starting with ssh-ed25519, ssh-rsa or ecdsa-sha2. "
-    "Never the private key."
-)
 #: Where the installer keeps the owner's public key; .env names it, and every install and upgrade enrolls it.
 OWNER_KEY = "owner-key.pub"
-#: What the Wi-Fi ask's answer was, in the state (the network and its password stay in memory).
-WIFI_JOIN, WIFI_SKIP = "join", "skip"
 #: What the restore's maintenance task records when PICO OS ran already: its writes are not needed.
 PICO_OS_RAN = "pico-os"
 #: What it records when the headset, after an install that stopped early, cannot start PICO OS and comes back to
@@ -279,73 +246,14 @@ RESTORED = (
 )
 
 
-def replug(what: str, seconds: float) -> Ask:
-    """Return the ask after a wait for @p what that ran out after @p seconds: plug the headset in again."""
-    return Ask(
-        "replug",
-        "action",
-        "Plug the headset in again",
-        f"This computer has not seen the headset ({what}) for {seconds:.0f} s. Unplug the USB cable from the "
-        "headset, wait a few seconds and plug it in again (another USB port of this computer may help), then press "
-        "Done: the installer waits for it again. Cancel stops here; starting the installer again goes on from this "
-        "step.",
-    )
+def link_problem() -> str:
+    """Return why the PICO 4's USB link is up without its address, and the fix; empty when it is not."""
+    return usblink.problem(GADGET)
 
 
-def usb_seen(modes: Sequence[usbaccess.UsbMode] = USB_MODES) -> str:
-    """Return what this computer's USB bus holds of the headset's @p modes (Linux), for the task's log; else empty.
-
-    It tells a headset that is not on the bus from one that is, but which adb or fastboot does not list yet.
-    """
-    if sys.platform != "linux":
-        return ""
-    found = [f"{mode.name} {len(usbaccess.device_files(mode.vendor, mode.product))}" for mode in modes]
-    return "devices on USB: " + ", ".join(found)
-
-
-def unusable(output: str, mode: usbaccess.UsbMode) -> bool:
-    """Tell whether adb's or fastboot's listing (@p output) leaves out a device of @p mode this user may not use.
-
-    A device the tool may open read-only is listed as "no permissions"; one it may not even read is not listed
-    at all, so the USB bus is asked too (Linux: before udev grants it, or without a rule).
-    """
-    return usbaccess.listing_denied(output) or (
-        not device_rows(output, ("device", "fastboot")) and bool(usbaccess.denied(mode))
-    )
-
-
-def link_ask(problem: str) -> Ask:
-    """Return the ask for a USB link that is up without the headset's address (usblink.problem's @p problem)."""
-    return Ask(
-        "usb-link",
-        "action",
-        "Give the headset's USB link its address",
-        f"{problem}\n\nThen press Done: the installer waits for the headset again. Cancel stops here; starting the "
-        "installer again goes on from this step.",
-    )
-
-
-def replug_until(
-    ctx: Context, what: str, seconds: float, operation: Callable[[], T], link: Callable[[], str] | None = None
-) -> T:
-    """Wait as until() does; when @p seconds run out, ask the owner to plug the headset in again, then wait anew.
-
-    A USB link that is up without the headset's address (Linux: another NetworkManager profile took it, @p link
-    tells, usblink.problem by default) asks for its fix instead: a replug would not help. A Final error ends the
-    wait at once, as in until(); declining the ask stops the run.
-    """
-    while True:
-        try:
-            return until(what, seconds, operation, ctx.clock)
-        except Final:  # noqa: PERF203  # a wait loop: until() ends it, or the owner's answer to the ask
-            raise
-        except RuntimeError as exc:
-            seen = usb_seen()
-            ctx.log(f"{exc}" + (f"; {seen}" if seen else ""))
-            wrong = (link or usblink.problem)()
-            if wrong:
-                ctx.log(wrong.splitlines()[0])
-            ctx.ask(link_ask(wrong) if wrong else replug(what, seconds))
+def replug_until(ctx: Context, what: str, seconds: float, operation: Callable[[], T]) -> T:
+    """Wait as overpressure's install.replug_until does, for the PICO 4: its USB modes, its USB link."""
+    return install.replug_until(ctx, what, seconds, operation, modes=USB_MODES, link=link_problem)
 
 
 class AskingDev(devloop.Dev):
@@ -383,46 +291,6 @@ def edl_luns(output: str) -> list[int]:
     """Return the LUNs edl-ng's printgpt shows, the firmware LUNs first and LUN 0 (userdata's) last."""
     luns = sorted({int(n) for n in re.findall(r"---\s*(?:GPT Header|Partitions)\s+LUN\s+(\d+)\s*---", output)})
     return [n for n in luns if n] + [n for n in luns if not n]
-
-
-def wifi_problem(ssid: str, password: str) -> str:
-    """Return what is wrong with a Wi-Fi answer, in plain words; empty when it can be used."""
-    if not ssid:
-        return "Enter the network name too, or leave both empty to skip Wi-Fi." if password else ""
-    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in ssid + password):  # noqa: PLR2004  # control characters
-        return "The network name and password cannot hold control characters."
-    if len(ssid.encode()) > SSID_BYTES:
-        return f"A network name has at most {SSID_BYTES} bytes."
-    hex_key = len(password) == PSK_HEX and all(c in "0123456789abcdefABCDEF" for c in password)
-    if password and not hex_key and not PSK_LENGTHS[0] <= len(password) <= PSK_LENGTHS[1]:
-        return f"A Wi-Fi password has {PSK_LENGTHS[0]} to {PSK_LENGTHS[1]} characters."
-    return ""
-
-
-def _keyfile_value(value: str) -> str:
-    """Return @p value escaped for a key file (GLib's rules: backslashes, a leading space)."""
-    value = value.replace("\\", "\\\\")
-    return "\\s" + value[1:] if value.startswith(" ") else value
-
-
-def keyfile(ssid: str, password: str, connection: str) -> bytes:
-    """Return a NetworkManager keyfile for @p ssid: WPA-PSK with @p password, an open network without one."""
-    lines = [
-        "[connection]",
-        f"id={_keyfile_value(ssid)}",
-        f"uuid={connection}",
-        "type=wifi",
-        "autoconnect=true",
-        "",
-        "[wifi]",
-        "mode=infrastructure",
-        f"ssid={_keyfile_value(ssid)}",
-        "",
-    ]
-    if password:
-        lines += ["[wifi-security]", "key-mgmt=wpa-psk", f"psk={_keyfile_value(password)}", ""]
-    lines += ["[ipv4]", "method=auto", "", "[ipv6]", "method=auto", ""]
-    return "\n".join(lines).encode()
 
 
 def computer_problems(found: Sequence[Check]) -> str:
@@ -622,12 +490,12 @@ class Plan:
 
         def one() -> str:
             output = ctx.output([adb, "devices"], 30, check=False)
-            blocked = unusable(output, ADB_MODE)
+            blocked = usbaccess.unusable(output, ADB_MODE)
             denial.see(blocked, lambda: usbaccess.message(ADB_MODE, USB_MODES))
             if blocked:
                 msg = "the headset is there, but not usable yet"  # udev grants it a moment late
                 raise RuntimeError(msg)
-            rows = device_rows(output)
+            rows = android.device_rows(output)
             ready = [serial for serial, state in rows.items() if state == "device"]
             if len(rows) > 1:
                 problem = "More than one Android device is connected: unplug the others."
@@ -656,7 +524,7 @@ class Plan:
         settings = ctx.settings(Settings)
         if not settings.adb_serial:
             return None
-        rows = device_rows(ctx.output([settings.tool("adb"), "devices"], 30, check=False), ("device",))
+        rows = android.device_rows(ctx.output([settings.tool("adb"), "devices"], 30, check=False), ("device",))
         if settings.adb_serial not in rows:
             return None
         argv = [settings.tool("adb"), "-s", settings.adb_serial, "shell", "getprop", "ro.build.fingerprint"]
@@ -917,9 +785,9 @@ class Plan:
 
         def listed() -> dict[str, str]:
             output = ctx.output([fastboot, "devices"], 30, check=False)
-            denial.see(unusable(output, FASTBOOT_MODE), lambda: usbaccess.message(FASTBOOT_MODE, USB_MODES))
+            denial.see(usbaccess.unusable(output, FASTBOOT_MODE), lambda: usbaccess.message(FASTBOOT_MODE, USB_MODES))
             # "SERIAL no permissions ...": in fastboot, but not usable yet (udev grants it a moment late).
-            return device_rows(output, ("fastboot", "no"))
+            return android.device_rows(output, ("fastboot", "no"))
 
         try:
             self.wait_fastboot(ctx, settings, listed)
@@ -979,21 +847,9 @@ class Plan:
 
     # -- 5. the install ------------------------------------------------------------------------
     @staticmethod
-    def ask_wifi(ctx: Context) -> tuple[str, str]:
-        """Ask for the Wi-Fi network until the answer can be used; empty: no Wi-Fi."""
-        while True:
-            values = ctx.ask(WIFI)
-            ssid, password = values["ssid"].strip(), values["password"]
-            problem = wifi_problem(ssid, password)
-            if not problem:
-                return ssid, password
-            ctx.note(problem, "warning")
-
-    def wifi(self, ctx: Context) -> None:
+    def wifi(ctx: Context) -> None:
         """Ask for Wi-Fi now, so the owner can leave during the install: the answer in memory, a skip in the state."""
-        answer = self.ask_wifi(ctx)
-        ctx.memory["wifi"] = answer
-        ctx.remember(WIFI_JOIN if answer[0] else WIFI_SKIP)
+        wifi.remember(ctx)
 
     def ssh_key(self, ctx: Context) -> None:
         """Ask for the owner's own SSH public key: a file .env names, which the install writes to authorized_keys."""
@@ -1001,14 +857,10 @@ class Plan:
         if settings.ssh_public_key:
             ctx.note(f"Your SSH key comes from {settings.path('ssh_public_key')} ({KEY('ssh_public_key')} in .env).")
             return
-        while True:
-            line = ctx.ask(SSH_KEY)["key"].strip()
-            if not line:
-                ctx.note("No SSH key of yours: this computer's own key logs in to the headset.")
-                return
-            if ssh.is_public_key(line.encode()) and len(line.split()) >= 2:  # noqa: PLR2004  # its kind and its key
-                break
-            ctx.note(NO_PUBLIC_KEY, "warning")
+        line = ssh.ask_public_key(ctx)
+        if not line:
+            ctx.note("No SSH key of yours: this computer's own key logs in to the headset.")
+            return
         path = self.work / OWNER_KEY
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(line.encode() + b"\n")
@@ -1018,16 +870,13 @@ class Plan:
 
     def wifi_profile(self, ctx: Context) -> None:
         """Write the Wi-Fi profile to the installed system over SSH: the keyfile on stdin, never in an argv."""
-        held = ctx.memory.get("wifi")
-        if held is None and ctx.recall("wifi") == WIFI_SKIP:  # skipped in an earlier run: not asked twice
-            held = "", ""
-        # After a restart a network's password is gone (it is never written down): ask for it again.
-        ssid, password = held or self.ask_wifi(ctx)
+        # Skipped in an earlier run: not asked twice; after a restart a network's password is gone: asked again.
+        ssid, password = wifi.held(ctx)
         if not ssid:
             ctx.note("No Wi-Fi set up: join a network in the headset's settings.")
             return
         dev = devloop.Dev(ctx.settings(Settings), self.work)
-        ctx.run(dev.ssh_argv(WIFI_COMMAND), stdin=keyfile(ssid, password, str(uuid.uuid4())))
+        ctx.run(dev.ssh_argv(wifi.COMMAND), stdin=wifi.keyfile(ssid, password, str(uuid.uuid4())))
         ctx.note("The headset joins your Wi-Fi network when it is in range.")
 
     # -- the way back -------------------------------------------------------------------------------
@@ -1058,7 +907,7 @@ class Plan:
     def pico_os_running(self, ctx: Context) -> bool:
         """Tell whether the headset .env names answers adb now: PICO OS runs, its system is stock already."""
         settings = ctx.settings(Settings)
-        rows = device_rows(ctx.output([settings.tool("adb"), "devices"], 30, check=False), ("device",))
+        rows = android.device_rows(ctx.output([settings.tool("adb"), "devices"], 30, check=False), ("device",))
         return bool(settings.adb_serial) and settings.adb_serial in rows
 
     def restore_maintenance(self, ctx: Context) -> None:

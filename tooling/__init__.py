@@ -16,7 +16,7 @@ import dataclasses
 import subprocess
 from typing import TYPE_CHECKING, Callable
 
-from overpressure.api.v1 import backup, qualcomm
+from overpressure.api.v1 import backup, qualcomm, usblink
 from overpressure.api.v1.headset import (
     INSTALL,
     Action,
@@ -44,6 +44,9 @@ if TYPE_CHECKING:
 ADB_MODE = UsbMode("PICO OS with USB debugging", "2d40", "00b7")
 FASTBOOT_MODE = UsbMode("fastboot mode", "18d1", "d00d")
 USB_MODES = (ADB_MODE, FASTBOOT_MODE, qualcomm.EDL_MODE)
+#: Its maintenance system's and installed system's USB network gadget (usb-gadget): generic IDs, its product
+#: string, the network and the one lease it hands the PC, and the NetworkManager profile a fix adds.
+GADGET = usblink.Gadget("1d6b", "0104", "PICO 4 Linux", "172.16.42.0/24", "172.16.42.2", "overpressure-phoenix")
 #: The way out of a stale EDL session: the power button ends EDL mode, and the next attempt enters it afresh.
 EDL_RESTART = (
     "Hold the power button for about 10 s until the headset restarts, keep the cable in, then run the step "

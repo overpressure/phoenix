@@ -16,7 +16,7 @@ from devices.phoenix.tooling import HEADSET, devloop, localconfig
 from devices.phoenix.tooling import doctor as checks
 from devices.phoenix.tooling import install as plan
 from overpressure.api.v1 import backup as backups
-from overpressure.api.v1 import doctor, qualcomm, tools, usbaccess
+from overpressure.api.v1 import doctor, qualcomm, ssh, tools, usbaccess, wifi
 from overpressure.api.v1.doctor import Check
 from overpressure.api.v1.headset import BackupSet
 from overpressure.api.v1.install import Context, Engine, Stage, Stopped, Task
@@ -568,14 +568,6 @@ class PlanTests(unittest.TestCase):
         self.assertEqual((finished["status"], finished["task"]), ("failed", "unlock"))
         self.assertIn("may not use the headset in fastboot mode", finished["error"])
 
-    def test_a_listing_is_unusable_only_without_a_usable_device(self):
-        with mock.patch.object(usbaccess, "denied", return_value=[Path("/dev/bus/usb/001/006")]):
-            self.assertTrue(plan.unusable("", tooling.FASTBOOT_MODE))
-            self.assertFalse(plan.unusable(f"{FASTBOOT}\tfastboot\n", tooling.FASTBOOT_MODE))
-        self.assertTrue(plan.unusable(f"{FASTBOOT}\tno permissions; see [x]\n", tooling.FASTBOOT_MODE))
-        with mock.patch.object(usbaccess, "denied", return_value=[]):
-            self.assertFalse(plan.unusable("", tooling.FASTBOOT_MODE))
-
     def test_edl_without_access_stops_the_backup_before_edl_ng_runs(self):
         self.plan.edl_denied = lambda: True
         ui = self.run_stages(("connect", "prepare"), self.yes("plug-in", "consent"))
@@ -731,7 +723,7 @@ class PlanTests(unittest.TestCase):
         ssh = [(argv, data) for argv, data, _ in self.spawned if data is not None]
         self.assertEqual(len(ssh), 1)
         argv, data = ssh[0]
-        self.assertIn(plan.WIFI_FILE, argv[-1])
+        self.assertIn(wifi.FILE, argv[-1])
         self.assertTrue(all(PASSWORD not in word and "Home Net" not in word for word in argv))
         self.assertIn(f"psk={PASSWORD}".encode(), data or b"")
         self.assertIn(b"ssid=Home Net", data or b"")
@@ -776,7 +768,7 @@ class PlanTests(unittest.TestCase):
         answers["ssh-key"] = [private, {"answer": "ssh-key", "accepted": True, "values": {}}]
         ui = self.run_stages(("install",), answers)
         self.assertEqual(ui.finished()["status"], "done", ui.finished())
-        self.assertIn(plan.NO_PUBLIC_KEY, [e["text"] for e in ui.events if e["event"] == "note"])
+        self.assertIn(ssh.NO_PUBLIC_KEY, [e["text"] for e in ui.events if e["event"] == "note"])
         self.assertEqual(self.settings().ssh_public_key, "")
 
     def test_the_doctor_ignores_what_the_installer_provides(self):
@@ -816,28 +808,6 @@ class ParserTests(unittest.TestCase):
         self.assertEqual(plan.edl_serial(PRINTGPT), EDL)
         self.assertEqual(plan.edl_serial("no device"), "")
         self.assertEqual(plan.edl_luns(PRINTGPT), [1, 2, 0])
-
-    def test_device_lists(self):
-        adb = "* daemon started successfully\nList of devices attached\nA\tdevice\nB\tunauthorized\n\n"
-        self.assertEqual(plan.device_rows(adb), {"A": "device", "B": "unauthorized"})
-        self.assertEqual(plan.device_rows("F\tfastboot\n", ("fastboot",)), {"F": "fastboot"})
-
-    def test_wifi_answers(self):
-        self.assertEqual(plan.wifi_problem("", ""), "")
-        self.assertEqual(plan.wifi_problem("net", ""), "")  # an open network
-        self.assertEqual(plan.wifi_problem("net", "12345678"), "")
-        self.assertEqual(plan.wifi_problem("net", "ab" * 32), "")  # the hexadecimal key
-        self.assertIn("network name too", plan.wifi_problem("", "12345678"))
-        self.assertIn("8 to 63", plan.wifi_problem("net", "short"))
-        self.assertIn("32 bytes", plan.wifi_problem("n" * 33, ""))
-        self.assertIn("control", plan.wifi_problem("net\n", "12345678"))
-
-    def test_keyfile(self):
-        text = plan.keyfile(" back\\slash", "pass word!", "uuid-1").decode()
-        self.assertIn("id=\\sback\\\\slash\n", text)
-        self.assertIn("[wifi-security]\nkey-mgmt=wpa-psk\npsk=pass word!\n", text)
-        self.assertIn("uuid=uuid-1\n", text)
-        self.assertNotIn("wifi-security", plan.keyfile("open", "", "u").decode())
 
 
 class AfterInstallTests(unittest.TestCase):

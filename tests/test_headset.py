@@ -1254,21 +1254,6 @@ class DevTests(HeadsetFixture):
             seen[-1].endswith(f"--bytes 4096 --sha256 {'d' * 64} --zstd --from-data {first['path']}"), seen[-1]
         )
 
-    def test_writes_wait_for_a_battery_that_lasts(self):
-        for reading, refused in (
-            ("80\nDischarging\n", False),
-            ("20\nDischarging\n", False),
-            ("19\nDischarging\n", True),
-            ("5\nNot charging\n", True),
-            ("5\nCharging\n", False),
-            ("5\n", True),
-            ("", False),  # not readable: a warning, not a refusal
-            ("cat: no such file\n", False),
-        ):
-            with self.subTest(reading=reading):
-                self.assertEqual(bool(devloop.battery_refusal(reading)), refused)
-        self.assertIn("at 19 % (Discharging)", devloop.battery_refusal("19\nDischarging"))
-
     def test_a_headset_build_without_the_internet_stops_before_any_write(self):
         dev, system = self.install_setup()
         with (

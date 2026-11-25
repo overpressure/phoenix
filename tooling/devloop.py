@@ -56,11 +56,13 @@ from overpressure.api.v1 import (
     android,
     avb,
     bootimg,
+    power,
     process,
     progress,
     qualcomm,
     ssh,
     usbaccess,
+    usblink,
     web,
     windows_ncm,
 )
@@ -71,7 +73,7 @@ from overpressure.api.v1.fastboot import NOT_IN_FASTBOOT
 from overpressure.api.v1.fastboot import flash as flash_image
 from overpressure.api.v1.headset import manifest
 
-from . import FASTBOOT_MODE, USB_MODES, device, localconfig, prefetch, stockfiles, usblink
+from . import FASTBOOT_MODE, GADGET, USB_MODES, device, localconfig, prefetch, stockfiles
 from . import hardware_test as hw
 from .cycle import Headset, run
 
@@ -257,23 +259,6 @@ def still_gate_lost(output: str) -> bool:
     return found is None or int(found.group(2)) > 0
 
 
-def battery_refusal(reading: str) -> str:
-    """Return why partition writes may not start on @p reading (capacity, status), or "" if they may.
-
-    A reading that is not a percentage refuses nothing: the caller warns instead.
-    """
-    words = reading.split()
-    if not words or not words[0].isdigit():
-        return ""
-    percent, status = int(words[0]), (words[1] if len(words) > 1 else "")
-    if percent >= MIN_WRITE_PERCENT or status in ("Charging", "Full"):
-        return ""
-    return (
-        f"the battery is at {percent} % ({status or 'status unknown'}): charge the headset to {MIN_WRITE_PERCENT} % "
-        "first, or connect it to a port that charges it"
-    )
-
-
 class Dev(Headset):
     """The development loop's steps on a headset in development mode."""
 
@@ -307,7 +292,7 @@ class Dev(Headset):
         try:
             return super().until(name, seconds, operation)
         except RuntimeError as exc:
-            wrong = usblink.problem() if name in self.LINK_WAITS and not isinstance(exc, process.Final) else ""
+            wrong = usblink.problem(GADGET) if name in self.LINK_WAITS and not isinstance(exc, process.Final) else ""
             if not wrong:
                 raise
             msg = f"{exc}\n{wrong}"
@@ -385,7 +370,7 @@ class Dev(Headset):
         is the headset, and its serial is learnt (learn_fastboot_serial); with none or several, it is not.
         """
         output = self.run([self.s.tool("fastboot"), "devices"], 30, check=False)
-        rows = list(device.device_rows(output, ("fastboot",)))
+        rows = list(android.device_rows(output, ("fastboot",)))
         if self.s.fastboot_serial:
             return self.s.fastboot_serial in rows
         if len(rows) == 1:
@@ -555,7 +540,7 @@ class Dev(Headset):
         if usbaccess.denied(FASTBOOT_MODE):  # in fastboot already, not usable yet
             self.until("fastboot", 180, ready)
             return
-        adb_rows = device.device_rows(self.run([self.s.tool("adb"), "devices"], 30, check=False), ("device",))
+        adb_rows = android.device_rows(self.run([self.s.tool("adb"), "devices"], 30, check=False), ("device",))
         pico_os = bool(self.s.adb_serial) and self.s.adb_serial in adb_rows
         # That look started the adb server again, which on Linux holds the headset in fastboot.
         self.release_adb()
@@ -689,9 +674,9 @@ class Dev(Headset):
         return name
 
     def check_battery(self) -> None:
-        """Refuse partition writes on an almost empty battery that does not charge (battery_refusal)."""
+        """Refuse partition writes on an almost empty battery that does not charge (power.headset_refusal)."""
         reading = self.ssh(f"cat {BATTERY}/capacity {BATTERY}/status 2>/dev/null", 10, check=False)
-        refusal = battery_refusal(reading)
+        refusal = power.headset_refusal(reading, MIN_WRITE_PERCENT)
         if refusal:
             raise RuntimeError(refusal)
         if not reading.split()[:1] or not reading.split()[0].isdigit():

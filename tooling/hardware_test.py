@@ -417,7 +417,7 @@ class Runner(evidence.Runner):
 
         def detect(timeout: float) -> None:
             output = self.command([self.args.fastboot, "devices"], timeout)
-            require(serial in device.device_rows(output, ("fastboot",)), "Selected fastboot serial is missing")
+            require(serial in android.device_rows(output, ("fastboot",)), "Selected fastboot serial is missing")
 
         self.wait("fastboot", self.args.boot_timeout, detect)
         self.check_fastboot_unlock()
@@ -801,7 +801,7 @@ class Runner(evidence.Runner):
                 if not rebooted_fastboot:
                     serial = self.args.fastboot_serial or self.args.serial
                     output = self.command([self.args.fastboot, "devices"], timeout)
-                    if serial in device.device_rows(output, ("fastboot",)):
+                    if serial in android.device_rows(output, ("fastboot",)):
                         self.fastboot("reboot", timeout=timeout)
                         rebooted_fastboot = True
                 msg = "Waiting for original PICO OS to complete boot"
@@ -821,7 +821,7 @@ class Runner(evidence.Runner):
 
         def ready(timeout: float) -> None:
             output = self.command([self.args.fastboot, "devices"], timeout)
-            if serial in device.device_rows(output, ("fastboot",)):
+            if serial in android.device_rows(output, ("fastboot",)):
                 return
             # A partial/failed write could still have left a bootable stock image.
             identity = self.identity(timeout)

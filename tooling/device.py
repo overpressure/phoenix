@@ -34,20 +34,10 @@ from overpressure.api.v1.qualcomm import (
 from . import localconfig, unlockfiles
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable
 
 #: The SoC ID is a 32-bit number.
 CHIP_ID_MAX = 0xFFFFFFFF
-
-
-def device_rows(output: str, states: Sequence[str] = ("device", "unauthorized", "offline")) -> dict[str, str]:
-    """Return the serial and state of each device that adb or fastboot devices lists in @p states."""
-    rows = {}
-    for line in output.splitlines():
-        words = line.split()
-        if len(words) >= 2 and words[1] in states:  # noqa: PLR2004  # a serial and a state
-            rows[words[0]] = words[1]
-    return rows
 
 
 def unlock_token(number: int) -> str:
