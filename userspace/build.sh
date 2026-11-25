@@ -6,7 +6,7 @@
 # install writes from the headset's own backup, and PICO OS's modem, dsp and bluetooth partitions, mounted read-only
 # at boot: userspace/stock-links.txt, docs/install.md#pico-oss-files). The headset's own factory data is read from
 # persist at boot.
-# shellcheck disable=SC2034  # build-userspace.sh reads them
+# shellcheck disable=SC2034,SC2154  # build-userspace.sh reads the settings; the hooks use its source_dir, project and T
 PREFIX=pico4
 # The super partition's size: the system image's limit (build-system-image.sh).
 SUPER_MIB=8192
