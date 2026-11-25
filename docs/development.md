@@ -44,8 +44,10 @@ kernel/           the pinned release of overpressure/linux (release.json), build
                   recovery_image.py
 src/              C sources outside the packages: reboot/ (pico4-reboot), splash/ (pico4-splash)
 prebuilt/         static aarch64 pico4-reboot and pico4-splash, so stage 1 builds without a compiler
-scripts/          build-userspace.sh, build-system-image.sh, build-kernel-step.sh, upgrade-check.sh (with
-                  upstream.py), check-package-lock.py, c-tests.sh and the on-headset preflight
+scripts/          build-userspace.sh, build-system-image.sh, build-on-headset.sh (with its fan hook),
+                  build-kernel-step.sh: overpressure's build/ scripts with this folder; upgrade-check.sh (with
+                  upstream.py), c-tests.sh and the on-headset preflight
+userspace/build.sh  this headset's part of the userspace build: its prefix, masks and adaptation hooks
 .github/          CI (against overpressure's main), the release, the weekly upgrade check
 tests/            host tests (unittest), test_recovery_policy.sh, qemu/
 docs/             documentation
@@ -240,8 +242,6 @@ builds fails nothing: whether the session runs on it is the headset's check befo
 | Host tests: protocols, validators, the installer, runner, cycle and dev loop against fakes | `python -m unittest discover -t . -s devices/phoenix/tests` (`python -m unittest`: with the generic tests) | seconds |
 | Formatting, lint and types (CI runs them; `make lint` runs them here and in every headset in `devices/`) | `uv run ruff format --check devices/phoenix`, `uv run ruff check devices/phoenix`, `uv run ty check devices/phoenix` | seconds |
 | Stage-1 recovery policy (CI runs it under dash, the closest to BusyBox ash) | `bash devices/phoenix/tests/test_recovery_policy.sh` | seconds |
-| The builds' downloads against a fake server (CI runs it under dash; python3 and curl) | `bash devices/phoenix/tests/test_fetch.sh` | about 10 s |
-| The package databases a new base root keeps or downloads again (CI runs it under dash) | `bash devices/phoenix/tests/test_databases.sh` | seconds |
 | The host tests and every shell test above | `make test` (on Linux) | seconds |
 | The same on any host, in the build container, as root | `python -m overpressure container run -- make test` (`make container-test`) | as `make test`, once the image is built |
 | C tests of this repository's own sources (CI runs them) | `bash devices/phoenix/scripts/c-tests.sh` (a C compiler) | seconds |

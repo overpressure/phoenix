@@ -81,8 +81,10 @@ checks the links; a link may not leave this repository, so links to overpressure
 - `src/`: the project's C sources outside the packages (`reboot/`, `splash/`). `pico4-slamd`, which
   runs PICO OS's head tracker (libSlam) in a bionic root, is a package of overpressure/packages.
 - `scripts/`: `build-userspace.sh`, `build-system-image.sh`, `build-kernel-step.sh`, `build-on-headset.sh` (the
-  headset's own build), `upgrade-check.sh` (the weekly build on Valve's newest packages), `c-tests.sh`,
-  `check-package-lock.py`, `upstream.py`, `windows-share-internet.ps1` and the on-headset preflight
+  headset's own build, its fan in `build-on-headset-hook.sh`): overpressure's `overpressure/build/` scripts with this
+  folder, whose part of the userspace build is `userspace/build.sh` (its prefix, masks, ELF exceptions and adaptation
+  hooks); `upgrade-check.sh` (the weekly build on Valve's newest packages), `c-tests.sh`,
+  `upstream.py`, `windows-share-internet.ps1` and the on-headset preflight
   (`preflight-device.sh`). The image holds no file of PICO OS's, only links
   (`userspace/stock-links.txt`) to the data partition's copy, which `dev install` writes from the headset's backup,
   and to PICO OS's modem, dsp and bluetooth partitions, mounted read-only at boot (docs/install.md#pico-oss-files).

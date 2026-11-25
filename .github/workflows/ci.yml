@@ -19,6 +19,7 @@ jobs:
     with:
       codename: phoenix
       kernel: true
+      overpressure: feat/build-helpers # interface 1.7, until overpressure's pull request merges
     permissions:
       contents: read
       actions: read # an earlier pass of the same tree

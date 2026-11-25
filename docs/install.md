@@ -246,7 +246,7 @@ files the image shares; about 1 MB) goes over SSH, and
   follows is the way for whatever it did not send.
 - **The network.** Everything comes through the PC's connection: `ssh -R` gives the headset a SOCKS proxy on
   `127.0.0.1:1080`, names resolved on the PC (`socks5h`), 18 to 29 MB/s. The build's chroots pass `ALL_PROXY`
-  on. Every download goes through [`scripts/fetch.sh`](../scripts/fetch.sh), which rides out a short outage of
+  on. Every download goes through overpressure's [`build/fetch.sh`](https://github.com/overpressure/overpressure/blob/main/overpressure/build/fetch.sh), which rides out a short outage of
   GitHub's downloads: server errors (408, 429, 5xx) and failed or dropped connections are tried again for three
   minutes, 5 s apart at first and up to 30 s; any other answer fails at once, with the URL and the error in the
   log. pacman's downloads from Valve's package server, its only one, go through the same file's `fetch_pacman`: a
@@ -294,7 +294,7 @@ installed system built this way passes `dev check` (90.03 commits/s) with the tr
 ## Downloads first
 
 The headset's build downloads nothing the PC fetched before: `dev prefetch`
-([tooling/prefetch.py](../tooling/prefetch.py)), the installer's last task in *Check this computer*, downloads all of
+(overpressure's [prefetch](https://github.com/overpressure/overpressure/blob/main/overpressure/prefetch.py) with [tooling/prefetch.py](../tooling/prefetch.py)'s pins), the installer's last task in *Check this computer*, downloads all of
 it before the install writes the headset, so a connection that drops then changes nothing on it, and an install started
 again fetches only what is missing. It works on every host: Python reads Valve's package databases (tar with xz).
 
