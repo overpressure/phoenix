@@ -43,14 +43,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
-from overpressure.api.v1 import avb, bootimg, compress, cpio, kernelinfo
+from overpressure.api.v1 import avb, bootimg, compress, cpio, kernelimage, kernelinfo
 from overpressure.api.v1 import stage1 as stage1_overlay
+from overpressure.api.v1.kernelimage import DEBUG, appended, files_archive, keyed_words, trace_words
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
@@ -110,19 +110,6 @@ DIRECT = (
 )
 #: --direct in recovery: preinit's reboot after a failed start is a plain one, into boot.
 DIRECT_ONESHOT = ("pico4.failover=reboot",)
-#: --debug: each probe before it starts (dd.c's dynamic debug) and with its result, all levels
-#: on the console, and on a panic every task's stack (a probe asleep in a killable or idle wait,
-#: which the hung-task detector skips) and the backtraces of all CPUs, and the DRM drivers' and
-#: KMS steps (drm.debug: driver, kms, prime, atomic), the last of which a modeset that stalls the
-#: SoC leaves in the RAM console; a hard lockup (the buddy detector) panics.
-DEBUG = (
-    "initcall_debug",
-    "dd.dyndbg=+p",
-    "ignore_loglevel",
-    "panic_sys_info=tasks,all_bt",
-    "drm.debug=0x1e",
-    "nmi_watchdog=panic",
-)
 #: --debug also changes stage 1 (an archive appended to its ramdisk, whose entries replace the
 #: first archive's): where it gives up and returns to fastboot, it panics instead. Only the
 #: panic's reset keeps the RAM console; the return to fastboot leaves it corrupted. Its wait for
@@ -197,14 +184,6 @@ def wlan_firmware_archive(directory: Path) -> cpio.Tree:
     return files_archive(files)
 
 
-def files_archive(files: dict[str, Path]) -> cpio.Tree:
-    """Archive each file at its path."""
-    tree = cpio.Tree()
-    for path, source in files.items():
-        tree.add_file(path, source.read_bytes())
-    return tree
-
-
 def overlay_archive(directory: Path) -> cpio.Tree:
     """--stage1: a stage-1 overlay's files, which replace the base ramdisk's."""
     tree = cpio.Tree()
@@ -244,29 +223,6 @@ def dev_recovery_image(dev_recovery: Path) -> bootimg.BootImage:
     return base
 
 
-def appended(ramdisk: bytes, *trees: cpio.Tree) -> bytes:
-    """Append each archive to the ramdisk; the kernel unpacks them in order."""
-    # compress.gzip_compress: the same bytes on every host and Python (a pinned OS byte).
-    return ramdisk + b"".join(compress.gzip_compress(tree.to_cpio()) for tree in trees)
-
-
-def trace_words(function: str) -> tuple[str, ...]:
-    """--trace: the function graph below one kernel function, printed on a panic."""
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", function):
-        msg = f"not a kernel function name: {function!r}"
-        raise ValueError(msg)
-    return ("ftrace=function_graph", f"ftrace_graph_filter={function}", "ftrace_dump_on_oops", "trace_buf_size=64K")
-
-
-def keyed_words(*groups: Iterable[str]) -> tuple[str, ...]:
-    """Merge command line words; a later word replaces an earlier one with its key."""
-    keyed: dict[str, str] = {}
-    for word in (w for group in groups for w in group):
-        keyed.pop(word.split("=")[0], None)
-        keyed[word.split("=")[0]] = word
-    return tuple(keyed.values())
-
-
 def build(  # noqa: PLR0913  # one keyword per command-line option
     kernel_out: Path,
     stock_recovery: Path,
@@ -304,18 +260,7 @@ def build(  # noqa: PLR0913  # one keyword per command-line option
     else:
         extra = keyed_words(EXTRA, debug_words, cmdline_words)
         drop = ()
-    keys = {e.split("=")[0] for e in extra}
-    words = [
-        w for w in base.full_cmdline.split() if w.split("=")[0] not in keys and not w.startswith(STOCK_ONLY + drop)
-    ]
-    cmdline = " ".join(words + list(extra))
-    if len(cmdline) > MAX_CMDLINE:
-        msg = f"the command line has {len(cmdline)} bytes; the ABL passes only {MAX_CMDLINE}"
-        raise ValueError(msg)
-    image = base.with_cmdline(cmdline)
-    image.kernel, image.dtb = kernel, dtb
-    if boot:
-        image.recovery_dtbo = b""
+    cmdline = kernelimage.command_line(base.full_cmdline, extra, STOCK_ONLY + drop, MAX_CMDLINE)
     if direct:
         ramdisk = b""
     else:
@@ -328,13 +273,7 @@ def build(  # noqa: PLR0913  # one keyword per command-line option
             + ([build_info_archive(info)] if info else [])
         )
         ramdisk = appended(base.ramdisk, *archives)
-    image.ramdisk = ramdisk
-    image.boot_signature = b""
-    data = image.pack()
-    check = bootimg.parse(data)
-    if (check.kernel, check.dtb, check.ramdisk, check.recovery_dtbo) != (kernel, dtb, ramdisk, image.recovery_dtbo):
-        msg = "the test image failed validation"
-        raise RuntimeError(msg)
+    data = kernelimage.with_kernel(base, kernel, dtb, cmdline, ramdisk, recovery_dtbo=not boot)
     return data if boot else avb.with_stock_vbmeta(stock_recovery.read_bytes(), data)
 
 

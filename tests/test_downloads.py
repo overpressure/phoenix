@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 from devices.phoenix.tooling import devloop, kernel
+from overpressure.api.v1 import kernelpin
 
 
 class ReachTests(unittest.TestCase):
@@ -32,7 +33,10 @@ class KernelFileTests(unittest.TestCase):
             return b"source"
 
         pin = kernel.release()
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(kernel, "web", types.SimpleNamespace(read=read)):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(kernelpin, "web", types.SimpleNamespace(read=read)),
+        ):
             self.assertEqual(kernel.kernel_file("drivers/x.c", pin, cache=Path(tmp)), "source")
             self.assertEqual(kernel.kernel_file("drivers/x.c", pin, cache=Path(tmp)), "source")
         self.assertEqual(asked, [(pin.source_url("drivers/x.c"), 60)])

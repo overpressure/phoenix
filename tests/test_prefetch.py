@@ -27,7 +27,7 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(fetcher.pin["repository"], "overpressure/packages")
         # The fan program build-on-headset.sh takes from the pinned commit (its downloads/pico4-fan-COMMIT).
         self.assertEqual(fetcher.extra, (("downloads/pico4-fan-{commit}", "phoenix/pico4-power/pico4-fan"),))
-        script = (prefetch.HERE / "scripts" / "build-on-headset.sh").read_text(encoding="utf-8")
+        script = (prefetch.HERE / "scripts" / "build-on-headset-hook.sh").read_text(encoding="utf-8")
         self.assertIn("downloads/pico4-fan-$commit", script)
 
 

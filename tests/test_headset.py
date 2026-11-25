@@ -1199,7 +1199,7 @@ class DevTests(HeadsetFixture):
         self.assertIn("packages/headsets/phoenix/layers", names)
         self.assertIn("packages/phoenix/pico4-base/PKGBUILD", names)
         self.assertFalse([n for n in names if ".git" in n or "__pycache__" in n])
-        script = (Path(__file__).resolve().parents[1] / "scripts/build-on-headset.sh").read_text(encoding="utf-8")
+        script = (REPO / "overpressure/build/build-on-headset.sh").read_text(encoding="utf-8")
         self.assertIn('packages="--packages /build/src/packages"', script)
         # Only the headset's build takes it: the container's build has its own --packages.
         with self.assertRaises(ValueError):

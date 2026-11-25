@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path
 
 from devices.phoenix.tooling import assets, stockfiles
-from overpressure.api.v1 import ota
+from overpressure.api.v1 import REPO, ota
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,7 +34,7 @@ class ExtractionTests(unittest.TestCase):
     def test_the_headsets_own_data_stays_in_persist(self):
         # The image and PICO OS's files on the data partition link to persist, never copy from it.
         self.assertTrue(all(t.startswith("/mnt/vendor/persist/") for t in stockfiles.TREE_LINKS.values()))
-        build = read(ROOT / "scripts/build-userspace.sh")
+        build = read(ROOT / "userspace/build.sh") + read(REPO / "overpressure/build/build-userspace.sh")
         self.assertNotIn("wlan_mac.bin", build)
         self.assertIn('mkdir -p "$T/mnt/vendor/persist"', build)
 
