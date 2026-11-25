@@ -43,7 +43,8 @@ release in `/usr/share/pico4/version`; a release build's commit carries no `-dir
    git push origin 2026.12.0b0
    ```
 
-5. **CI** ([release.yml](../.github/workflows/release.yml), on GitHub):
+5. **CI** ([release.yml](../.github/workflows/release.yml), on GitHub, through overpressure's
+   [headset-release.yml](https://github.com/overpressure/overpressure/blob/main/.github/workflows/headset-release.yml)):
    - runs every check of [ci.yml](../.github/workflows/ci.yml) on the tagged commit, unless the same tree passed
      already (on its pull request or on `main`);
    - refuses a tag that is not annotated, not on `main`, not a calendar release, or another version than

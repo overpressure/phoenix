@@ -250,10 +250,12 @@ builds fails nothing: whether the session runs on it is the headset's check befo
 | On the headset: the integration test | `python -m overpressure dev install` and `dev check`, on the installed system | minutes; [hardware-testing.md](hardware-testing.md) |
 | Optional: stage 1 on a QEMU test kernel (from `tests/qemu/build-test-kernel.sh`) | `devices/phoenix/tests/qemu/run-selftest.sh` (`make qemu-stage1`) | about 3 min |
 
-CI ([ci.yml](../.github/workflows/ci.yml)) also loads the headset as overpressure's own CI does
-(`python -m overpressure devices`), parses the PowerShell scripts on Windows and checks the workflows with a
-pinned actionlint. Its job `ci` is the one required check: it passes when every check passed, or was skipped
-because the same tree passed before against the same tree of overpressure's `main`.
+CI ([ci.yml](../.github/workflows/ci.yml)) runs overpressure's checks of a headset repository
+([headset-ci.yml](https://github.com/overpressure/overpressure/blob/main/.github/workflows/headset-ci.yml)), with the
+pinned kernel release and its contracts: it also loads the headset as overpressure's own CI does
+(`python -m overpressure devices`), parses the PowerShell scripts on Windows and checks the workflows with the
+organisation's pinned actionlint. Its job `ci` is the one required check: it passes when every check passed, or was
+skipped because the same tree passed before against the same tree of overpressure's `main`.
 
 New behaviour gets host tests with fakes for hardware and golden data for protocols. The packages' tests (the
 driver's C protocol tests, the controller tracker's C++ tests) run inside their builds in overpressure/packages.
