@@ -1501,7 +1501,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0912, PLR0915 
     args = ap.parse_args(argv)
     if args.command == "prefetch":  # before the install touches the headset: no headset needed
         try:
-            prefetch.Prefetch().run()
+            prefetch.prefetcher().run()
         except (ValueError, OSError) as exc:
             print(f"error: {exc}; nothing on the headset changed", file=sys.stderr)
             return 1
