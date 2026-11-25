@@ -85,6 +85,8 @@ def build(work: str = WORK, pin: Release | None = None, call: Callable[..., int]
 # -- the contracts ------------------------------------------------------------------------------
 #: Where the kernel's names are used: the image's files, its build, Monado's cameras and panels.
 _PHOENIX = f"{IN_PACKAGES}phoenix"
+_COMMON = f"{IN_PACKAGES}common"
+_SM8250 = f"{IN_PACKAGES}sm8250"
 #: The system image's links to PICO OS's files on the headset, which the build script makes.
 _LINKS = "devices/phoenix/userspace/stock-links.txt"
 _MONADO = f"{IN_PACKAGES}phoenix/pico4-monado"
@@ -193,13 +195,13 @@ CONTRACTS = (
     Contract(
         "the USB gadget functions the system's gadget creates",
         (("arch/arm64/configs/pico4.config", r"^CONFIG_USB_CONFIGFS_(\w+)=y$"),),
-        ((f"{_PHOENIX}/pico4-base/usb-gadget", r"functions/(\w+)\."),),
+        ((f"{_COMMON}/overpressure-base/usb-link", r"functions/(\w+)\."),),
         kernel_value=str.lower,
     ),
     Contract(
         "the video codec's firmware: the name the device tree gives, the file the image's probe waits for",
         (("arch/arm64/boot/dts/qcom/sm8250-pico4-phoenix.dts", r'firmware-name = "(venus\.mdt)";'),),
-        ((f"{_PHOENIX}/pico4-base/pico4-venus-probe.service", r"/usr/lib/firmware/(venus\.mdt)$"),),
+        ((f"{_SM8250}/sm8250-base/sm8250-venus-probe.service", r"/usr/lib/firmware/(venus\.mdt)$"),),
     ),
     Contract(
         "the device tree the boot image takes",

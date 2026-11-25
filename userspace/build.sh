@@ -15,24 +15,21 @@ HEADSET_MASKS=(serial-getty@ttyMSM0.service)
 # pico4-slamd's bionic programs: PICO OS's libraries they link are bound into the tracker's root at boot.
 HEADSET_ELF_OPTIONAL='|^pico4-slamd /usr/lib/pico4-stock-slam/'
 
-# headset_snapshot DIR: the files the build takes besides userspace/: stage 1's, and the prebuilt programs.
+# headset_snapshot DIR: the files the build takes besides userspace/: the values overpressure's runtime sources
+# (stage 1's etc/overpressure/headset), and the prebuilt programs.
 headset_snapshot() {
-    mkdir -p "$1/initramfs/usr/libexec/pico4" "$1/prebuilt/aarch64"
+    mkdir -p "$1/initramfs/etc/overpressure" "$1/prebuilt/aarch64"
     cp -r "$source_dir/src" "$1/"
-    for f in lib.sh recovery-policy.sh recovery-watch; do
-        cp "$source_dir/initramfs/usr/libexec/pico4/$f" "$1/initramfs/usr/libexec/pico4/"
-    done
+    cp "$source_dir/initramfs/etc/overpressure/headset" "$1/initramfs/etc/overpressure/"
     cp "$source_dir/prebuilt/aarch64/pico4-reboot" "$source_dir/prebuilt/aarch64/pico4-splash" "$1/prebuilt/aarch64/"
 }
 
-# headset_files: stage 1's shared files, the prebuilt programs, the controllers' remapping, the links to PICO OS's
+# headset_files: the runtime's values, the prebuilt programs, the controllers' remapping, the links to PICO OS's
 # files and the GPU's firmware paths, before the session user.
 headset_files() {
-    # Shared with stage 1, at the same paths: one recovery policy for both stages. The rest of the PICO 4's
-    # files are the project's packages (pico4-base, -power, -audio, -xr, -session, -checks).
-    for f in lib.sh recovery-policy.sh recovery-watch; do
-        overlay "$project/initramfs/usr/libexec/pico4/$f" "$T/usr/libexec/pico4/$f"
-    done
+    # The values overpressure's runtime sources, as stage 1 has them. The rest of the PICO 4's files are the
+    # project's packages (pico4-base, -power, -audio, -xr, -session, -checks).
+    overlay "$project/initramfs/etc/overpressure/headset" "$T/etc/overpressure/headset"
     for f in pico4-reboot pico4-splash; do
         install -o 0 -g 0 -m 0755 "$project/prebuilt/aarch64/$f" "$T/usr/bin/$f"
     done
@@ -69,7 +66,7 @@ EOF
 
 # headset_system: PICO OS's persist mount point and the zram swap, after the common masks.
 headset_system() {
-    # PICO OS's mount point of its persist partition (pico4-persist.service, read-only).
+    # PICO OS's mount point of its persist partition (sm8250-persist.service, read-only).
     mkdir -p "$T/mnt/vendor/persist"
     # zram-generator's swap unit has no PICO OS priority; pico4-zram-swap.service runs its setup from
     # the Frame's configuration instead.

@@ -185,15 +185,17 @@ class RecoveryImageTests(unittest.TestCase):
     def test_appended_archives_are_the_same_on_every_host(self):
         # gzip.compress writes the host's OS byte (Windows 0x0a, or 0xff); the images pin Unix.
         tree = cpio.Tree()
-        tree.add_file("etc/pico4/x", b"x\n")
+        tree.add_file("etc/overpressure/x", b"x\n")
         data = recovery_image.appended(b"base", tree)
         self.assertEqual(data[:4], b"base")
         self.assertEqual(data[4 + 4 : 4 + 8], bytes(4))  # mtime 0
         self.assertEqual(data[4 + 9], 3)
-        self.assertEqual(dict(cpio.read_cpio(gzip.decompress(data[4:])))["etc/pico4/x"].data, b"x\n")
+        self.assertEqual(dict(cpio.read_cpio(gzip.decompress(data[4:])))["etc/overpressure/x"].data, b"x\n")
 
     def test_kernel_and_tree_replaced_stage1_kept(self):
-        dev = self.dev_recovery("androidboot.hardware=qcom panic=0 pico4.test_run=dev-loop pico4.part=recovery")
+        dev = self.dev_recovery(
+            "androidboot.hardware=qcom panic=0 overpressure.test_run=dev-loop overpressure.part=recovery"
+        )
         data = recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev)
         self.assertEqual(len(data), len(stock_partition()))
         self.assertEqual(avb.footer(data)[2], 256)
@@ -201,39 +203,41 @@ class RecoveryImageTests(unittest.TestCase):
         self.assertEqual((image.kernel, image.dtb), (b"new kernel", b"new dtb"))
         self.assertEqual((image.ramdisk, image.recovery_dtbo), (b"stage 1", b"overlays"))
         words = image.full_cmdline.split()
-        self.assertIn("pico4.part=recovery", words)
-        self.assertIn("pico4.modules=0", words)
+        self.assertIn("overpressure.part=recovery", words)
+        self.assertIn("overpressure.modules=0", words)
         # The test image's own panic setting replaces the image's; Android's words go.
         self.assertEqual([w for w in words if w.startswith("panic=")], ["panic=5"])
         self.assertNotIn("androidboot.hardware=qcom", words)
 
     def test_a_command_line_beyond_the_abls_field_is_refused(self):
-        dev = self.dev_recovery("pico4.part=recovery " + "x" * 500)
+        dev = self.dev_recovery("overpressure.part=recovery " + "x" * 500)
         with self.assertRaises(ValueError):
             recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev)
 
     def test_debug_adds_probe_logging_and_a_panic_for_fastboot(self):
         tree = cpio.Tree()
-        for directory in ("usr", "usr/sbin", "etc", "etc/pico4"):
+        for directory in ("usr", "usr/sbin", "etc", "etc/overpressure"):
             tree.mkdir(directory)
         tree.add_file("usr/sbin/pico4-reboot", b"ELF reboot", 0o755)
-        tree.add_file("etc/pico4/test-connect-timeout", b"600\n")
+        tree.add_file("etc/overpressure/test-connect-timeout", b"600\n")
         stage1 = gzip.compress(tree.to_cpio(), mtime=0)
-        dev = self.dev_recovery("androidboot.hardware=qcom pico4.part=recovery", stage1)
+        dev = self.dev_recovery("androidboot.hardware=qcom overpressure.part=recovery", stage1)
         image = bootimg.parse(recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev, debug=True))
         self.assertIn("initcall_debug", image.full_cmdline.split())
         # Stage 1 stays first; the appended archive moves the real binary aside and replaces it.
         self.assertTrue(image.ramdisk.startswith(stage1))
         added = dict(cpio.read_cpio(gzip.decompress(image.ramdisk[len(stage1) :])))
-        self.assertEqual(added["usr/libexec/pico4/pico4-reboot-real"].data, b"ELF reboot")
+        self.assertEqual(added["usr/libexec/overpressure/pico4-reboot-real"].data, b"ELF reboot")
         self.assertIn(b"/proc/sysrq-trigger", added["usr/sbin/pico4-reboot"].data)
-        self.assertEqual(added["etc/pico4/test-connect-timeout"].data, b"330\n")
+        self.assertEqual(added["etc/overpressure/test-connect-timeout"].data, b"330\n")
         plain = bootimg.parse(recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev))
         self.assertNotIn("initcall_debug", plain.full_cmdline.split())
         self.assertEqual(plain.ramdisk, stage1)
 
     def test_direct_has_no_stage1_and_starts_the_system_image(self):
-        dev = self.dev_recovery("androidboot.hardware=qcom loop.max_part=7 pico4.test_run=dev-loop pico4.part=recovery")
+        dev = self.dev_recovery(
+            "androidboot.hardware=qcom loop.max_part=7 overpressure.test_run=dev-loop overpressure.part=recovery"
+        )
         data = recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev, direct=True)
         # In recovery: the whole partition with the stock vbmeta, its own overlays, no ramdisk.
         self.assertEqual(len(data), len(stock_partition()))
@@ -247,13 +251,15 @@ class RecoveryImageTests(unittest.TestCase):
         self.assertIn("msm.dpu_use_planar_cac=0", words)
         # The kernel's own words of the base stay; stage 1's and Android's go.
         self.assertIn("loop.max_part=7", words)
-        self.assertFalse([w for w in words if w.startswith(("pico4.test_run", "pico4.part", "pico4.modules"))])
+        self.assertFalse(
+            [w for w in words if w.startswith(("overpressure.test_run", "overpressure.part", "overpressure.modules"))]
+        )
         self.assertNotIn("androidboot.hardware=qcom", words)
         with self.assertRaises(ValueError):
             recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev, direct=True, overlay=self.tmp)
 
     def test_boot_is_the_installed_systems_own_image(self):
-        dev = self.dev_recovery("pico4.test_run=dev-loop pico4.part=recovery")
+        dev = self.dev_recovery("overpressure.test_run=dev-loop overpressure.part=recovery")
         data = recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev, direct=True, boot=True)
         image = bootimg.parse(data)
         # A plain boot image (no AVB footer, no recovery overlays), no stage 1.
@@ -262,14 +268,14 @@ class RecoveryImageTests(unittest.TestCase):
             (image.kernel, image.dtb, image.recovery_dtbo, image.ramdisk), (b"new kernel", b"new dtb", b"", b"")
         )
         words = image.full_cmdline.split()
-        self.assertIn("pico4.root=installed", words)
+        self.assertIn("overpressure.root=installed", words)
         # preinit's reboot into recovery after a failed start stays: recovery holds the dev image.
-        self.assertNotIn("pico4.failover=reboot", words)
+        self.assertNotIn("overpressure.failover=reboot", words)
         with self.assertRaises(ValueError):
             recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev, boot=True)
 
     def test_direct_records_the_kernel_as_its_build(self):
-        dev = self.dev_recovery("pico4.part=recovery")
+        dev = self.dev_recovery("overpressure.part=recovery")
         with mock.patch.object(recovery_image.kernelinfo, "analyse") as analyse:
             analyse.return_value.version = "Linux version 7.2.0-pico4 (x) # SMP"
             info = recovery_image.image_build_info(dev, b"new kernel", direct=True)
@@ -278,9 +284,11 @@ class RecoveryImageTests(unittest.TestCase):
     def test_stage1_overlay_replaces_the_bases_files(self):
         overlay = self.tmp / "initramfs"
         (overlay / "usr" / "bin").mkdir(parents=True)
+        (overlay / "etc" / "overpressure").mkdir(parents=True)
+        (overlay / "etc" / "overpressure" / "headset").write_bytes(b"OP_NAME=test\n")
         (overlay / "init").write_bytes(b"#!/bin/sh\r\necho new\r\n")
         (overlay / "usr" / "bin" / "pico4-install").write_bytes(b"#!/bin/sh\n")
-        dev = self.dev_recovery("pico4.part=recovery")
+        dev = self.dev_recovery("overpressure.part=recovery")
         image = bootimg.parse(recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev, overlay=overlay))
         self.assertTrue(image.ramdisk.startswith(b"stage 1"))
         added = dict(cpio.read_cpio(gzip.decompress(image.ramdisk[len(b"stage 1") :])))
@@ -294,7 +302,7 @@ class RecoveryImageTests(unittest.TestCase):
         firmware.mkdir()
         for name in ("a650_sqe.fw", "a650_gmu.bin", "a650_zap.mdt", "a650_zap.b00", "venus.mdt"):
             (firmware / name).write_bytes(name.encode())
-        dev = self.dev_recovery("pico4.part=recovery")
+        dev = self.dev_recovery("overpressure.part=recovery")
         image = bootimg.parse(
             recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev, gpu_firmware=firmware)
         )
@@ -319,7 +327,7 @@ class RecoveryImageTests(unittest.TestCase):
         firmware.mkdir(parents=True)
         for name in ("amss20.bin", "m3.bin", "bdwlanq.elf", "bdwlan.elf", "bdwlan.e01"):
             (firmware / name).write_bytes(name.encode())
-        dev = self.dev_recovery("pico4.part=recovery")
+        dev = self.dev_recovery("overpressure.part=recovery")
         image = bootimg.parse(
             recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev, wlan_firmware=self.tmp / "wlan")
         )
@@ -338,7 +346,7 @@ class RecoveryImageTests(unittest.TestCase):
             recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev, wlan_firmware=self.tmp / "wlan")
 
     def test_extra_words_replace_their_keys(self):
-        dev = self.dev_recovery("pico4.part=recovery panic=0")
+        dev = self.dev_recovery("overpressure.part=recovery panic=0")
         words = bootimg.parse(
             recovery_image.build(
                 self.tmp / "out",
@@ -351,7 +359,7 @@ class RecoveryImageTests(unittest.TestCase):
         self.assertEqual([w for w in words if w.startswith("panic=")], ["panic=30"])
 
     def test_trace_records_one_function_graph(self):
-        dev = self.dev_recovery("pico4.part=recovery")
+        dev = self.dev_recovery("overpressure.part=recovery")
         data = recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev, trace="qcom_smem_probe")
         words = bootimg.parse(data).full_cmdline.split()
         self.assertIn("ftrace_graph_filter=qcom_smem_probe", words)
@@ -362,18 +370,18 @@ class RecoveryImageTests(unittest.TestCase):
     def test_stage1_build_info_names_the_new_kernel(self):
         tree = cpio.Tree()
         tree.mkdir("etc")
-        tree.mkdir("etc/pico4")
+        tree.mkdir("etc/overpressure")
         tree.add_file(
-            "etc/pico4/build-info",
+            "etc/overpressure/build-info",
             json.dumps({"kernel": "Linux version 4.19.81-perf+ (stock)", "stock": "5.13.7"}).encode(),
         )
         kernel = gzip.compress(b"\0" * 64 + b"Linux version 7.2.0-pico4 (valve) #1 SMP\n\0", mtime=0)
         (self.tmp / "out" / "Image.gz").write_bytes(kernel)
-        dev = self.dev_recovery("pico4.part=recovery", gzip.compress(tree.to_cpio(), mtime=0))
+        dev = self.dev_recovery("overpressure.part=recovery", gzip.compress(tree.to_cpio(), mtime=0))
         image = bootimg.parse(recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev))
         expected = {"kernel": "Linux version 7.2.0-pico4 (valve) #1 SMP", "stock": "5.13.7"}
         added = dict(cpio.read_cpio(gzip.decompress(image.ramdisk[len(gzip.compress(tree.to_cpio(), mtime=0)) :])))
-        self.assertEqual(json.loads(added["etc/pico4/build-info"].data), expected)
+        self.assertEqual(json.loads(added["etc/overpressure/build-info"].data), expected)
         out = self.tmp / "test.img"
         recovery_image.main([str(self.tmp / "out"), str(self.tmp / "stock.img"), str(dev), str(out)])
         record = json.loads(Path(f"{out}.json").read_text(encoding="utf-8"))
@@ -381,7 +389,7 @@ class RecoveryImageTests(unittest.TestCase):
         self.assertEqual(record["recovery_sha256"], hashlib.sha256(out.read_bytes()).hexdigest())
 
     def test_only_the_dev_loops_recovery_image_is_a_base(self):
-        dev = self.dev_recovery("androidboot.hardware=qcom pico4.test_run=dev-loop")
+        dev = self.dev_recovery("androidboot.hardware=qcom overpressure.test_run=dev-loop")
         with self.assertRaises(ValueError):
             recovery_image.build(self.tmp / "out", self.tmp / "stock.img", dev)
 

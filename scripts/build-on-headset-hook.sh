@@ -18,7 +18,7 @@ before_build() {
 		fi
 		mkdir -p "$host/run/pico4-fan"
 		# Its last-resort power-off reaches no systemd from the build host: it signals PID 1 instead, which
-		# powers off on SIGUSR2 in the maintenance stage 1 (pico4-init) and on SIGRTMIN+4 under systemd.
+		# powers off on SIGUSR2 in the maintenance stage 1 (overpressure-init) and on SIGRTMIN+4 under systemd.
 		poweroff_signal=SIGUSR2
 		[ ! -d /run/systemd/system ] || poweroff_signal=SIGRTMIN+4
 		# A plain command, so that $! is the program itself (chroot and env exec it): it holds this

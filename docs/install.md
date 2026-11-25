@@ -5,7 +5,7 @@
 | What | Linux installed on the headset, in PICO OS's layout: Valve's kernel in `boot`, a read-only system image in `super`, data in `userdata`, the maintenance stage 1 (Valve's kernel too) in `recovery`. It starts without the PC and keeps its data across reboots and updates |
 | Install, upgrade, back to stock | `python -m overpressure install`, `upgrade` or `restore`, or the window's installer ([the installer](#the-installer)) |
 | By hand | `dev recovery`, then `dev install` ([install and update](#install-and-update)); back with `dev restore` ([back to stock](#back-to-stock)) |
-| Code | [`tooling/install.py`](../tooling/install.py), [`tooling/devloop.py`](../tooling/devloop.py), [`scripts/build-system-image.sh`](../scripts/build-system-image.sh), [`preinit`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/preinit), [`pico4-install`](../initramfs/usr/bin/pico4-install) |
+| Code | [`tooling/install.py`](../tooling/install.py), [`tooling/devloop.py`](../tooling/devloop.py), [`scripts/build-system-image.sh`](../scripts/build-system-image.sh), [`preinit`](https://github.com/overpressure/packages/blob/main/common/overpressure-base/preinit), [`pico4-install`](../initramfs/usr/bin/pico4-install) |
 
 Installing replaces PICO OS's system and data. The way back writes them from the EDL backup; PICO OS then
 starts with fresh data, as after a factory reset, because the backup does not hold its userdata. The
@@ -94,18 +94,19 @@ its DSPs, video codec and wireless chip. The image holds none of them, only link
 ### How it starts
 
 `boot` holds Valve's kernel, its device tree and a command line, no ramdisk. The command line adds
-`root=PARTLABEL=super rootfstype=ext4 rootwait=20 ro init=/usr/libexec/pico4/preinit pico4.root=installed
-pico4.autoreboot=0 msm.dpu_use_planar_cac=0` to the kernel's own words (`clk_ignore_unused`, `pd_ignore_unused`,
+`root=PARTLABEL=super rootfstype=ext4 rootwait=20 ro init=/usr/libexec/overpressure/preinit overpressure.root=installed
+overpressure.autoreboot=0 msm.dpu_use_planar_cac=0` to the kernel's own words (`clk_ignore_unused`, `pd_ignore_unused`,
 `regulator_ignore_unused`, `panic=5`); the last leaves the display pipes to a monitor on the USB-C port
 ([kernel.md](kernel.md#display)). The kernel mounts `super` read-only as the root, mounts devtmpfs on
-`/dev` and starts preinit, a bash script in the image:
+`/dev` and starts preinit, a bash script in the image: overpressure's
+([runtime.md](https://github.com/overpressure/overpressure/blob/main/docs/runtime.md#how-it-starts)), with the PICO 4's hooks from `pico4-base`:
 
-1. It mounts proc, sysfs and `/run`, and starts the boot indication (not in charger mode). It sets every CPU's
-   governor to `schedutil`, as PICO OS runs (Valve's kernel starts with `performance`; `pico4.cpugov=keep`
+1. It mounts proc, sysfs and `/run`. The PICO 4's early hook picks charger mode. It sets every CPU's
+   governor to `schedutil`, as PICO OS runs (Valve's kernel starts with `performance`; `overpressure.cpugov=keep`
    leaves it).
 2. `devnode sweep` switches every disk and partition read-only and makes the `/dev/block/by-name` links before
-   anything is mounted writable: one `blockdev` call, 0.03 s for about 120 devices (`pico4-storage-ro.service`
-   runs it again before `local-fs-pre.target`). While `steamos-readonly disable` holds (`/.pico4-writable` in the
+   anything is mounted writable: one `blockdev` call, 0.03 s for about 120 devices (`overpressure-storage-ro.service`
+   runs it again before `local-fs-pre.target`). While `steamos-readonly disable` holds (`/.overpressure-writable` in the
    image), it leaves `super` writable, and preinit remounts the root writable
    ([userspace.md](userspace.md#a-writable-system)).
 3. It makes `userdata` writable, and its disk too (a mainline kernel counts a disk's read-only flag for its
@@ -115,9 +116,11 @@ pico4.autoreboot=0 msm.dpu_use_planar_cac=0` to the kernel's own words (`clk_ign
    pacman's database that systems before kept on the data partition: the database is the image's.
 5. It mounts the `/etc` overlay, binds `/var`, `/home` and `/root`, and writes `/etc/machine-id` from the
    headset serial, so that journals of different boots belong together.
-6. It executes systemd, in charger mode with `--unit=pico4-charger.target` ([charger mode](#charger-mode)).
+6. The PICO 4's mounted hook mounts PICO OS's firmware partitions read-only ([PICO OS's files](#pico-oss-files)),
+   completes the head tracker's root and starts the boot indication (not in charger mode).
+7. It executes systemd, in charger mode with `--unit=pico4-charger.target` ([charger mode](#charger-mode)).
 
-Any failure on the way reboots into `recovery` (`pico4-reboot recovery`). If `super` cannot be mounted at
+Any failure on the way reboots into `recovery` (`pico4-reboot recovery`, the PICO 4's `OP_REBOOT`). If `super` cannot be mounted at
 all, the kernel waits 20 s, panics and reboots from `boot` again; the way out is fastboot and `dev recovery`,
 or EDL by hand (both volume buttons held while connecting USB to the powered-off headset,
 [device preparation](device-preparation.md)). Only `pico4-install` writes `super`, and it reads it back.
@@ -126,7 +129,7 @@ or EDL by hand (both volume buttons held while connecting USB to the powered-off
 
 A boot that started systemd can still fail: a kernel panic reboots after 5 s (`panic=5`), and the kernel
 panics on soft lockups and hung tasks (120 s). systemd arms the SoC's watchdog (`qcom_wdt`,
-`RuntimeWatchdogSec=30s` in `system.conf.d/50-pico4.conf`). Its bite alone does not reset the headset on this
+`RuntimeWatchdogSec=30s` in `system.conf.d/50-overpressure.conf`). Its bite alone does not reset the headset on this
 firmware (it locks one CPU up), so the bark, 1 s before it, panics (pretimeout governor `panic` in
 the kernel's `pico4.config`):
 
@@ -140,29 +143,29 @@ A suspend does not count against the watchdog (90 s asleep with it armed woke in
 that only crawls (every CPU busy at real-time priority) keeps pinging: the fair server leaves normal tasks 5 %
 of each CPU, and the hung-task panic restarted it after about 7 minutes.
 
-[`boot-attempts`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/boot-attempts) counts boots in
-`/data/.pico4-boot-attempts`:
+[`boot-attempts`](https://github.com/overpressure/packages/blob/main/common/overpressure-base/boot-attempts) counts boots in
+`/data/.overpressure-boot-attempts`:
 
 | When | What happens |
 | --- | --- |
 | preinit, before systemd (not in charger mode) | the count goes up by one |
-| the graphical target is reached (`pico4-boot-ok.service`) | the count is cleared |
+| the graphical target is reached (`overpressure-boot-ok.service`) | the count is cleared |
 | preinit finds 2 unfinished boots | it clears the count and reboots into `recovery`; a boot from there has two tries again |
 
 A failed unit does not hold the graphical target back; a system that never reaches it still answers SSH.
 
 Under systemd:
 
-- **USB link.** `pico4-usb-gadget.service` runs [`usb-gadget`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/usb-gadget)
+- **USB link.** `overpressure-usb-link.service` runs [`usb-link`](https://github.com/overpressure/packages/blob/main/common/overpressure-base/usb-link)
   before `sysinit.target`: the maintenance stage 1's composite gadget ([stage1.md](stage1.md)), recorded in
-  `/run/pico4/usb-link.env`. systemd-networkd gives `usb0` `172.16.42.1/24` and one DHCP lease, `172.16.42.2`,
+  `/run/overpressure/usb-link.env`. systemd-networkd gives `usb0` `172.16.42.1/24` and one DHCP lease, `172.16.42.2`,
   without router, DNS or NTP, so the PC keeps its own internet route
-  ([`50-pico4-usb.network`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/50-pico4-usb.network)). The Frame's own
+  ([`50-overpressure-usb.network`](https://github.com/overpressure/packages/blob/main/common/overpressure-base/50-overpressure-usb.network)). The Frame's own
   gadget units stay masked. Windows 11's in-box NCM driver works as it is, as with the maintenance stage 1: only
   the acceptance runner's stage 1 on the stock kernel needs the
   [NCM initialization](hardware-testing.md#windows-ncm-initialization).
 - **Wi-Fi.** ath11k probes the QCA6390 before the system image is mounted and fails without its firmware;
-  `pico4-wlan-probe.service` binds it again once `/usr/lib/firmware` holds it, before NetworkManager, and waits
+  `sm8250-wlan-probe.service` binds it again once `/usr/lib/firmware` holds it, before NetworkManager, and waits
   up to 15 s for `wlan0`.
 - **Display and GPU.** They bind without a ramdisk; the GPU loads its firmware from the image at first use.
 
@@ -214,7 +217,7 @@ checked against the backup's manifest):
 
 - `dev-boot.img`: the dev image for `boot`, on the stock kernel (the acceptance runner's).
 - `dev-recovery.img`: the same stage 1 for `recovery` on Valve's kernel from `out/kernel`
-  ([stage1.md](stage1.md#in-recovery-valves-kernel)), marked `pico4.part=recovery` on its command line, as a
+  ([stage1.md](stage1.md#in-recovery-valves-kernel)), marked `overpressure.part=recovery` on its command line, as a
   whole-partition image:
   - the ABL loads the device-tree overlay from the image itself (`recovery_dtbo`), taken from stock recovery;
   - `recovery` is a chained AVB partition: stock's own signed vbmeta (RSA-4096) follows the image, with a
@@ -271,7 +274,7 @@ files the image shares; about 1 MB) goes over SSH, and
   recursive bind of `/sys` once took the system's own cgroup and configfs mounts with it.
 - **The fan.** Where no fan service runs (stage 1), the build runs the installed system's `pico4-fan`, from the
   pinned overpressure/packages, in the build host for as long as it runs. Its last-resort power-off for a stalled
-  fan or a silent MCU ([cooling.md](cooling.md#pico4-fan)) signals PID 1 there: stage 1's `pico4-init` stops
+  fan or a silent MCU ([cooling.md](cooling.md#pico4-fan)) signals PID 1 there: stage 1's `overpressure-init` stops
   the build, syncs and powers the headset off.
 - **Nothing left behind.** A build takes the build host (1.4 GB), the build root (7.6 GB), the compressed image
   (1.7 GB) and the downloads (3 GB) on the data partition. Once the installed system runs, the install removes the
@@ -461,7 +464,7 @@ which writes only these:
 | `pico4-install write boot\|super --size --bytes --sha256 [--zstd] [--from-data PATH]` | the image to the start of the partition, through `dd` in 4 MiB blocks; `--zstd` decompresses the stream first; `--from-data` reads it from the data partition (mounted read-only), where the headset built it | the partition's size equals the backup's, the image fits, a readback against the image's SHA-256 |
 | `pico4-install hash NAME BYTES` | nothing | the SHA-256 of the partition's first BYTES (whether it holds its image already) |
 | `pico4-install format-data --size` | ext4 `pico4-data` on `userdata` | the backup's size; the label afterwards |
-| `pico4-install keys --size --id` (stdin: `authorized_keys`) | `/root/.ssh/authorized_keys` and `/etc/pico4/install-id` in the `/etc` overlay's upper layer on the data partition | the backup's size, the `pico4-data` label, at least one public key |
+| `pico4-install keys --size --id` (stdin: `authorized_keys`) | `/root/.ssh/authorized_keys` and `/etc/overpressure/install-id` in the `/etc` overlay's upper layer on the data partition | the backup's size, the `pico4-data` label, at least one public key |
 | `pico4-install wipe userdata\|metadata --size` | zeros over the first 64 MiB | the backup's size; a readback |
 | `pico4-install bootmode recovery\|normal` | the 2 KiB bootloader message in `misc` | a readback |
 

@@ -5,7 +5,7 @@ and holds the owner's Steam login and Wi-Fi passwords.
 
 | | |
 | --- | --- |
-| Access | SSH with enrolled keys only (`sshd_config.d/50-pico4.conf`), on USB and Wi-Fi; no account has a password until its owner sets one, and none logs in over SSH |
+| Access | SSH with enrolled keys only (`sshd_config.d/50-overpressure.conf`), on USB and Wi-Fi; no account has a password until its owner sets one, and none logs in over SSH |
 | Network | nothing else of ours listens; `pico4-listeners` checks it; no firewall, no forwarding |
 | Not protected | a person holding the headset (unlocked bootloader); data at rest is not encrypted |
 
@@ -43,7 +43,7 @@ until `enable` or the next upgrade, as on SteamOS ([userspace.md](userspace.md#a
 `PICO4_SSH_PUBLIC_KEY` in `.env` adds the owner's own public key: the install's *Your SSH key* step saves a pasted
 one as `out/dev/owner-key.pub` and names it there. `dev install` writes both, with the
 install ID, from the maintenance stage 1 onto the data partition (`pico4-install keys`):
-`/root/.ssh/authorized_keys` (`/root` is on the data partition) and `/etc/pico4/install-id` in the `/etc`
+`/root/.ssh/authorized_keys` (`/root` is on the data partition) and `/etc/overpressure/install-id` in the `/etc`
 overlay's upper layer. They are never in the system image, a boot image or anything the project
 publishes, and no two headsets share one. A lost key: `dev recovery`, then `dev install`, which skips
 partitions that already hold their image and writes the keys again. The host keys are made on the first

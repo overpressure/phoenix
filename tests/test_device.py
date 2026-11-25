@@ -337,7 +337,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(given, [(None, "-"), (None, None), ("/opt/adb", None)])
 
     def test_the_panel_decides(self):
-        sharp = "console=x msm_drm.dsi_display0=qcom,mdss_dsi_sharp_ls026b3sa_90_video: pico4.part=recovery"
+        sharp = "console=x msm_drm.dsi_display0=qcom,mdss_dsi_sharp_ls026b3sa_90_video: overpressure.part=recovery"
         self.assertEqual(device.check_panel(sharp), "sharp_ls026b3sa")
         with self.assertRaisesRegex(ValueError, "nt57900.*not verified"):
             device.check_panel("msm_drm.dsi_display0=qcom,mdss_dsi_innolux_nt57900_90_video:")

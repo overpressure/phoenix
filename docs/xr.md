@@ -24,7 +24,7 @@ Packages: the driver in [pico4-monado](https://github.com/overpressure/packages/
 
 > **Rules for this hardware**
 >
-> - **DSP recovery.** [`remoteproc-boot`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/remoteproc-boot)
+> - **DSP recovery.** [`remoteproc-boot`](https://github.com/overpressure/packages/blob/main/sm8250/sm8250-base/remoteproc-boot)
 >   starts a DSP only with remoteproc's crash recovery on: a crash then restarts only that DSP; with
 >   recovery off it would stay down.
 > - **No firmware commands.** The station link (`/dev/spidev0.0`) also carries station and
@@ -72,7 +72,7 @@ The image does not carry it: `persist` is mounted read-only at `/mnt/vendor/pers
 
 The IMU hangs off the SLPI, a Hexagon DSP running Qualcomm's Sensor Core:
 
-1. **Firmware.** [`remoteproc-boot`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/remoteproc-boot) starts
+1. **Firmware.** [`remoteproc-boot`](https://github.com/overpressure/packages/blob/main/sm8250/sm8250-base/remoteproc-boot) starts
    `slpi.mdt` (from the modem partition of PICO's public package) through remoteproc. The kernel
    provides QRTR's name service and the PD mapper.
 2. **File server.** `hexagonrpcd` (linux-msm/hexagonrpc, [`sm8250-hexagonrpc`](https://github.com/overpressure/packages/blob/main/sm8250/sm8250-hexagonrpc/PKGBUILD))
@@ -687,7 +687,7 @@ rings (20 points and normals per hand) from PICO OS's `libpico_controller_tracki
 `calibration/controllers/led-models.json`. On every connect the station thread reads the
 controller's calibration record and hands it to the tracker: the IMU calibration, its own 20 LED
 positions (replacing the nominal ones) and its gyro bias table `pvr/<serial>.txt` (read only;
-`pico4-persist` copies the root-only files to `/run/pico4-controllers/` for SteamVR's driver). The
+`sm8250-persist` copies the root-only files to `/run/pico4-controllers/` for SteamVR's driver). The
 serial is not logged.
 
 The tracker (`pico4_ctrack_*` in `pico4-monado`, C++17 with Eigen) reimplements that library's approach:

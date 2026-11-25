@@ -5,6 +5,8 @@ import struct
 import unittest
 from pathlib import Path
 
+from overpressure.api.v1 import stage1
+
 ROOT = Path(__file__).resolve().parents[1]
 BINARY = ROOT / "prebuilt/aarch64/pico4-splash"
 
@@ -53,7 +55,8 @@ class SplashTests(unittest.TestCase):
 
     def test_stage_one_does_not_show_it(self):
         # The installed system's preinit starts it; stage 1 is the maintenance environment.
-        self.assertNotIn("pico4-splash", (ROOT / "initramfs/init").read_text(encoding="utf-8"))
+        for init in (stage1.RUNTIME / "init", stage1.RUNTIME / "usr/libexec/overpressure/overpressure-init"):
+            self.assertNotIn("splash", init.read_text(encoding="utf-8"))
         image = (ROOT / "tooling/image.py").read_text(encoding="utf-8")
         self.assertNotIn("pico4-splash", image)
 

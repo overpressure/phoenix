@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Unlicense
+# shellcheck shell=dash
+# The PICO 4's values for overpressure's runtime (its lib.sh sources this): its name and stock system, its USB
+# link's addresses and strings (the PC's tooling finds the headset by them: tooling/__init__.py's GADGET), its
+# reboot program and its hardware probe.
+# shellcheck disable=SC2034  # lib.sh's callers read them
+OP_NAME="PICO 4"
+OP_STOCK="PICO OS"
+OP_IP=172.16.42.1
+OP_HOST_IP=172.16.42.2
+OP_PREFIX=24
+OP_USB_MANUFACTURER=pico4
+OP_USB_PRODUCT="PICO 4 Linux"
+OP_REBOOT=pico4-reboot
+OP_PROBE=pico4-probe
+# Its data partition's file system label and first-boot marker: existing installs carry them (preinit, the writer).
+OP_DATA_LABEL=pico4-data
+OP_DATA_MARKER=.pico4-initialized

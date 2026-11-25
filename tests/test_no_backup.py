@@ -3,7 +3,7 @@
 
 They come from the headset's backup and reach the data partition at the install
 (tooling/stockfiles.py); the headset's own factory data is read from its persist partition at boot
-(pico4-persist.service).
+(sm8250-persist.service).
 """
 
 import re

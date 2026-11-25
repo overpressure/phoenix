@@ -3,10 +3,10 @@
 # /cgi-bin/log?boot|dmesg|services|pstore
 printf 'Content-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\n\r\n'
 case "$QUERY_STRING" in
-boot) cat /run/pico4/boot.log ;;
+boot) cat /run/overpressure/boot.log ;;
 dmesg) dmesg ;;
 services)
-	for f in /run/pico4/svc-*.log; do
+	for f in /run/overpressure/svc-*.log; do
 		[ -e "$f" ] || continue
 		echo "==== ${f##*/}"
 		tail -n 200 "$f"

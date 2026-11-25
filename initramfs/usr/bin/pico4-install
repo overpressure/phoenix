@@ -14,7 +14,7 @@
 #       a new ext4 file system "pico4-data" on userdata (BYTES as the backup has it)
 #   pico4-install keys --size BYTES --id ID < AUTHORIZED_KEYS
 #       the installed system's SSH keys and install ID on its data partition (pico4-data):
-#       /root/.ssh/authorized_keys and /etc/pico4/install-id (in the /etc overlay's upper layer)
+#       /root/.ssh/authorized_keys and /etc/overpressure/install-id (in the /etc overlay's upper layer)
 #   pico4-install stock --size BYTES --bytes N --sha256 HEX < ARCHIVE.tar.gz
 #       PICO OS's files the installed system needs (python -m overpressure stock-files, from the
 #       headset's own backup) as /var/lib/pico4-stock on the data partition (pico4-data): the
@@ -41,10 +41,10 @@
 #   pico4-install status
 #
 # Each partition is made writable for its write only and read-only again afterwards.
-. /usr/libexec/pico4/lib.sh
+. /usr/libexec/overpressure/lib.sh
 set -o pipefail
 
-STATE=$P4_RUN/install
+STATE=$OP_RUN/install
 BCB_BYTES=2048 # Android's struct bootloader_message
 die() { log "install: $*"; echo "pico4-install: $*" >&2; exit 1; }
 
@@ -188,12 +188,12 @@ keys() {
 	writable "$dev"
 	mount_data "$dev" "$mnt"
 	{
-		mkdir -p "$mnt/root/.ssh" "$mnt/etc/upper/pico4" &&
+		mkdir -p "$mnt/root/.ssh" "$mnt/etc/upper/overpressure" &&
 			chmod 700 "$mnt/root/.ssh" &&
 			cp "$STATE/authorized_keys" "$mnt/root/.ssh/authorized_keys" &&
 			chmod 600 "$mnt/root/.ssh/authorized_keys" &&
-			echo "$id" > "$mnt/etc/upper/pico4/install-id" &&
-			chown -R 0:0 "$mnt/root/.ssh" "$mnt/etc/upper/pico4"
+			echo "$id" > "$mnt/etc/upper/overpressure/install-id" &&
+			chown -R 0:0 "$mnt/root/.ssh" "$mnt/etc/upper/overpressure"
 	} || rc=1
 	umount "$mnt" || rc=1
 	sync
@@ -298,7 +298,7 @@ build() {
 	mount_data "$dev" "$mnt"
 	# The PC waits for the build: its contact (recovery-watch's maximum runtime) stays renewed while
 	# this runs, and ends with it.
-	(while kill -0 $$ 2>/dev/null; do cut -d. -f1 /proc/uptime > "$P4_RUN/host-contact"; sleep 30; done) &
+	(while kill -0 $$ 2>/dev/null; do cut -d. -f1 /proc/uptime > "$OP_RUN/host-contact"; sleep 30; done) &
 	log "install: building the system on userdata ($commit)"
 	{
 		rm -rf "${mnt:?}/$BUILD_DIR/src" &&

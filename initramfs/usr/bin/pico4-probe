@@ -7,12 +7,12 @@
 # dumps, PCIe config space reads, poking audio DSP mixer controls) are left
 # out; run those tools by hand if you need them.
 #
-# Output: /run/pico4/report/ and /run/pico4/report.tar.gz, also on
+# Output: /run/overpressure/report/ and /run/overpressure/report.tar.gz, also on
 # http://172.16.42.1/.
-. /usr/libexec/pico4/lib.sh
+. /usr/libexec/overpressure/lib.sh
 
-OUT=$P4_RUN/report
-rm -rf "$OUT" "$P4_RUN/probe.done"
+OUT=$OP_RUN/report
+rm -rf "$OUT" "$OP_RUN/probe.done"
 mkdir -p "$OUT"
 
 # Progress goes to pstore too, so a crash in the middle can be pinpointed.
@@ -47,7 +47,7 @@ attrs() {
 step "system"
 run system.txt uname -a
 run system.txt cat /proc/version /proc/cmdline
-run system.txt cat /etc/pico4/build-info
+run system.txt cat /etc/overpressure/build-info
 run system.txt free -m
 run system.txt cat /proc/meminfo
 run system.txt uptime
@@ -136,8 +136,8 @@ if [ -n "$(ls /sys/fs/pstore 2>/dev/null)" ]; then
 	cp /sys/fs/pstore/* "$OUT/pstore/" 2>/dev/null
 fi
 
-cp "$P4_LOG" "$OUT/boot.log"
-for f in "$P4_RUN"/svc-*.log; do
+cp "$OP_LOG" "$OUT/boot.log"
+for f in "$OP_RUN"/svc-*.log; do
 	[ -s "$f" ] && cp "$f" "$OUT/"
 done
 
@@ -176,8 +176,8 @@ done
 	echo "</ul>"
 } > "$OUT/index.html"
 
-tar -czf "$P4_RUN/report.tar.gz.new" -C "$P4_RUN" report && mv -f "$P4_RUN/report.tar.gz.new" "$P4_RUN/report.tar.gz"
-touch "$P4_RUN/probe.done"
+tar -czf "$OP_RUN/report.tar.gz.new" -C "$OP_RUN" report && mv -f "$OP_RUN/report.tar.gz.new" "$OP_RUN/report.tar.gz"
+touch "$OP_RUN/probe.done"
 step "done, $(du -sk "$OUT" | cut -f1) KiB in $OUT"
 
 [ "$1" = --boot ] || cat "$OUT/summary.txt"

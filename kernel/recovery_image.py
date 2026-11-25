@@ -17,7 +17,7 @@ that (a panic, a deadline, a hard reset) starts the installed system from boot a
 
 --direct has no stage 1: no ramdisk, and the kernel mounts the system image in super read-only as
 its root and starts its preinit (docs/install.md). In recovery, a failed start reboots plainly
-(pico4.failover=reboot), since a reboot into recovery would start this image again. With --boot
+(overpressure.failover=reboot), since a reboot into recovery would start this image again. With --boot
 it is the boot partition's image of the installed system instead: no AVB footer, the dtbo
 partition's overlay, and preinit's reboot into recovery after a failed start reaches the dev
 image.
@@ -83,13 +83,13 @@ EXTRA = (
     "pd_ignore_unused",
     "regulator_ignore_unused",
     "panic=5",
-    "pico4.modules=0",
-    "pico4.kernel=valve",
-    "pico4.udc_timeout=300",
+    "overpressure.modules=0",
+    "overpressure.kernel=valve",
+    "overpressure.udc_timeout=300",
 )
-#: --direct: the kernel's own words of EXTRA (stage 1 reads the pico4. ones) and the root: the system
+#: --direct: the kernel's own words of EXTRA (stage 1 reads the overpressure. ones) and the root: the system
 #: image in super, read-only, waited for at most 20 s (then a panic, and panic=5 reboots), its
-#: preinit as the first process. pico4.root=installed and pico4.autoreboot=0 tell the system's units
+#: preinit as the first process. overpressure.root=installed and overpressure.autoreboot=0 tell the system's units
 #: that this is the installed system, not a test run with deadlines. msm.dpu_use_planar_cac=0 leaves
 #: the display pipes to the planes: Valve's planar CAC (the hardware's chromatic aberration
 #: correction, which nothing on the PICO 4 uses) reserves six of the eight at boot, and the panels'
@@ -103,19 +103,19 @@ DIRECT = (
     "rootfstype=ext4",
     "rootwait=20",
     "ro",
-    "init=/usr/libexec/pico4/preinit",
-    "pico4.root=installed",
-    "pico4.autoreboot=0",
+    "init=/usr/libexec/overpressure/preinit",
+    "overpressure.root=installed",
+    "overpressure.autoreboot=0",
     "msm.dpu_use_planar_cac=0",
 )
 #: --direct in recovery: preinit's reboot after a failed start is a plain one, into boot.
-DIRECT_ONESHOT = ("pico4.failover=reboot",)
+DIRECT_ONESHOT = ("overpressure.failover=reboot",)
 #: --debug also changes stage 1 (an archive appended to its ramdisk, whose entries replace the
 #: first archive's): where it gives up and returns to fastboot, it panics instead. Only the
 #: panic's reset keeps the RAM console; the return to fastboot leaves it corrupted. Its wait for
 #: the test runner drops from 600 s to the USB controller wait plus 30 s.
 REBOOT = "usr/sbin/pico4-reboot"
-REBOOT_REAL = "usr/libexec/pico4/pico4-reboot-real"
+REBOOT_REAL = "usr/libexec/overpressure/pico4-reboot-real"
 REBOOT_HEADER = "#!/bin/sh\n# Test image of Valve's kernel.\n"
 #: --debug: a return to fastboot panics instead, so that the RAM console survives the reset and
 #: the installed system can read this boot's kernel log.
@@ -125,8 +125,8 @@ REBOOT_PANIC = """if [ "$1" = bootloader ]; then
 	echo c > /proc/sysrq-trigger
 fi
 """
-CONNECT_TIMEOUT = "etc/pico4/test-connect-timeout"
-BUILD_INFO = "etc/pico4/build-info"
+CONNECT_TIMEOUT = "etc/overpressure/test-connect-timeout"
+BUILD_INFO = "etc/overpressure/build-info"
 
 
 #: --gpu-firmware: PICO's Adreno 650 firmware (assets/graphics-firmware-*, from the stock OTA)
@@ -157,7 +157,7 @@ def stage1_archive(ramdisk: bytes) -> cpio.Tree:
     tree = cpio.Tree()
     tree.add_file(REBOOT_REAL, nodes[REBOOT].data, 0o755)
     tree.add_file(REBOOT, f'{REBOOT_HEADER}{REBOOT_PANIC}exec /{REBOOT_REAL} "$@"\n'.encode(), 0o755)
-    udc = int({k: v for k, _, v in (e.partition("=") for e in EXTRA)}["pico4.udc_timeout"])
+    udc = int({k: v for k, _, v in (e.partition("=") for e in EXTRA)}["overpressure.udc_timeout"])
     tree.add_file(CONNECT_TIMEOUT, f"{udc + 30}\n".encode())
     return tree
 
@@ -185,12 +185,13 @@ def wlan_firmware_archive(directory: Path) -> cpio.Tree:
 
 
 def overlay_archive(directory: Path) -> cpio.Tree:
-    """--stage1: a stage-1 overlay's files, which replace the base ramdisk's."""
+    """--stage1: overpressure's runtime and a stage-1 overlay's files, which replace the base ramdisk's."""
     tree = cpio.Tree()
-    stage1_overlay.add_overlay(tree, directory)
-    if "init" not in tree.nodes:
-        msg = f"{directory} is no stage-1 overlay (no init)"
+    stage1_overlay.add_overlay(tree, stage1_overlay.RUNTIME)
+    if not (directory / "etc/overpressure/headset").is_file():
+        msg = f"{directory} is no stage-1 overlay (no etc/overpressure/headset)"
         raise ValueError(msg)
+    stage1_overlay.add_overlay(tree, directory)
     return tree
 
 
@@ -217,7 +218,7 @@ def build_info_archive(info: dict[str, Any]) -> cpio.Tree:
 def dev_recovery_image(dev_recovery: Path) -> bootimg.BootImage:
     """Return the dev loop's recovery image: its header, stage 1 and the stock recovery_dtbo."""
     base = bootimg.parse(dev_recovery.read_bytes())
-    if "pico4.part=recovery" not in base.full_cmdline.split():
+    if "overpressure.part=recovery" not in base.full_cmdline.split():
         msg = f"{dev_recovery} is not the dev loop's recovery image"
         raise ValueError(msg)
     return base
@@ -256,7 +257,7 @@ def build(  # noqa: PLR0913  # one keyword per command-line option
     debug_words = (DEBUG if debug else ()) + (trace_words(trace) if trace else ())
     if direct:
         extra = keyed_words(DIRECT, () if boot else DIRECT_ONESHOT, debug_words, cmdline_words)
-        drop = ("pico4.",)
+        drop = ("overpressure.", "pico4.")  # pico4.: a dev image from before interface 1.8
     else:
         extra = keyed_words(EXTRA, debug_words, cmdline_words)
         drop = ()

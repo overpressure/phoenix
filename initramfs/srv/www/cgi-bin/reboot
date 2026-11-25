@@ -16,6 +16,6 @@ target=recovery) mode=recovery ;;
 *) echo "unknown target"; exit 0 ;;
 esac
 echo "rebooting ${mode:-to PICO OS} in 2 seconds"
-. /usr/libexec/pico4/lib.sh
+. /usr/libexec/overpressure/lib.sh
 log "reboot requested from the web UI: ${mode:-android}"
 ( sleep 2; pico4-reboot $mode ) >/dev/null 2>&1 &

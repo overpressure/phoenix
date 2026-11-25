@@ -165,11 +165,11 @@ def load_stock(args: argparse.Namespace) -> tuple[str, bytes]:
 def build_rootfs(stock_entries: Iterable[tuple[str, cpio.Node]], build_info: dict) -> cpio.Tree:
     """Build overpressure's stage-1 root with the PICO 4's own files."""
     tree = stage1.build_rootfs(SPEC, CACHE, stock_entries, build_info, log=log)
-    tree.add_symlink("srv/www/report", "/run/pico4/report")  # browsable via httpd
+    tree.add_symlink("srv/www/report", "/run/overpressure/report")  # browsable via httpd
     tree.add_file("etc/motd", b"")  # the login banner comes from pico4-info
     tree.add_file("etc/hostname", b"pico4\n")
     tree.add_file("etc/hosts", b"127.0.0.1\tlocalhost pico4\n::1\tlocalhost\n")
-    tree.add_file("etc/pico4/build-info", json.dumps(build_info, indent=2).encode() + b"\n")
+    tree.add_file("etc/overpressure/build-info", json.dumps(build_info, indent=2).encode() + b"\n")
     return tree
 
 
@@ -311,7 +311,7 @@ def main(argv: list[str]) -> int:
                 nargs="*",
                 default=[],
                 metavar="ARG",
-                help="extra kernel arguments, e.g. pico4.autoreboot=0",
+                help="extra kernel arguments, e.g. overpressure.autoreboot=0",
             )
             p.add_argument("--force", action="store_true", help="build even if kernel checks fail")
     args = ap.parse_args(argv)

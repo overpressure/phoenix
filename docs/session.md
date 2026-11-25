@@ -62,7 +62,7 @@ count the session as active. gamescope opens the seat through logind (libseat). 
 
 The script waits up to 10 s for the user manager, waits until a previous session's SteamVR has stopped,
 resets the user units' failure counters (`systemctl --user reset-failed`) and execs Valve's
-`start-gamescope-session` with the target `session-switch` recorded: the one `/etc/pico4/session.conf`
+`start-gamescope-session` with the target `session-switch` recorded: the one `/etc/overpressure/session.conf`
 names (`PICO4_SESSION_TARGET=...`), else the one sddm's autologin names, as on the Frame. That is
 `gamescope-session.target`, or `plasma-session.target` in [desktop mode](#the-desktop). SteamVR's first
 start links it as the OpenXR runtime. There is no session without SteamVR.
@@ -305,7 +305,7 @@ The client's own words come from its files at runtime (localization files and la
 buttons. The panel's other texts are [pico4-onboarding.strings](https://github.com/overpressure/packages/blob/main/phoenix/pico4-monado/pico4-onboarding.strings), in
 all 31 of the client's languages; English is the reference, the others are machine-assisted translations
 awaiting a native speaker's review. Pango lays them out in the image's Noto fonts, which cover the scripts
-of all 31 languages: Chinese, Japanese and Korean through `noto-fonts-cjk`. pico4-base's fontconfig rules
+of all 31 languages: Chinese, Japanese and Korean through `noto-fonts-cjk`. overpressure-base's fontconfig rules
 give each language its own face, as PICO OS does: the SC, TC, JP or KR face for the text's language, Naskh
 for Arabic, and the SC face and Naskh for CJK and Arabic text in another language's page.
 
@@ -610,7 +610,7 @@ Desktop**, so in VR the desktop is the **Desktop** app above; desktop mode is no
    sddm's autologin, read as sddm reads it: `/usr/lib/sddm/sddm.conf.d`, then `/etc/sddm.conf.d`, then
    `/etc/sddm.conf`, with a later setting winning. It follows that session's `start-gamescope-session TARGET`
    line: `plasma.desktop` gives `plasma-session.target`. `PICO4_SESSION_TARGET` in
-   `/etc/pico4/session.conf` overrides it.
+   `/etc/overpressure/session.conf` overrides it.
 3. `plasma-session.target` is SteamVR and gamescope without the Steam client. `steamvr-nested-desktop.service`
    runs `steamos-nested-desktop`, and Plasma floats at 1920×1080 as the overlay `valve.plasma.desktopmode`.
    steamos-manager removes the one-shot login in the new session.

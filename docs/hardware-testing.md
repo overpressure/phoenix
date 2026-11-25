@@ -145,9 +145,9 @@ python -m overpressure hwtest flash-run --serial ADB_SERIAL --fastboot-serial FA
 
 1. **prepare test boot image.** With `--windows-ncm-python`, the NCM helper's `--check`. A fresh ed25519 key.
    The source image must pass its header checksum, be a stage-1 build, keep read-only mode and the QEMU
-   self-test off (`pico4.rw`, `pico4.selftest`) and start `recovery-watch`. The runner derives
+   self-test off (`overpressure.rw`, `overpressure.selftest`) and start `recovery-watch`. The runner derives
    `test-boot.img`: root's `authorized_keys` with the run's key, a random run identifier (in
-   `/etc/pico4/test-run` and `pico4.test_run=`), the [device deadlines](#device-deadlines), no boot
+   `/etc/overpressure/test-run` and `overpressure.test_run=`), the [device deadlines](#device-deadlines), no boot
    signature. Kernel, DTBs and boot layout are kept and compared after repacking; both SHA-256 are recorded.
 2. **identify stock headset.** After boot completion: the fingerprint (an original PICO 4's,
    `Pico/Phoenix.../PICOA8110:10/...`), OEM state and SoC ID, the baseline for every later identity check.
@@ -247,7 +247,7 @@ what it tests:
 
 | Check | Runs when | Must hold |
 | --- | --- | --- |
-| Userspace check | always | `pico4-userspace-check --wait 240`: systemd 257 as PID 1, state `running`, no failed units; `/dev` the kernel's devtmpfs; the image read-only and `userdata` the only writable partition; the USB link up as `pico4-usb-gadget` recorded it; logind's `seat0`; the `steamos` user's session, `pico4-session.service` and Valve's session target active (before the [first-run setup](session.md#first-run-setup) is through, which holds the Steam client back: SteamVR, gamescope and the setup's panel); the session user can open its devices; `pico4-fan.service` active and writing its state ([cooling.md](cooling.md#checks)); with GPU firmware, Turnip's Vulkan readback. Phase 8's shell and storage assertions hold too. |
+| Userspace check | always | `pico4-userspace-check --wait 240`: systemd 257 as PID 1, state `running`, no failed units; `/dev` the kernel's devtmpfs; the image read-only and `userdata` the only writable partition; the USB link up as `overpressure-usb-link` recorded it; logind's `seat0`; the `steamos` user's session, `pico4-session.service` and Valve's session target active (before the [first-run setup](session.md#first-run-setup) is through, which holds the Steam client back: SteamVR, gamescope and the setup's panel); the session user can open its devices; `pico4-fan.service` active and writing its state ([cooling.md](cooling.md#checks)); with GPU firmware, Turnip's Vulkan readback. Phase 8's shell and storage assertions hold too. |
 | Head IMU | the manifest has sensor data | `pico4-imu stream --rate 500 --seconds 10 --check --orientation`: accelerometer and gyroscope samples with increasing timestamps at 500 Hz |
 | Valve's session | the archive has `deckard-steamvr-rel` | `pico4-valve-session-check --seconds 30`: `gamescope-session.target`, SteamVR and gamescope active, the configured session restored; SteamVR's compositor runs as a gamescope client without asserts and presents (msm's events) at ≥ 95 % of 90 Hz, at most 1 % late, no stalls, 99 % of its jobs at least 1 ms before their vblank; the headset and both controllers with finite poses, the controllers with positions |
 
@@ -273,18 +273,18 @@ python -m overpressure dev ssh "cat /run/pico4-suspend-check.json"
 
 ### Device deadlines
 
-Every test image's `recovery-watch` ([recovery-watch](../initramfs/usr/libexec/pico4/recovery-watch), policy
-in [recovery-policy.sh](../initramfs/usr/libexec/pico4/recovery-policy.sh)) checks every 2 s and reboots to
+Every test image's `recovery-watch` ([recovery-watch](https://github.com/overpressure/overpressure/blob/main/overpressure/runtime/usr/libexec/overpressure/recovery-watch), policy
+in [recovery-policy.sh](https://github.com/overpressure/overpressure/blob/main/overpressure/runtime/usr/libexec/overpressure/recovery-policy.sh)) checks every 2 s and reboots to
 fastboot when a deadline passes:
 
 | Deadline | Runner image | Dev image | Cleared or renewed by |
 | --- | --- | --- | --- |
-| Connection, from Linux start | `--boot-timeout` + 30 s (210 s) | 600 s | only the host's verified SSH identity check (`/run/pico4/test-authenticated`); USB enumeration, carrier and DHCP do not count |
-| Maximum runtime, from Linux start | `--boot-timeout` + `--report-timeout` + 300 s (660 s) | 3600 s from the last `dev` command | nothing in the runner image (covers a runner that died after login); each `dev` command writes `/run/pico4/host-contact` |
+| Connection, from Linux start | `--boot-timeout` + 30 s (210 s) | 600 s | only the host's verified SSH identity check (`/run/overpressure/test-authenticated`); USB enumeration, carrier and DHCP do not count |
+| Maximum runtime, from Linux start | `--boot-timeout` + `--report-timeout` + 300 s (660 s) | 3600 s from the last `dev` command | nothing in the runner image (covers a runner that died after login); each `dev` command writes `/run/overpressure/host-contact` |
 
-They apply even when the image turns off the interactive auto-reboot (`pico4.autoreboot`,
+They apply even when the image turns off the interactive auto-reboot (`overpressure.autoreboot`,
 [stage1.md](stage1.md)). A kernel panic reboots instead of entering Qualcomm crash-dump mode (unless
-`pico4.ramdump=1`), so a flashed stage 1 starts again and its deadlines apply.
+`overpressure.ramdump=1`), so a flashed stage 1 starts again and its deadlines apply.
 
 ### Failure and timeout behavior
 
@@ -426,7 +426,7 @@ Settings come from [`.env`](#settings-for-cycle-and-dev). All but `image` and `b
 
 ## Host tests
 
-`python -m unittest` (or `make test`, which adds [tests/test_recovery_policy.sh](../tests/test_recovery_policy.sh))
+`python -m unittest` (or `make test`, which adds the shell tests, overpressure's recovery policy among them)
 needs no hardware ([development.md](development.md)). With simulated devices,
 [tests/test_hardware.py](../tests/test_hardware.py) covers the runner (preflight, bootloader states, SSH
 identity, storage, HTTP, tampered backups, partial writes, restores, the stage-2 checks, the NCM order) and

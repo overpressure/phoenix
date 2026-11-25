@@ -137,7 +137,7 @@ The development headset is a standard PICO 4 of the late batch: control type 1, 
 - **A fan that does not cool** (not in PICO OS): at PICO OS's overheating point (hottest mean at or above 95.1 °C for
   two minutes, then every 30 s), a failed last transaction or a stalled fan logs the reason and runs
   `systemctl poweroff`. During the headset's build in its build host, where no systemd answers, it sends PID 1
-  the signal it powers off on instead: SIGUSR2 to the maintenance stage 1's `pico4-init` (which stops every
+  the signal it powers off on instead: SIGUSR2 to the maintenance stage 1's `overpressure-init` (which stops every
   process, syncs and powers off), SIGRTMIN+4 to the installed system's systemd
   ([install.md](install.md#built-on-the-headset)). The kernel throttles meanwhile.
 - **The MCU.** Frames come only from an allowlist: SetFanSpeed with a duty of 0–100, the four queries and PICO OS's
@@ -155,7 +155,7 @@ The development headset is a standard PICO 4 of the late batch: control type 1, 
 - **Where it runs.** The unit's condition is `/sys/class/tty/ttyHS1`, present from kernel boot (udev creates the
   `/dev` node later).
 
-Settings, in `/etc/pico4/fan.conf` (the service's `EnvironmentFile`):
+Settings, in `/etc/overpressure/fan.conf` (the service's `EnvironmentFile`):
 
 | Variable | Default | Meaning |
 | --- | --- | --- |

@@ -33,7 +33,7 @@ set +e
 timeout 900 qemu-system-aarch64 -M virt -cpu max -smp 4 -m 1024 -nographic -no-reboot \
 	-kernel "$KERNEL" -initrd "$INITRD" \
 	-drive file="$WORK/disk.img",if=virtio,format=raw \
-	-append "console=ttyAMA0 printk.devkmsg=on pico4.selftest=1 pico4.autoreboot=0 pico4.probe_delay=1 $EXTRA" \
+	-append "console=ttyAMA0 printk.devkmsg=on overpressure.selftest=1 overpressure.autoreboot=0 overpressure.probe_delay=1 $EXTRA" \
 	> "$WORK/console.log" 2>&1
 rc=$?
 set -e
@@ -44,7 +44,7 @@ rm -rf "$REPORT" && mkdir -p "$REPORT"
 dd if="$WORK/disk.img" bs=512 skip=10240 count=32768 status=none |
 	tar -xz -C "$REPORT" 2>/dev/null && echo ">> probe report from the VM: $REPORT/report"
 grep -E "pico4: SELFTEST" "$LOG" | sed 's/^\[[^]]*\] //'
-if grep -q "PICO4-SELFTEST: PASS" "$LOG"; then
+if grep -q "OVERPRESSURE-SELFTEST: PASS" "$LOG"; then
 	echo ">> PASS (console log: $LOG)"
 	exit 0
 fi

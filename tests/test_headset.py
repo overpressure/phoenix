@@ -581,15 +581,16 @@ class DevTests(HeadsetFixture):
         argv = self.make().ssh_argv("pico4-valve-session-check --seconds 30")
         self.assertEqual(
             argv[-1],
-            "cut -d. -f1 /proc/uptime > /run/pico4/host-contact 2>/dev/null; pico4-valve-session-check --seconds 30",
+            "{ cut -d. -f1 /proc/uptime > /run/overpressure/host-contact; } 2>/dev/null; "
+            "pico4-valve-session-check --seconds 30",
         )
 
     def test_login_requires_the_dev_image_on_this_headset(self):
-        self.make({"cat /etc/pico4/test-run": "dev-loop\n1234567"}).authenticate()
+        self.make({"cat /etc/overpressure/test-run": "dev-loop\n1234567"}).authenticate()
         with self.assertRaisesRegex(RuntimeError, "not this headset"):
-            self.make({"cat /etc/pico4/test-run": "other-run\n1234567"}).authenticate()
+            self.make({"cat /etc/overpressure/test-run": "other-run\n1234567"}).authenticate()
         with self.assertRaisesRegex(RuntimeError, "not this headset"):
-            self.make({"cat /etc/pico4/test-run": "dev-loop\n7654321"}).authenticate()
+            self.make({"cat /etc/overpressure/test-run": "dev-loop\n7654321"}).authenticate()
 
     def test_flash_needs_an_unlocked_single_boot_partition_of_the_backup_size(self):
         image = self.root / "dev/dev-boot.img"
@@ -644,8 +645,8 @@ class DevTests(HeadsetFixture):
     def test_connect_reads_back_the_partition_that_started(self):
         dev = self.make(
             {
-                "cat /etc/pico4/test-run": "dev-loop\n1234567",
-                "cat /proc/cmdline": "console=x pico4.part=recovery",
+                "cat /etc/overpressure/test-run": "dev-loop\n1234567",
+                "cat /proc/cmdline": "console=x overpressure.part=recovery",
                 "pico4-install hash": "e" * 64,
             }
         )
@@ -659,7 +660,7 @@ class DevTests(HeadsetFixture):
 
     def install_setup(
         self,
-        cmdline: str = "console=x pico4.part=recovery",
+        cmdline: str = "console=x overpressure.part=recovery",
         data: str = "none",
         held: Sequence[str] | None = None,
         confirmed_boot: bytes = b"install boot",
@@ -704,7 +705,7 @@ class DevTests(HeadsetFixture):
             {
                 **responses,
                 f"cat {devloop.BATTERY}/capacity": battery,
-                "cat /etc/pico4/test-run": "dev-loop\n1234567",
+                "cat /etc/overpressure/test-run": "dev-loop\n1234567",
                 "cat /proc/cmdline": cmdline + " msm_drm.dsi_display0=qcom,mdss_dsi_sharp_ls026b3sa_90_video:",
                 "pico4-install write boot": f"written boot {boot_sha}",
                 "pico4-install write super": f"written super {system_sha}",
@@ -714,7 +715,7 @@ class DevTests(HeadsetFixture):
                 "pico4-install stock-hash": stock_sha if "stock" in (held or ()) else "none",
                 "pico4-install stock --": f"stock {stock_sha}",
                 "pico4-install bootmode normal": "bootmode normal",
-                "cat /proc/1/comm /etc/pico4/install-id": "systemd\ndev-loop\n1234567",
+                "cat /proc/1/comm /etc/overpressure/install-id": "systemd\ndev-loop\n1234567",
                 "rm -rf --one-file-system": "removed",
             }
         )
@@ -813,7 +814,7 @@ class DevTests(HeadsetFixture):
         dev, system = self.install_setup()
         reads = {
             "cat /proc/cmdline": "console=x msm_drm.dsi_display0=qcom,mdss_dsi_innolux_nt57900_90_video:",
-            "cat /proc/1/comm": "pico4-init",  # which system runs: stage 1
+            "cat /proc/1/comm": "overpressure-init",  # which system runs: stage 1
         }
         dev.ssh = lambda command, *_, **__: (
             reads[command] if command in reads else self.fail("wrote before reading the panel: " + command)
@@ -965,7 +966,7 @@ class DevTests(HeadsetFixture):
 
     def test_which_system_runs_by_its_first_process(self):
         self.assertTrue(self.make({"cat /proc/1/comm": "systemd\n"}).installed_running())
-        self.assertFalse(self.make({"cat /proc/1/comm": "pico4-init\n"}).installed_running())
+        self.assertFalse(self.make({"cat /proc/1/comm": "overpressure-init\n"}).installed_running())
 
         def silent() -> str:
             msg = "ssh"
@@ -1310,8 +1311,8 @@ class DevTests(HeadsetFixture):
         }
         dev = self.make(
             {
-                "cat /etc/pico4/test-run": "dev-loop\n1234567",
-                "cat /proc/cmdline": "console=x pico4.part=recovery",
+                "cat /etc/overpressure/test-run": "dev-loop\n1234567",
+                "cat /proc/cmdline": "console=x overpressure.part=recovery",
                 "pico4-install write super": f"written super {shas['super']}",
                 "pico4-install write boot": f"written boot {shas['boot']}",
                 "pico4-install wipe userdata": "wiped userdata",
@@ -1353,7 +1354,7 @@ class DevTests(HeadsetFixture):
         )
 
     def test_connect_verifies_the_flashed_dev_image(self):
-        dev = self.make({"cat /etc/pico4/test-run": "dev-loop\n1234567", "pico4-install hash": "f" * 64})
+        dev = self.make({"cat /etc/overpressure/test-run": "dev-loop\n1234567", "pico4-install hash": "f" * 64})
         (self.root / "dev/dev-boot.img").write_bytes(b"dev image")
         (self.root / "dev/dev-image.json").write_text(json.dumps({"boot_sha256": "f" * 64}))
         dev.connect()
@@ -1364,7 +1365,7 @@ class DevTests(HeadsetFixture):
         self.assertEqual(dev.connect(flashed=False), "boot")
 
     def test_reboot_from_fastboot_restarts_stage_1_without_a_flash(self):
-        dev = self.make({"cat /etc/pico4/test-run": "dev-loop\n1234567"})
+        dev = self.make({"cat /etc/overpressure/test-run": "dev-loop\n1234567"})
         dev.reboot()
         self.assertIn(["fastboot", "-s", "FB1", "reboot"], self.calls)
         self.assertNotIn("flash-boot", self.steps())
@@ -1382,24 +1383,24 @@ class DevTests(HeadsetFixture):
         dev = self.make(
             {
                 "cat /proc/1/comm /proc/cmdline": "systemd\nconsole=x",
-                "cat /proc/1/comm /etc/pico4/install-id": "systemd\ndev-loop\n1234567",
+                "cat /proc/1/comm /etc/overpressure/install-id": "systemd\ndev-loop\n1234567",
                 "userspace-archive.sha256": "abc",
             }
         )
         dev.reboot()
         self.assertTrue(any(devloop.INSTALL_ID in t for t in self.texts()))
-        self.assertFalse(any("cat /etc/pico4/test-run" in t for t in self.texts()))
+        self.assertFalse(any("cat /etc/overpressure/test-run" in t for t in self.texts()))
         # With the request in misc, the maintenance stage 1 starts from recovery.
         self.calls.clear()
         dev = self.make(
             {
-                "cat /proc/1/comm /proc/cmdline": "pico4-init\nconsole=x pico4.part=recovery",
-                "cat /etc/pico4/test-run": "dev-loop\n1234567",
-                "cat /proc/cmdline": "console=x pico4.part=recovery",
+                "cat /proc/1/comm /proc/cmdline": "overpressure-init\nconsole=x overpressure.part=recovery",
+                "cat /etc/overpressure/test-run": "dev-loop\n1234567",
+                "cat /proc/cmdline": "console=x overpressure.part=recovery",
             }
         )
         dev.reboot()
-        self.assertTrue(any("cat /etc/pico4/test-run" in t for t in self.texts()))
+        self.assertTrue(any("cat /etc/overpressure/test-run" in t for t in self.texts()))
         self.assertFalse(any(devloop.INSTALL_ID in t for t in self.texts()))
 
     def test_the_installed_system_s_build_is_looked_for_in_the_dev_s_out_folder_only(self):
@@ -1414,7 +1415,7 @@ class DevTests(HeadsetFixture):
         dev = self.make(
             {
                 "cat /proc/1/comm /proc/cmdline": "systemd\nconsole=x",
-                "cat /proc/1/comm /etc/pico4/install-id": "systemd\ndev-loop\n1234567",
+                "cat /proc/1/comm /etc/overpressure/install-id": "systemd\ndev-loop\n1234567",
                 "userspace-archive.sha256": digest,
             }
         )
@@ -1437,7 +1438,7 @@ class DevTests(HeadsetFixture):
             {
                 devloop.BOOT_ID: lambda: next(boots, "new") + "\n",
                 "cat /proc/1/comm /proc/cmdline": "systemd\nconsole=x",
-                "cat /proc/1/comm /etc/pico4/install-id": "systemd\ndev-loop\n1234567",
+                "cat /proc/1/comm /etc/overpressure/install-id": "systemd\ndev-loop\n1234567",
                 "userspace-archive.sha256": "abc",
             }
         )

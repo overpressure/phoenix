@@ -56,6 +56,7 @@ from overpressure.api.v1 import (
     android,
     avb,
     bootimg,
+    contract,
     power,
     process,
     progress,
@@ -87,7 +88,7 @@ ROOT = REPO
 WORK = ROOT / "out" / "dev"
 HOST = "172.16.42.1"
 RUN_ID = "dev-loop"
-CONTACT = "/run/pico4/host-contact"  # uptime of the last command (recovery-watch)
+CONTACT = contract.CONTACT  # uptime of the last command (recovery-watch)
 #: What the headset echoes when it answers over SSH, and how long it may take to (a system that is still starting).
 REACHED = "reachable"
 REACH_SECONDS = 60.0
@@ -99,14 +100,14 @@ SYSTEM = ROOT / "out" / "userspace" / "pico4-system.img"
 INSTALLED = "installed.json"
 #: The installed system's identity file (on the data partition, pico4-install keys), as test-run is
 #: the dev image's.
-INSTALL_ID = "/etc/pico4/install-id"
+INSTALL_ID = "/etc/overpressure/install-id"
 #: Partitions "dev restore-partition" writes back from the backup through fastboot.
 RESTORABLE = ("boot", "recovery", "misc")
 #: The parts of an installed system's restore, in order ("dev restore --only"), and the backup's images each writes.
 RESTORE_PARTS = ("system", "data", "recovery")
 RESTORE_IMAGES = {"system": ("super", "boot"), "data": (), "recovery": ("recovery",)}
-#: Command-line word naming the partition a dev image was written for (pico4.part=recovery).
-PART_MARK = "pico4.part="
+#: Command-line word naming the partition a dev image was written for (overpressure.part=recovery).
+PART_MARK = "overpressure.part="
 #: This boot's random ID: a reboot is over once another one answers.
 BOOT_ID = "/proc/sys/kernel/random/boot_id"
 #: What the installed system shows: PID 1's name, its install ID and the SoC serial.
@@ -132,7 +133,7 @@ BUILD_TREE = (
     "devices/phoenix/scripts",
     "devices/phoenix/src",
     "devices/phoenix/userspace",
-    "devices/phoenix/initramfs/usr/libexec/pico4",
+    "devices/phoenix/initramfs/etc/overpressure",  # the values the runtime sources, also in the image
     "devices/phoenix/prebuilt",
     "devices/phoenix/headset.json",
     "devices/phoenix/kernel/release.json",  # the kernel's tag, which the image's version file names
@@ -308,7 +309,7 @@ class Dev(Headset):
         Every command renews the host contact: the dev image's maximum runtime counts from the
         last one (recovery-watch), so it ends abandoned sessions, not ones in use.
         """
-        command = f"cut -d. -f1 /proc/uptime > {CONTACT} 2>/dev/null; {command}"
+        command = f"{{ cut -d. -f1 /proc/uptime > {CONTACT}; }} 2>/dev/null; {command}"
         return ssh.argv(self.s.ssh, self.work / "id_ed25519", self.work / "known_hosts", f"root@{HOST}", command)
 
     def ssh(
@@ -627,7 +628,7 @@ class Dev(Headset):
         if not hw.proven(self.ssh(hw.PROOF_COMMAND, 10), RUN_ID, self.identity()["chip_id"]):
             msg = "the SSH endpoint is not this headset's dev image"
             raise RuntimeError(msg)
-        self.ssh("touch /run/pico4/test-authenticated", 10)
+        self.ssh(f"touch {contract.TEST_AUTHENTICATED}", 10)
 
     def stage1_ncm(self) -> Path | None:
         """Return the Windows NCM initialization's Python when the maintenance stage 1 needs it, else None.
@@ -1399,7 +1400,7 @@ class Dev(Headset):
     def maintenance_running(self) -> bool:
         """Tell whether this computer's maintenance stage 1 answers now, started from recovery and authenticated."""
         (self.work / "known_hosts").unlink(missing_ok=True)  # stage 1 makes new host keys on every boot
-        command = f"test -e /run/pico4/test-authenticated && grep -qw {PART_MARK}recovery /proc/cmdline && echo ready"
+        command = f"test -e {contract.TEST_AUTHENTICATED} && grep -qw {PART_MARK}recovery /proc/cmdline && echo ready"
         try:
             output = self.ssh(command, 10, check=False)
         except subprocess.TimeoutExpired:

@@ -14,7 +14,7 @@ itself.
 | Build | `python -m overpressure build --firmware 5.13.7-global-seko` → `out/pico4-stage1-<firmware>.img` |
 | Into `recovery` | `python -m overpressure dev image`, `dev flash` ([hardware-testing.md](hardware-testing.md)) |
 | Connect | `ssh root@172.16.42.1` or <http://172.16.42.1/> |
-| Code | [tooling/image.py](../tooling/image.py) on [overpressure/stage1.py](https://github.com/overpressure/overpressure/blob/main/overpressure/stage1.py); [initramfs/](../initramfs/) |
+| Code | [tooling/image.py](../tooling/image.py) on [overpressure/stage1.py](https://github.com/overpressure/overpressure/blob/main/overpressure/stage1.py) with overpressure's [headset runtime](https://github.com/overpressure/overpressure/blob/main/docs/runtime.md); the PICO 4's overlay [initramfs/](../initramfs/) |
 
 The installed system (stage 2, [userspace.md](userspace.md)) starts without it: its boot image has no ramdisk
 ([install.md](install.md#how-it-starts)).
@@ -46,8 +46,8 @@ A panic reboots after 5 s (`panic=5`) into stage 1 again (the bootloader message
 | --- | --- |
 | Kernel and device trees | the stock image's, byte for byte, with every other header field (load addresses, page size, OS version, patch level) |
 | Kernel command line | the stock one plus `printk.devkmsg=on` (the init's `/dev/kmsg` lines are not rate-limited), `rng_core.default_quality=1000` (the hardware RNG credits entropy, so dropbear's first host key cannot block) and `console=none` (the tree's UART console at 115200 baud delayed `/init` from 1.0 s to 14 s; `dmesg` and pstore keep every message) |
-| Ramdisk | Alpine 3.24.2 aarch64: the minirootfs, the packages of `PACKAGES` in [tooling/image.py](../tooling/image.py) (BusyBox extras, dropbear, an SFTP server, e2fsprogs for the data partition, zstd for the compressed system image, OpenSSL for fast SHA-256, curl and GNU tar for the headset's own build, exploration tools), the [initramfs/](../initramfs/) overlay and `pico4-reboot` |
-| PID 1 | `pico4-init`, which runs `/etc/inittab` like busybox init ([PID 1](#pid-1)) |
+| Ramdisk | Alpine 3.24.2 aarch64: the minirootfs, the packages of `PACKAGES` in [tooling/image.py](../tooling/image.py) (BusyBox extras, dropbear, an SFTP server, e2fsprogs for the data partition, zstd for the compressed system image, OpenSSL for fast SHA-256, curl and GNU tar for the headset's own build, exploration tools), overpressure's runtime ([runtime.md](https://github.com/overpressure/overpressure/blob/main/docs/runtime.md#the-maintenance-system)) under the [initramfs/](../initramfs/) overlay (the PICO 4's values in `etc/overpressure/headset`, `pico4-install`, `pico4-probe`, `pico4-info`, the status page, the login profile, the QEMU self-test) and `pico4-reboot` |
+| PID 1 | the runtime's `overpressure-init`, which runs `/etc/inittab` like busybox init ([runtime.md](https://github.com/overpressure/overpressure/blob/main/docs/runtime.md#the-maintenance-system)) |
 
 Over the USB-C cable:
 
@@ -128,7 +128,7 @@ The first build downloads about 12 MB of Alpine packages into `cache/`, and noth
    unknown signature stops the build and drops the index from the cache); modules from the stock ramdisk
    (current firmware has none); the overlay; `pico4-reboot`; static device nodes (`console`, `null`, `zero`,
    `kmsg`, `tty`, `ptmx`, `random`, `urandom`: the kernel opens `/dev/console` before `/init`); a root
-   account without password, host name `pico4`, the build record `/etc/pico4/build-info`.
+   account without password, host name `pico4`, the build record `/etc/overpressure/build-info`.
 4. Writes a gzip newc cpio, extends the command line and repacks with every other stock header field, then
    parses its own output and checks kernel, trees, header fields, the header ID and an executable `/init`.
 
@@ -211,7 +211,7 @@ About 20–40 s after boot the headset answers on the USB link:
 | SSH (Windows has a client) | `ssh root@172.16.42.1`, empty password |
 | Telnet | `telnet 172.16.42.1` |
 | Browser: status, logs, report, probe and reboot buttons | <http://172.16.42.1/> |
-| Copy files (SFTP) | `scp root@172.16.42.1:/run/pico4/report.tar.gz .` |
+| Copy files (SFTP) | `scp root@172.16.42.1:/run/overpressure/report.tar.gz .` |
 | Serial shell, kernels with CDC ACM | the gadget's serial port (`/dev/ttyACM0` on Linux); any login name, no password |
 
 dropbear runs with `-R` (host keys generated at the first connection, new every boot), `-B` (empty root
@@ -235,92 +235,72 @@ The web server is BusyBox `httpd` on port 80 (`/srv/www`):
 
 The USB device is a composite gadget `1d6b:0104` (class `EF/02/01` with interface association descriptors for
 Windows), product `PICO 4 Linux`, serial `androidboot.serialno` (normally the fastboot serial; the ADB serial
-can differ). The network function is the first of `pico4.usbnet` the kernel has; its MAC addresses are locally
+can differ). The network function is the first of `overpressure.usbnet` the kernel has; its MAC addresses are locally
 administered and derived from the serial, so the PC sees the same adapter every boot. If the controller rejects
 the set of functions, the setup binds again without the serial function. The gadget carries no drive: a host
 re-reads a drive whose medium changes, which on Linux keeps udev from setting up the network.
 
 ## What happens during boot
 
+The runtime's steps ([runtime.md](https://github.com/overpressure/overpressure/blob/main/docs/runtime.md#the-maintenance-system)), on the PICO 4:
+
 | Step | What happens | Status LED |
 | --- | --- | --- |
-| 1 | [/init](../initramfs/init) mounts proc, sysfs, `/run`, `/tmp`; fills `/dev` with `mdev` (no devtmpfs on the stock kernel), kept running for hotplug; mounts devpts, configfs, pstore, debugfs | |
-| 2 | every disk and partition becomes read-only (`blockdev --setro`) as it appears; `/dev/block/by-name/*` links as on Android | blue |
+| 1 | pseudo file systems; `/dev` by `mdev` (the stock kernel has no devtmpfs), kept running for hotplug | |
+| 2 | every disk and partition read-only as it appears, `/dev/block/by-name/*` links | blue |
 | 3 | modules of the stock ramdisk's `modules.load` (none in current firmware) | |
-| 4 | USB gadget via configfs: NCM, ACM if the kernel has it | amber once bound |
-| 5 | `usb0` = `172.16.42.1/24`; `udhcpd` gives the PC `172.16.42.2` | green when a PC configures it |
-| 6 | CPU power management as PICO OS's post-boot script: governor `schedutil`, deep idle states after 30 s, Qualcomm crash-dump mode off | |
-| 7 | `pico4-init` becomes PID 1 and starts `udhcpd`, `telnetd`, `dropbear`, `httpd`, the serial getty, the USB link watcher and the recovery watchdog | |
-| 8 | `pico4-probe` collects a hardware inventory 15 s after the USB setup | |
+| 4 | USB gadget: NCM, ACM if the kernel has it; `usb0` = `172.16.42.1/24`, `udhcpd` gives the PC `172.16.42.2` | amber once bound, green when a PC configures it |
+| 5 | CPU power management as PICO OS's post-boot script: `schedutil`, deep idle states after 30 s, Qualcomm crash-dump mode off | |
+| 6 | `overpressure-init` becomes PID 1: `udhcpd`, `telnetd`, `dropbear`, `httpd`, the serial getty, the USB link watcher, the recovery deadline | |
+| 7 | `pico4-probe` collects a hardware inventory 15 s after the USB setup | |
 
-Steps 4 to 8 run concurrently. The stock kernel boots with `performance` and deep idle disabled
-(`lpm_levels.sleep_disabled=1`); without step 6 every core stays at its maximum clock. Firmware requests fall
+Steps 4 to 7 run concurrently. The stock kernel boots with `performance` and deep idle disabled
+(`lpm_levels.sleep_disabled=1`); without step 5 every core stays at its maximum clock. Firmware requests fall
 back to userspace; `/init` fails them after 5 s instead of 60 s (Android's `ueventd` is absent). The USB setup
 waits up to 60 s for a device controller. Only LEDs named red, green and blue are driven (never flash, torch,
 IR or backlight); a failed USB setup blinks red. Valve's kernel has no `/sys/class/leds`.
 
-Every step is logged to the kernel log (lines start with `pico4:`), `/run/pico4/boot.log` and pstore's `pmsg`
-(survives a warm reboot); services log to `/run/pico4/svc-<name>.log`.
-
-### PID 1
-
-[pico4-init](../initramfs/usr/libexec/pico4/pico4-init) runs the `::respawn:` and `::shutdown:` entries of
-[/etc/inittab](../initramfs/etc/inittab) like busybox init, but its stop signals reach only user processes,
-never kernel threads: busybox init's `kill(-1)` also reaches kernel threads that accept signals, and the USB
-link must outlive every stop. Each service runs in its own respawn loop through
-[svc](../initramfs/usr/libexec/pico4/svc), which waits for its prerequisites and rate-limits restarts.
-SIGTERM to PID 1 stops and reboots; SIGUSR1 and SIGUSR2 stop, then halt or power off.
+Every step is logged to the kernel log (lines start with `overpressure:`), `/run/overpressure/boot.log` and
+pstore's `pmsg` (survives a warm reboot); services log to `/run/overpressure/svc-<name>.log`.
 
 ## Recovery behaviour
 
 * **Watchdog.** `recovery-watch`, independent of the USB setup, reboots into fastboot after 300 s
-  (`pico4.autoreboot`) unless a packet from the PC arrived on the USB network or a login shell started (SSH,
-  telnet or serial: the profile creates `/run/pico4/no-autoreboot`). Enumeration and carrier alone do not
+  (`overpressure.autoreboot`) unless a packet from the PC arrived on the USB network or a login shell started (SSH,
+  telnet or serial: the profile creates `/run/overpressure/no-autoreboot`). Enumeration and carrier alone do not
   count.
 * **Test images** use the runner's deadlines instead: SSH authentication within the connection deadline and
   a maximum runtime, also when the image disables the watchdog
   ([hardware-testing.md](hardware-testing.md#device-deadlines)).
   On the headset, a test image with a configured but unusable link returns to fastboot this way and the runner
   restores PICO OS without a button press.
-* **USB re-plug.** On a configured link with no packet from the PC for 20 s (`pico4.usbkick`), the link
+* **USB re-plug.** On a configured link with no packet from the PC for 20 s (`overpressure.usbkick`), the link
   watcher unbinds and rebinds the gadget (at most twice per boot, never after the first packet), then
   re-applies the address and restarts `udhcpd`. A PC whose side is up sends packets at once (DHCP, IPv6 router
   solicitations). In QEMU the PC side sometimes misses NCM's "connected" notification; the re-plug fixes it.
   Toggling the controller's `soft_connect` instead leaves the QEMU controller unable to enumerate.
 * **Kernel panics.** The stock kernel enables Qualcomm download mode (crash-dump mode, USB `05c6:900e`, until
   the power button is held). Stage 1 sets `msm_poweroff`'s `download_mode` to 0, so a panic reboots and the
-  deadlines apply; `pico4.ramdump=1` keeps crash-dump mode.
+  deadlines apply; `overpressure.ramdump=1` keeps crash-dump mode.
 * **Limits.** A kernel hard hang or loss of host power can need a hardware reset (power button held for more
   than 10 s) or EDL recovery.
 
 ## Kernel command-line options
 
-Add them at build time, e.g. `python -m overpressure build --cmdline-append pico4.autoreboot=0 pico4.cpugov=keep`.
-A bare `pico4.NAME` means `pico4.NAME=1`. [lib.sh](../initramfs/usr/libexec/pico4/lib.sh) reads them.
+Add them at build time, e.g. `python -m overpressure build --cmdline-append overpressure.autoreboot=0
+overpressure.cpugov=keep`. The runtime's words (USB functions, deadlines, addresses, storage, power, the probe)
+are in [runtime.md](https://github.com/overpressure/overpressure/blob/main/docs/runtime.md#kernel-command-line-words). The PICO 4's stage 1 has no ACM in the stock kernel and
+NCM only. The PICO 4's own words:
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `pico4.usbnet=` | `ncm,rndis,ecm` | network functions to try, in order; the stock kernel has only NCM |
-| `pico4.usbserial=` | `acm` | serial shell function (absent from the stock kernel); `gser` needs a host driver, `none` disables it |
-| `pico4.autoreboot=` | `300` | seconds without a usable connection before rebooting into fastboot; `0` = never |
-| `pico4.usbkick=` | `20` | seconds of silence on a configured link before a software re-plug (at most 2); `0` = never |
-| `pico4.ip=`, `pico4.host_ip=` | `172.16.42.1`, `172.16.42.2` | addresses on the USB link (/24) |
-| `pico4.rw=` | `0` | `1` leaves block devices writable; the runner refuses such images |
-| `pico4.led=` | `1` | drive the status LED where the kernel has one |
-| `pico4.cpugov=` | `schedutil` | cpufreq governor; `keep` leaves the stock `performance` |
-| `pico4.lpm=` | `1` | enable the CPU low-power idle states |
-| `pico4.ramdump=` | `0` | `1` keeps Qualcomm crash-dump mode after a kernel panic |
-| `pico4.probe=` | `1` | run `pico4-probe` automatically |
-| `pico4.modules=` | `1` | load modules from the stock ramdisk |
-| `pico4.devtmpfs=` | `1` | mount devtmpfs when the kernel has it (the stock kernel does not) |
-| `pico4.probe_delay=` | `15` | seconds between the USB setup and the automatic probe |
-| `pico4.lpm_delay=` | `30` | seconds before the idle states are enabled |
-| `pico4.udc_timeout=` | `60` | seconds to wait for a USB device controller |
+| Option | Meaning |
+| --- | --- |
+| `overpressure.part=recovery` | the dev image, so the dev loop knows which partition started it |
+| `overpressure.kernel=valve` | the dev image runs on Valve's kernel ([above](#in-recovery-valves-kernel)) |
+| `overpressure.test_run=ID` | set by the acceptance runner |
 
-For the test harnesses: `pico4.selftest=1` (the [QEMU self-test](#qemu-self-test); `pico4.selftest_hostdelay=N`
-keeps the PC side silent for N s, `pico4.selftest_poweroff=0` keeps the VM on; the runner refuses such
-images), `pico4.part=recovery` (the dev image, so the dev loop knows which partition started it) and
-`pico4.test_run=ID` (set by the runner).
+For the test harnesses: `overpressure.selftest=1` (the [QEMU self-test](#qemu-self-test);
+`overpressure.selftest_hostdelay=N` keeps the PC side silent for N s, `overpressure.selftest_poweroff=0` keeps the
+VM on; the runner refuses such images).
 
 **Never add a bare `earlycon`** (without a value): according to PICO's published kernel source
 ([bytedance/phoenix-kernel](https://github.com/bytedance/phoenix-kernel), 4.19.81, without the board DTS), its
@@ -331,8 +311,8 @@ earlycon parser dereferences the missing argument and the kernel panics before a
 | Command | Purpose |
 | --- | --- |
 | `pico4-info` | status summary, also the login banner |
-| `pico4-probe` | hardware inventory into `/run/pico4/report/` and `report.tar.gz` |
-| `pico4-mount-ro PART [DIR]` | mount a stock partition read-only (default `/mnt/PART`): ext4 with `noload` (no journal replay), f2fs with `norecovery`, vfat; not the partitions inside `super` |
+| `pico4-probe` | hardware inventory into `/run/overpressure/report/` and `report.tar.gz` |
+| `overpressure-mount-ro PART [DIR]` | mount a stock partition read-only (default `/mnt/PART`): ext4 with `noload` (no journal replay), f2fs with `norecovery`, vfat; not the partitions inside `super` |
 | `pico4-reboot [bootloader\|recovery\|poweroff]` | reboot into a mode, without argument a normal reboot; `-r STRING` passes another reason; unknown words are refused; aliases `fastboot-mode`, `android` |
 | `pico4-install write\|format-data\|keys\|hash\|wipe\|bootmode\|status` | the maintenance stage 1's installer, the only writer of `boot`, `super`, `userdata` (its file system, the SSH keys and install ID on it), `metadata` and `misc`'s bootloader message, each against the backup's size and read back where it writes raw ([install.md](install.md#install-and-update)) |
 | `drm_info`, `modetest`, `evtest`, `i2cdetect`, `gpioinfo`, `tinymix`, `lsusb`, `lspci`, `lsblk`, `dtc`, `dmsetup`, `strace`, `htop` | exploration tools |
@@ -406,8 +386,8 @@ configuration.
   ID is computed as mkbootimg does, which also reproduces the stock image's.
 * **Ramdisk.** GNU cpio lists the expected nodes, symlinks and modes; the scripts pass `sh -n` under the image's
   BusyBox.
-* **Recovery policy.** `bash devices/phoenix/tests/test_recovery_policy.sh` checks the watchdog's decisions
-  ([recovery-policy.sh](../initramfs/usr/libexec/pico4/recovery-policy.sh)) on the host.
+* **Recovery policy.** overpressure's `tests/test_recovery_policy.sh` checks the deadline's decisions
+  ([recovery-policy.sh](https://github.com/overpressure/overpressure/blob/main/overpressure/runtime/usr/libexec/overpressure/recovery-policy.sh)) on the host.
 
 ### QEMU self-test
 
@@ -423,8 +403,8 @@ python -m overpressure container run -- bash devices/phoenix/tests/qemu/build-te
 devices/phoenix/tests/qemu/run-selftest.sh            # Linux, with qemu-system-aarch64: PASS or FAIL
 ```
 
-Further arguments are kernel arguments: `pico4.usbserial=none` gives the stock kernel's functions,
-`pico4.selftest_hostdelay=35` forces the re-plug path. Console log: `out/qemu-console.log`; report:
+Further arguments are kernel arguments: `overpressure.usbserial=none` gives the stock kernel's functions,
+`overpressure.selftest_hostdelay=35` forces the re-plug path. Console log: `out/qemu-console.log`; report:
 `out/qemu-report/`. `make qemu-stage1` runs it for the Makefile's firmware. It checks: `/dev` by mdev, the gadget
 bound and addressed; the PC side's enumeration, the controller state and a DHCP lease of `172.16.42.2`; SSH,
 telnet and HTTP, root login with the empty password, the status page and boot log; the `by-name` links, a

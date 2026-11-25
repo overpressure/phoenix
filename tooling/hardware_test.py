@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from overpressure.api.v1 import REPO, android, bootimg, evidence, qualcomm, windows_ncm
+from overpressure.api.v1 import REPO, android, bootimg, contract, evidence, qualcomm, windows_ncm
 from overpressure.api.v1 import backup as backups
 from overpressure.api.v1.evidence import require, utc
 from overpressure.api.v1.storage import data_device, validate_mounts, validate_storage
@@ -36,7 +36,7 @@ IDENTITY_COMMANDS = (
     "getprop sys.boot_completed",
 )
 #: What stage 1 shows to prove it is this test run on this headset: the run ID and the SoC serial.
-STAGE1_PROOF = ("/etc/pico4/test-run", "/sys/devices/soc0/serial_number")
+STAGE1_PROOF = (contract.TEST_RUN, "/sys/devices/soc0/serial_number")
 PROOF_COMMAND = "; ".join(f"cat {path}" for path in STAGE1_PROOF)
 
 
@@ -87,35 +87,35 @@ def prepare_image(  # noqa: PLR0913  # the image's inputs; its deadlines keyword
     words = image.full_cmdline.split()
     require(
         not any(
-            w in ("pico4.rw", "pico4.selftest")
-            or (w.startswith(("pico4.rw=", "pico4.selftest=")) and not w.endswith("=0"))
+            w in ("overpressure.rw", "overpressure.selftest")
+            or (w.startswith(("overpressure.rw=", "overpressure.selftest=")) and not w.endswith("=0"))
             for w in words
         ),
         "Hardware tests require read-only mode and QEMU selftest disabled",
     )
     tree = bootimg.ramdisk_tree(image)
-    require("etc/pico4/build-info" in tree.nodes, "Image is not a PICO 4 stage-1 build")
+    require("etc/overpressure/build-info" in tree.nodes, "Image is not a PICO 4 stage-1 build")
     require(
-        "usr/libexec/pico4/recovery-watch" in tree.nodes
+        "usr/libexec/overpressure/recovery-watch" in tree.nodes
         and "etc/inittab" in tree.nodes
         and b"svc recovery-watch" in tree.nodes["etc/inittab"].data,
         "Rebuild stage 1 image: independent recovery watchdog is missing",
     )
-    info = json.loads(tree.nodes["etc/pico4/build-info"].data)
+    info = json.loads(tree.nodes["etc/overpressure/build-info"].data)
     require(0 < connect_timeout < test_timeout, "Invalid device recovery deadlines")
     # Preflight runs the exact source userspace, excluding device nodes.
     with (folder / "rootfs.tar").open("wb") as stream:
         tree.to_tar(stream)
     tree.mkdir("root/.ssh", 0o700)
     tree.add_file("root/.ssh/authorized_keys", public_key.rstrip() + b"\n", 0o600)
-    tree.add_file("etc/pico4/test-run", run_id.encode() + b"\n")
-    tree.add_file("etc/pico4/test-connect-timeout", f"{connect_timeout}\n".encode())
-    tree.add_file("etc/pico4/test-timeout", f"{test_timeout}\n".encode())
+    tree.add_file("etc/overpressure/test-run", run_id.encode() + b"\n")
+    tree.add_file("etc/overpressure/test-connect-timeout", f"{connect_timeout}\n".encode())
+    tree.add_file("etc/overpressure/test-timeout", f"{test_timeout}\n".encode())
     data = bootimg.with_ramdisk(
         image,
         tree,
-        drop=("pico4.test_run=",),
-        add=(f"pico4.test_run={run_id}",),
+        drop=("overpressure.test_run=",),
+        add=(f"overpressure.test_run={run_id}",),
         failed="Instrumented boot image failed validation",
     )
     (folder / "test-boot.img").write_bytes(data)
@@ -464,7 +464,7 @@ class Runner(evidence.Runner):
         self.authenticated = True
         # Only a verified endpoint may cancel the connection deadline. The
         # independent maximum test duration still recovers a crashed runner.
-        self.ssh("touch /run/pico4/test-authenticated", timeout)
+        self.ssh(f"touch {contract.TEST_AUTHENTICATED}", timeout)
 
     def assertions(self, suffix: str = "") -> None:
         """Check the running build, the root shell, read-only storage and, after a flash, the readback.
@@ -475,7 +475,7 @@ class Runner(evidence.Runner):
         installed = getattr(self, "installed", False)
         info = self.result["build_info"]
         if not installed:
-            running = json.loads(self.ssh("cat /etc/pico4/build-info"))
+            running = json.loads(self.ssh(f"cat {contract.BUILD_INFO}"))
             require(running == info, "Running build metadata differs from supplied image")
         require(self.ssh("uname -m") == "aarch64", "Linux is not running ARM64")
         release = self.ssh("uname -r")
@@ -494,7 +494,7 @@ class Runner(evidence.Runner):
             # the root must be super, and everything else is held to the policy as always.
             # The headset names super only when the root is that device (/proc/mounts calls it /dev/root).
             system = self.ssh(
-                "[ -e /.pico4-writable ] || exit 0; s=$(readlink -f /dev/block/by-name/super); "
+                "[ -e /.overpressure-writable ] || exit 0; s=$(readlink -f /dev/block/by-name/super); "
                 '[ "$(findmnt -fno MAJ:MIN / | tr -d "[:space:]")" = "$(cat "/sys/class/block/${s##*/}/dev")" ] '
                 '&& echo "$s" || echo other'
             ).strip()
@@ -529,7 +529,8 @@ class Runner(evidence.Runner):
             "hardware report",
             self.args.report_timeout,
             lambda timeout: require(
-                self.ssh("test -s /run/pico4/report.tar.gz && echo READY", timeout) == "READY", "Report not ready"
+                self.ssh("test -s /run/overpressure/report.tar.gz && echo READY", timeout) == "READY",
+                "Report not ready",
             ),
         )
         report = self.http("cgi-bin/report")
@@ -725,14 +726,14 @@ class Runner(evidence.Runner):
         # startup, 20 s and up to 180 s more until Steam's web helpers are quiet, then the measured seconds.
         output = self.ssh(
             f"pico4-valve-session-check --seconds {userspace.VALVE_SESSION_SECONDS} "
-            "2>/run/pico4/valve-session.log; echo EXIT=$?",
+            "2>/run/overpressure/valve-session.log; echo EXIT=$?",
             600,
         )
         report, _, code = output.rpartition("EXIT=")
         (self.folder / "userspace-valve-session.json").write_text(report.strip() + "\n", encoding="utf-8")
         logs = f"/home/{userspace.SESSION_USER}/.local/share/Steam/logs"
         for name, command in (
-            ("valve-session.log", "cat /run/pico4/valve-session.log"),
+            ("valve-session.log", "cat /run/overpressure/valve-session.log"),
             ("valve-vrcompositor.txt", f"cat {logs}/vrcompositor.txt"),
             ("valve-vrserver.txt", f"tail -n 400 {logs}/vrserver.txt"),
             ("valve-journal.txt", "journalctl -b --no-pager -o short-monotonic _UID=1000 | tail -n 2000"),
@@ -781,7 +782,7 @@ class Runner(evidence.Runner):
             # Logs are best effort and must not prevent the recovery attempt.
             with contextlib.suppress(ValueError, OSError):
                 (self.folder / "recovery-boot.log").write_text(
-                    self.ssh("cat /run/pico4/boot.log", timeout=10), encoding="utf-8"
+                    self.ssh("cat /run/overpressure/boot.log", timeout=10), encoding="utf-8"
                 )
             try:
                 target = " bootloader" if self.boot_dirty else ""

@@ -49,7 +49,7 @@ scripts/          build-userspace.sh, build-system-image.sh, build-on-headset.sh
                   upstream.py), c-tests.sh and the on-headset preflight
 userspace/build.sh  this headset's part of the userspace build: its prefix, masks and adaptation hooks
 .github/          CI (against overpressure's main), the release, the weekly upgrade check
-tests/            host tests (unittest), test_recovery_policy.sh, qemu/
+tests/            host tests (unittest), qemu/
 docs/             documentation
 ```
 
@@ -191,11 +191,12 @@ Each step is skipped when its inputs did not change:
    hotfix repository and the Holo Core preview; reinstalled when the package list or `pacman.conf` changes, and
    with `--refresh`.
 4. **Image root.** An overlay on the base root: the project packages that differ from the base root's, the
-   files stage 1 shares (its recovery policy, `pico4-reboot`, `pico4-splash`), the session user and the
-   SteamVR files from `pico4-session` in the user's home. The adaptation layer is the project's
-   packages (`pico4-base`, `-power`, `-audio`, `-xr`, `-session`, `-checks`); their units are enabled as their
-   presets (`usr/lib/systemd/system-preset/50-pico4-*.preset`) name them, the Frame's units the image does not
-   use are masked.
+   files stage 1 shares (overpressure's runtime library and recovery policy, the PICO 4's values in
+   `/etc/overpressure/headset`, `pico4-reboot`, `pico4-splash`), the session user and the SteamVR files from
+   `pico4-session` in the user's home. The adaptation layer is the project's packages (`overpressure-base`,
+   `sm8250-base`, `pico4-base`, `-power`, `-audio`, `-xr`, `-session`, `-checks`); their units are enabled as their
+   presets (`usr/lib/systemd/system-preset/50-*.preset`) name them, the Frame's units the image does not use are
+   masked.
    [overpressure/elfdeps.py](https://github.com/overpressure/overpressure/blob/main/overpressure/elfdeps.py) checks natively that the programs and libraries of
    the Frame's and the project's packages, and of those depending on them, find their libraries and symbol
    versions and that the programs' symbols are all defined; the script excludes a few optional programs by name.
@@ -241,7 +242,6 @@ builds fails nothing: whether the session runs on it is the headset's check befo
 | --- | --- | --- |
 | Host tests: protocols, validators, the installer, runner, cycle and dev loop against fakes | `python -m unittest discover -t . -s devices/phoenix/tests` (`python -m unittest`: with the generic tests) | seconds |
 | Formatting, lint and types (CI runs them; `make lint` runs them here and in every headset in `devices/`) | `uv run ruff format --check devices/phoenix`, `uv run ruff check devices/phoenix`, `uv run ty check devices/phoenix` | seconds |
-| Stage-1 recovery policy (CI runs it under dash, the closest to BusyBox ash) | `bash devices/phoenix/tests/test_recovery_policy.sh` | seconds |
 | The host tests and every shell test above | `make test` (on Linux) | seconds |
 | The same on any host, in the build container, as root | `python -m overpressure container run -- make test` (`make container-test`) | as `make test`, once the image is built |
 | C tests of this repository's own sources (CI runs them) | `bash devices/phoenix/scripts/c-tests.sh` (a C compiler) | seconds |

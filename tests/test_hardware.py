@@ -80,15 +80,16 @@ class HarnessTests(unittest.TestCase):
         cls.shared = tempfile.TemporaryDirectory()
         cls.image = Path(cls.shared.name) / "stage1.img"
         tree = cpio.Tree()
-        tree.add_file("etc/pico4/build-info", json.dumps(cls.INFO).encode())
+        tree.add_file("etc/overpressure/build-info", json.dumps(cls.INFO).encode())
         tree.add_file("init", b"#!/bin/sh\n", 0o755)
-        tree.add_file("usr/libexec/pico4/recovery-watch", b"#!/bin/sh\n", 0o755)
+        tree.add_file("usr/libexec/overpressure/recovery-watch", b"#!/bin/sh\n", 0o755)
         tree.add_file(
             "etc/inittab",
-            b"::respawn:/usr/libexec/pico4/svc recovery-watch\n::restart:/usr/libexec/pico4/switch-userspace\n",
+            b"::respawn:/usr/libexec/overpressure/svc recovery-watch\n"
+            b"::restart:/usr/libexec/overpressure/switch-userspace\n",
         )
         tree.add_file("usr/bin/pico4-userspace", b"#!/bin/sh\n", 0o755)
-        tree.add_file("usr/libexec/pico4/pico4-init", b"#!/bin/sh\n", 0o755)
+        tree.add_file("usr/libexec/overpressure/overpressure-init", b"#!/bin/sh\n", 0o755)
         tree.mkdir("root", 0o700)
         cls.image.write_bytes(bootimg.BootImage(2, 4096, b"kernel", gzip.compress(tree.to_cpio()), dtb=b"dtb").pack())
 
@@ -380,7 +381,7 @@ class HarnessTests(unittest.TestCase):
                 return "sensor evidence"
             if "test-run" in command:
                 return ("wrong-run" if self.scenario == "identity" else self.runner.run_id) + "\n1234567"
-            if command == "cat /etc/pico4/build-info":
+            if command == "cat /etc/overpressure/build-info":
                 return json.dumps({} if self.scenario == "build" else self.info)
             if command == "uname -m":
                 return "aarch64"
@@ -390,7 +391,7 @@ class HarnessTests(unittest.TestCase):
                 return "0"
             if "SHELL-" in command:
                 return "SHELL-42"
-            if command.startswith("[ -e /.pico4-writable ]"):
+            if command.startswith("[ -e /.overpressure-writable ]"):
                 return {"writable": "/dev/sda7", "writable-elsewhere": "/dev/sda7", "writable-other-root": "other"}.get(
                     self.scenario or "", ""
                 )
@@ -482,9 +483,9 @@ class HarnessTests(unittest.TestCase):
         self.assertTrue((self.runner.folder / "report.tar.gz").exists())
         image = bootimg.parse((self.runner.folder / "test-boot.img").read_bytes())
         tree = dict(cpio.read_cpio(gzip.decompress(image.ramdisk)))
-        self.assertEqual(tree["etc/pico4/test-connect-timeout"].data, b"31\n")
-        self.assertEqual(tree["etc/pico4/test-timeout"].data, b"302\n")
-        self.assertTrue(any(cmd[-1] == "touch /run/pico4/test-authenticated" for cmd in self.calls))
+        self.assertEqual(tree["etc/overpressure/test-connect-timeout"].data, b"31\n")
+        self.assertEqual(tree["etc/overpressure/test-timeout"].data, b"302\n")
+        self.assertTrue(any(cmd[-1] == "touch /run/overpressure/test-authenticated" for cmd in self.calls))
         for cmd in self.calls:
             if cmd[0] in ("adb", "fastboot") and cmd[-1] != "devices":
                 self.assertEqual(cmd[1:3], ["-s", "ABC"])
@@ -692,7 +693,7 @@ class HarnessTests(unittest.TestCase):
         entries = dict(cpio.read_cpio(gzip.decompress(image.ramdisk)))
         self.assertEqual(image.kernel, b"kernel")
         self.assertEqual(image.dtb, b"dtb")
-        self.assertIn("pico4.test_run=nonce", image.full_cmdline)
+        self.assertIn("overpressure.test_run=nonce", image.full_cmdline)
         self.assertEqual(entries["root/.ssh/authorized_keys"].data, b"ssh-ed25519 TEST\n")
         self.assertEqual(entries["root/.ssh/authorized_keys"].mode & 0o777, 0o600)
         self.assertEqual(result["build_info"], self.info)
@@ -700,7 +701,7 @@ class HarnessTests(unittest.TestCase):
     def test_rejects_writable_and_qemu_images(self):
         original = bootimg.parse(self.source.read_bytes())
         self.source = self.root / "variant.img"
-        for option in ("pico4.rw=1", "pico4.rw", "pico4.selftest=1", "pico4.selftest"):
+        for option in ("overpressure.rw=1", "overpressure.rw", "overpressure.selftest=1", "overpressure.selftest"):
             self.source.write_bytes(original.with_cmdline(option).pack())
             with self.assertRaises(ValueError):
                 hw.prepare_image(self.source, self.runner.folder, "nonce", b"ssh-ed25519 TEST")

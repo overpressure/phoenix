@@ -59,9 +59,12 @@ checks the links; a link may not leave this repository, so links to overpressure
   headset's own backup (through `assets.py`, which also writes them as folders for development).
   What every headset shares comes from overpressure's headset interface, `overpressure.api.v1`
   ([the interface](https://github.com/overpressure/overpressure/blob/main/docs/adding-a-headset.md#the-headset-interface)).
-- `initramfs/`: stage 1, the maintenance environment in `recovery` and the base of test images;
-  `pico4-install` is the installer's only writer. `pico4-init` is PID 1, not busybox init: busybox's
-  `kill(-1)` also reaches kernel threads that accept signals.
+- `initramfs/`: the PICO 4's overlay on overpressure's headset runtime
+  ([runtime.md](https://github.com/overpressure/overpressure/blob/main/docs/runtime.md)) in stage 1, the
+  maintenance environment in `recovery` and the base of test images: its values in `etc/overpressure/headset`
+  (which the image takes too), `pico4-install` (the installer's only writer), `pico4-probe`, `pico4-info`, the status
+  page. The runtime's `overpressure-init` is PID 1, not busybox init: busybox's `kill(-1)` also reaches kernel
+  threads that accept signals.
 - `kernel/`: Valve's kernel: `release.json` (the pinned release of overpressure/linux: tag, commit,
   build image, file hashes), `build-tree.sh` (builds a checkout of it), `imx471_mode.py` (the RGB
   camera's table for the assets), `recovery_image.py` for its boot images (`--direct --boot`: the
@@ -73,8 +76,10 @@ checks the links; a link may not leave this repository, so links to overpressure
   first and Frame packages named explicitly from `deckard-arch-hotfixes-release-0.3`, `packages.lock`),
   its layers the project's packages (Monado with the PICO 4 driver and its tools, Basalt, gamescope,
   hexagonrpc, the swapchain layer, GTK 2, MangoHud and others), each with its code and patches, and
-  the adaptation layer as packages with their tests: `pico4-base` (`preinit`, the first process, the
-  storage and recovery policy, the system's own USB gadget `usb-gadget`, network), `pico4-power`,
+  the adaptation layer as packages with their tests: `overpressure-base` (overpressure's headset runtime in the
+  installed system: `preinit`, the storage and recovery policy, the USB link), `sm8250-base` (the DSPs' start,
+  persist, the Wi-Fi and video codec probes), `pico4-base` (preinit's PICO 4 hooks, charger mode, addresses,
+  clock, panels), `pico4-power`,
   `pico4-audio`, `pico4-xr`, `pico4-session` (with the SteamVR configuration) and `pico4-checks`; each
   package's preset enables its units. A change to a package goes to overpressure/packages, then a new
   tag there and the pin here.
@@ -89,7 +94,7 @@ checks the links; a link may not leave this repository, so links to overpressure
   (`userspace/stock-links.txt`) to the data partition's copy, which `dev install` writes from the headset's backup,
   and to PICO OS's modem, dsp and bluetooth partitions, mounted read-only at boot (docs/install.md#pico-oss-files).
   The headset's own factory data is not extracted: the image links to persist, mounted read-only at boot
-  (`pico4-persist`). `tests/`: unittest suites, `test_recovery_policy.sh`, `tests/qemu/` (the
+  (`sm8250-persist`). `tests/`: unittest suites, `tests/qemu/` (the
   adaptation packages' tests run in their builds). `device.mk`: its Makefile targets.
 - `headset.json` (codename, name, version, the headset interface it was made for; a release zip carries
   its commit and date), `env.example` (its `.env` keys, added to a new `.env`).
@@ -106,7 +111,6 @@ runs the same steps):
 python -m unittest discover -t . -s devices/phoenix/tests   # host tests, seconds, no hardware
 uv run ruff format --check devices/phoenix && uv run ruff check devices/phoenix && uv run ty check devices/phoenix
                                                          # formatting, lint and types (make lint: also overpressure's)
-bash devices/phoenix/tests/test_recovery_policy.sh       # stage-1 recovery policy
 bash devices/phoenix/scripts/c-tests.sh                  # the C tests of src/
 python -m overpressure build --firmware 5.13.7-global-seko   # stage-1 image -> out/, from the backup's boot
 # In the build container, as root (incremental; the project's packages from the pinned release of

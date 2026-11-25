@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from devices.phoenix.tooling import userspace
+from devices.phoenix.tooling import devloop, userspace
 
 # `pico4-fan state` on the headset (docs/cooling.md).
 FAN_STATE: dict[str, Any] = {
@@ -70,6 +70,8 @@ class SshAccessTests(unittest.TestCase):
         self.assertIn('[ "$(ext_label "$dev")" = pico4-data ]', keys)
         self.assertIn('"$mnt/root/.ssh/authorized_keys"', keys)
         self.assertIn("readonly_again", keys)
+        # The install ID goes to the /etc overlay's upper layer, where the dev loop reads it back.
+        self.assertIn(f'> "$mnt/etc/upper/{devloop.INSTALL_ID.removeprefix("/etc/")}"', keys)
         self.assertNotIn("dropbear-convert", (self.ROOT / "tooling/image.py").read_text(encoding="utf-8"))
 
 

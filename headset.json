@@ -2,7 +2,7 @@
  "codename": "phoenix",
  "name": "PICO 4",
  "version": "2026.11.0b2.dev0",
- "api": "1.7",
+ "api": "1.8",
  "commit": "$Format:%H$",
  "date": "$Format:%ct$"
 }

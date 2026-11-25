@@ -107,8 +107,8 @@ As on SteamOS, the system is read-only until its owner makes it writable with `s
 (sudo takes the owner's password, [security.md](security.md#logins)), and pacman installs packages into it then. The
 next upgrade writes a fresh image, read-only again, and whatever was installed meanwhile is gone with its
 database entries ([pacman's database](#pacmans-database)), as after a SteamOS update. Valve's `steamos-readonly`
-handles a btrfs root only; the image's is pico4-base's
-([steamos-readonly](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/steamos-readonly)), with
+handles a btrfs root only; the image's is overpressure-base's
+([steamos-readonly](https://github.com/overpressure/packages/blob/main/common/overpressure-base/steamos-readonly)), with
 SteamOS's commands, messages, exit codes and `/.ROOTFS_RW` marker:
 
 | Command | What it does |
@@ -118,7 +118,7 @@ SteamOS's commands, messages, exit codes and `/.ROOTFS_RW` marker:
 | `steamos-readonly status` | `enabled` (read-only, exit status 0) or `disabled` (exit status 1) |
 | `steamos-readonly toggle` | the other one, then the status |
 
-SteamOS keeps the setting in its btrfs root's `ro` property; here it is a file in the image, `/.pico4-writable`,
+SteamOS keeps the setting in its btrfs root's `ro` property; here it is a file in the image, `/.overpressure-writable`,
 which preinit and the storage policy read at every boot, so a fresh image starts read-only. Only `super` changes:
 `boot`, `recovery`, `misc` and every other partition stay read-only in both states. The image has a journal for it.
 What a package writes to `/etc` goes into the `/etc` overlay's upper layer and to `/var` onto the data partition,
@@ -161,16 +161,18 @@ External sources are pinned by commit or hash; patches lie next to each PKGBUILD
 
 ```text
 kernel    Valve's kernel from boot, no ramdisk: root=PARTLABEL=super ro, devtmpfs on /dev,
-          init=/usr/libexec/pico4/preinit
+          init=/usr/libexec/overpressure/preinit
 preinit   proc, sys, /run; the boot indication; devnode sweep (every block device read-only);
           userdata writable, at /data; /etc overlay, /var /home /root binds; machine-id;
           exec systemd (charger mode: --unit=pico4-charger.target)
-systemd   257.7: udev devnode rules, read-only sweep, pico4-usb-gadget (USB NCM 172.16.42.1,
-          ACM), systemd-networkd (DHCP for the PC), pico4-wlan-probe, sshd
+systemd   257.7: udev devnode rules, read-only sweep, overpressure-usb-link (USB NCM 172.16.42.1,
+          ACM), systemd-networkd (DHCP for the PC), sm8250-wlan-probe, sshd
 ```
 
-[`preinit`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/preinit) runs as PID 1 until it executes systemd;
-[install.md](install.md#how-it-starts) has its steps. A failure before systemd reboots into `recovery`. systemd's
+[`preinit`](https://github.com/overpressure/packages/blob/main/common/overpressure-base/preinit) runs as PID 1 until it executes systemd;
+[install.md](install.md#how-it-starts) has its steps; it is overpressure's ([runtime.md](https://github.com/overpressure/overpressure/blob/main/docs/runtime.md#how-it-starts)), with the
+PICO 4's hooks from `pico4-base` (charger mode; PICO OS's firmware partitions, the head tracker's root and the boot
+indication). A failure before systemd reboots into `recovery`. systemd's
 device monitor listens to udev only when `/dev` is a devtmpfs or udev already runs; the stock kernel has no devtmpfs,
 so the system runs only on Valve's kernel.
 
@@ -179,23 +181,23 @@ Apps the owner adds come from Flathub through Discover in Desktop mode, as on St
 
 What the system keeps:
 
-- **Storage.** preinit's devnode sweep, `pico4-storage-ro.service` and the udev helper keep every physical disk and
-  partition read-only (`pico4.rw=1` disables this, as in stage 1). The exception is the data partition (`userdata`,
-  file system `pico4-data`, booted with `pico4.root=installed`), which preinit makes writable: switched read-only
+- **Storage.** preinit's devnode sweep, `overpressure-storage-ro.service` and the udev helper keep every physical disk and
+  partition read-only (`overpressure.rw=1` disables this, as in stage 1). The exception is the data partition (`userdata`,
+  file system `pico4-data`, booted with `overpressure.root=installed`), which preinit makes writable: switched read-only
   under the mounted file system, its writeback fails and data is lost. `pico4-userspace-check` requires it writable.
   `steamos-readonly disable` leaves `super` writable too, until `enable` or the next upgrade
   ([a writable system](#a-writable-system)).
   No fstab entries; the GPT auto-generator is disabled; `systemd-repart` and `systemd-boot-update` are masked.
-- **Recovery.** `pico4-recovery-watch.service` runs stage 1's `recovery-watch` and `recovery-policy.sh` and survives
-  isolation; with `pico4.autoreboot=0` and no test run it sets no deadline. Emergency and rescue mode log the failed
-  units and reboot to fastboot after 30 s (`pico4.emergency_delay`). A crashed PID 1 reboots (`CrashAction=reboot`);
+- **Recovery.** `overpressure-recovery-watch.service` runs the runtime's `recovery-watch` and `recovery-policy.sh` and survives
+  isolation; with `overpressure.autoreboot=0` and no test run it sets no deadline. Emergency and rescue mode log the failed
+  units and reboot to fastboot after 30 s (`overpressure.emergency_delay`). A crashed PID 1 reboots (`CrashAction=reboot`);
   stop timeouts are 15 s. systemd arms the SoC's watchdog (30 s; its bark panics, so a stopped PID 1 restarts the
   headset after about 33 s). The third boot in a row that never reached the graphical target goes to the maintenance
   stage 1 ([boot attempts](install.md#boot-attempts)).
 - **Kernel panics.** `panic=5`; the firmware refuses the warm reset, and the tree's PS_HOLD reset restarts the
   headset, about 40 s from a forced panic to SSH.
 - **Logs.** `systemd-pstore.service` is masked, so pstore logs stay for the maintenance stage 1 to export. preinit
-  and the system's scripts log to `/run/pico4/boot.log`. journald keeps the journal as the Frame does,
+  and the system's scripts log to `/run/overpressure/boot.log`. journald keeps the journal as the Frame does,
   persistent on the data partition, up to 1 GiB (Valve's `persistent-store.conf` and `system-max-use.conf`,
   steamos-customizations-deckard), so earlier boots' journals stay for the support bundle; the image's
   `50-pico4.conf` only forwards warnings to the kernel log. `pico4-userspace-netdiag` writes USB link samples 20, 60 and 150 s after boot
@@ -211,13 +213,13 @@ What the system keeps:
 - **`/home`.** SteamOS's `home.mount` mounts the Frame's `/dev/disk/by-partsets/shared/home` and without it fails
   `basic.target` after 90 s. The image replaces it with a self-bind of `/home` on the data partition, which keeps the
   offload bind mounts (`steamos-offload.target`) working; their source directories are created in the image.
-- **USB.** `pico4-usb-gadget.service` sets up the same gadget as the maintenance stage 1
+- **USB.** `overpressure-usb-link.service` sets up the same gadget as the maintenance stage 1
   ([install.md](install.md#how-it-starts)); `/tmp/usb_gadget_block` makes the Frame's Type-C plug handler leave it
   alone. systemd-networkd configures the USB link, NetworkManager every other interface.
 - **Masked units.** `systemd-firstboot` (would wait for console input), `systemd-pstore`, `systemd-boot-update`,
   `systemd-repart`, `steamos-dump-info` (needs the Frame's EEPROM and EFI boot configuration),
   `serial-getty@ttyMSM0`, and the Frame's USB gadget units (`usb-gadget.target`, `usb-ncm-gadget@`,
-  `usb-ncm-dnsmasq@`), which would take the controller from `pico4-usb-gadget`. The session's masks are in
+  `usb-ncm-dnsmasq@`), which would take the controller from `overpressure-usb-link`. The session's masks are in
   [session.md](session.md).
 - **Enabled.** sshd, systemd-networkd, NetworkManager, systemd-timesyncd, bluetooth, `pico4-session.service`,
   Monado's socket, the sensor and audio targets, and the project's units for recovery, storage, logs, the USB link
@@ -268,8 +270,9 @@ How it works:
   (overpressure's [databases.sh](https://github.com/overpressure/overpressure/blob/main/overpressure/build/databases.sh)). A base root whose download stopped keeps none, and a kept set that
   lacks a database of `pacman.conf`'s repositories is downloaded again, so a stopped build can always be run again.
 - The base root ([packages.txt](https://github.com/overpressure/packages/blob/main/headsets/phoenix/packages.txt)) is kept between builds; each build assembles the image
-  root as an overlay on it with the project packages, among them the adaptation layer's (`pico4-base`, `-power`,
-  `-audio`, `-xr`, `-session`, `-checks`), whose presets enable their units, and the session user.
+  root as an overlay on it with the project packages, among them the adaptation layer's (`overpressure-base`,
+  `sm8250-base`, `pico4-base`, `-power`, `-audio`, `-xr`, `-session`, `-checks`), whose presets enable their units,
+  and the session user.
 - [overpressure/elfdeps.py](https://github.com/overpressure/overpressure/blob/main/overpressure/elfdeps.py) checks natively, as `ldd -r` would, that the programs and
   libraries of the Frame and project packages and of the packages that depend on them find their libraries, with
   symbol versions, and that every symbol they need is defined in what the program loads (a build against a newer
@@ -322,7 +325,7 @@ JSON, exit status 0 when it passed. It waits up to 180 s for the boot to settle,
 - the root read-only from `super`, `/data` on `userdata` the only writable partition (with `steamos-readonly
   disable`, the root and `super` writable too);
 - D-Bus, logind's seat0 and sshd;
-- the USB link as `pico4-usb-gadget` recorded it (interface, MAC, address);
+- the USB link as `overpressure-usb-link` recorded it (interface, MAC, address);
 - the session user logged in with its session target active, Monado's socket listening, the XR device nodes
   accessible to the session user ([session.md](session.md));
 - `steamos-customizations-deckard`, `steamos-manager`, gamescope, PipeWire and `deckard-mesa-linux-aarch64` installed;
@@ -337,7 +340,7 @@ way back on the stock kernel ([hardware-testing.md](hardware-testing.md)).
 ## The headset's own data
 
 Each headset's factory data stays in its `persist` partition (ext4), where PICO OS keeps it.
-[`pico4-persist.service`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/pico4-persist.service) mounts it read-only at
+[`sm8250-persist.service`](https://github.com/overpressure/packages/blob/main/sm8250/sm8250-base/sm8250-persist.service) mounts it read-only at
 `/mnt/vendor/persist` before `local-fs.target` (`ro,noload`: no journal replay, the block device stays read-only), and
 the image links to it instead of shipping a copy:
 
@@ -358,8 +361,8 @@ about 1 s and the DSP runs from the registry in persist.
 
 ## Internet over USB
 
-[`pico4-usb-internet.service`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/pico4-usb-internet.service) adds the PC's end
-of the link (`pico4.host_ip=`, default 172.16.42.2) to the USB link's network file (`50-pico4-usb.network`) as default
+[`overpressure-usb-internet.service`](https://github.com/overpressure/packages/blob/main/common/overpressure-base/overpressure-usb-internet.service) adds the PC's end
+of the link (`overpressure.host_ip=`, default 172.16.42.2) to the USB link's network file (`50-overpressure-usb.network`) as default
 gateway and DNS server, at route metric 2048, below NetworkManager's Wi-Fi and Ethernet routes. Without sharing on the
 PC that route leads nowhere. `systemd-timesyncd` corrects the clock once a time server answers.
 
@@ -382,7 +385,7 @@ the headset's reboots and the NCM initialization of a stage 1 on the stock kerne
 The kernel's ath11k drives the QCA6390 with PICO OS's firmware and board data from PICO's public package (modem and
 bluetooth partitions); only the addresses are the headset's, from `persist`. NetworkManager uses the Frame's iwd
 backend. ath11k's first probe, while the kernel starts, finds no firmware;
-[`wlan-probe`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/wlan-probe) probes the chip again once the system image is
+[`wlan-probe`](https://github.com/overpressure/packages/blob/main/sm8250/sm8250-base/wlan-probe) probes the chip again once the system image is
 mounted ([install.md](install.md#how-it-starts)), and [`wlan-address`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/wlan-address)
 sets `wlan0`'s address before NetworkManager starts. WPA2 and WPA3 networks join and reconnect after a reboot
 ([kernel.md](kernel.md#results)).

@@ -1,11 +1,11 @@
 #!/bin/sh
 # SPDX-License-Identifier: Unlicense
-# Self-test for the QEMU test VM (kernel argument pico4.selftest=1).
+# Self-test for the QEMU test VM (kernel argument overpressure.selftest=1).
 #
 # In the VM, dummy_hcd connects our USB gadget to a virtual host controller
 # in the same kernel, so the VM is both the "headset" and the "PC". Results go
 # to the kernel log; the harness looks for "PICO4-SELFTEST: PASS".
-. /usr/libexec/pico4/lib.sh
+. /usr/libexec/overpressure/lib.sh
 
 pass=0
 fail=0
@@ -27,22 +27,22 @@ host_netif() {
 	return 1
 }
 
-wait_for "$P4_RUN/usb.done" 90 || bad "USB setup did not finish"
-. "$P4_RUN/net.env"
-. "$P4_RUN/usb.env"
-. "$P4_RUN/serial.env"
+wait_for "$OP_RUN/usb.done" 90 || bad "USB setup did not finish"
+. "$OP_RUN/net.env"
+. "$OP_RUN/usb.env"
+. "$OP_RUN/serial.env"
 
 check "/dev populated without devtmpfs (mdev)" [ -c /dev/null -a -c /dev/kmsg -a -c /dev/ptmx ]
-check "gadget bound to $UDC" grep -qx bound "$P4_RUN/usb.state"
+check "gadget bound to $UDC" grep -qx bound "$OP_RUN/usb.state"
 check "headset address $IP on $IFACE" sh -c "ip addr show dev '$IFACE' | grep -q 'inet $IP/'"
 
-# pico4.selftest_hostdelay=N: the "PC" ignores the link for N seconds, so
+# overpressure.selftest_hostdelay=N: the "PC" ignores the link for N seconds, so
 # the headset's silent-link re-plug (usb-gadget watch) has to kick in.
 hostdelay=$(stage1_arg selftest_hostdelay 0)
 if [ "$hostdelay" -gt 0 ]; then
 	log "SELFTEST: PC side stays silent for ${hostdelay}s"
 	sleep "$hostdelay"
-	n=$(grep -c re-plugging "$P4_LOG")
+	n=$(grep -c re-plugging "$OP_LOG")
 	check "silent link was re-plugged ($n times, at most 2)" [ "$n" -ge 1 -a "$n" -le 2 ]
 fi
 
@@ -71,14 +71,14 @@ if [ -n "$hif" ]; then
 		fi
 	done
 	if [ -n "$got" ]; then
-		ok "PC got a DHCP lease across the USB link (attempt $got$(grep -q re-plugging "$P4_LOG" && echo ', after a USB re-plug'))"
+		ok "PC got a DHCP lease across the USB link (attempt $got$(grep -q re-plugging "$OP_LOG" && echo ', after a USB re-plug'))"
 	else
 		bad "PC got a DHCP lease across the USB link"
 	fi
 	check "lease is $HOST_IP" grep -qx "$HOST_IP" /tmp/selftest-lease
 	if [ ! -s /tmp/selftest-lease ]; then
 		log "SELFTEST dhcp debug: udhcpd pid=$(pidof udhcpd) $IFACE carrier=$(cat /sys/class/net/$IFACE/carrier 2>/dev/null) $hif carrier=$(cat /sys/class/net/$hif/carrier 2>/dev/null) $(ip -o addr | tr -s ' \n' ' ')"
-		log "SELFTEST dhcp debug: svc-udhcpd.log: $(tr '\n' '|' < "$P4_RUN/svc-udhcpd.log" 2>/dev/null)"
+		log "SELFTEST dhcp debug: svc-udhcpd.log: $(tr '\n' '|' < "$OP_RUN/svc-udhcpd.log" 2>/dev/null)"
 	fi
 fi
 
@@ -131,8 +131,8 @@ if [ -n "$TTY" ]; then
 fi
 
 # Hardware report (pico4-probe runs shortly after boot).
-wait_for "$P4_RUN/probe.done" 120
-check "hardware report collected" [ -s "$P4_RUN/report.tar.gz" ]
+wait_for "$OP_RUN/probe.done" 120
+check "hardware report collected" [ -s "$OP_RUN/report.tar.gz" ]
 check "report downloadable over http" sh -c "wget -qO- http://127.0.0.1/cgi-bin/report | gzip -t"
 check "report browsable over http" sh -c "wget -qO- http://127.0.0.1/report/summary.txt | grep -q kernel"
 
@@ -141,10 +141,10 @@ check "report browsable over http" sh -c "wget -qO- http://127.0.0.1/report/summ
 # Newer kernels also treat a partition as read-only while its disk is, so
 # both have to be switched.
 exp=$(readlink -f /dev/block/by-name/stage1_export 2>/dev/null)
-if [ -b "$exp" ] && [ -s "$P4_RUN/report.tar.gz" ]; then
+if [ -b "$exp" ] && [ -s "$OP_RUN/report.tar.gz" ]; then
 	disk=$(basename "$(dirname "$(readlink -f "/sys/class/block/${exp##*/}")")")
 	blockdev --setrw "/dev/$disk" && blockdev --setrw "$exp" &&
-		dd if="$P4_RUN/report.tar.gz" of="$exp" bs=64k conv=fsync &&
+		dd if="$OP_RUN/report.tar.gz" of="$exp" bs=64k conv=fsync &&
 		log "SELFTEST exported the report to $exp"
 fi
 
