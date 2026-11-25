@@ -23,21 +23,16 @@ that userspace/packages.json pins; a renamed side fails before anything is insta
 from __future__ import annotations
 
 import argparse
-import json
-import os
-import re
 import subprocess
 import sys
-import urllib.parse
-import urllib.request
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from overpressure.api.v1 import REPO, backup, tools, web
+from overpressure.api.v1 import REPO, kernelpin
+from overpressure.api.v1.kernelpin import BUILD_DIFFERS, IN_PACKAGES, Contract, Opener, Release, mismatches, sha256
 
 Log = Callable[[str], None]
-Opener = Callable[..., object]
+__all__ = ["BUILD_DIFFERS", "IN_PACKAGES", "Contract", "Release", "mismatches", "sha256"]
 
 #: The pin: overpressure/linux's tag, its commit, the build image and its files' hashes.
 RELEASE = Path(__file__).resolve().parents[1] / "kernel" / "release.json"
@@ -47,133 +42,47 @@ OUT = REPO / "out" / "kernel"
 CACHE = REPO / "cache" / "kernel"
 #: The overpressure/packages pin: Monado's side of the camera and panel contracts.
 PACKAGES = Path(__file__).resolve().parents[1] / "userspace" / "packages.json"
-#: A contract path in overpressure/packages, at the pinned commit.
-IN_PACKAGES = "packages:"
 #: The self-build's folder, on the Linux side (the build container's volume).
 WORK = "/var/tmp/pico4-kernel-build"  # noqa: S108  # a root-owned build folder, not a temporary file
 
 
-@dataclass(frozen=True)
-class Release:
-    """The pinned release of overpressure/linux."""
-
-    repository: str
-    tag: str
-    commit: str
-    image: str
-    files: dict[str, str]  #: name -> SHA-256
-
-    def url(self, name: str) -> str:
-        """Return the download URL of the release's file @p name."""
-        tag = urllib.parse.quote(self.tag, safe="")
-        return f"https://github.com/{self.repository}/releases/download/{tag}/{name}"
-
-    def source_url(self, path: str) -> str:
-        """Return the URL of the pinned commit's file @p path (the tree as it is, no history)."""
-        return f"https://raw.githubusercontent.com/{self.repository}/{self.commit}/{path}"
-
-
 def release(path: Path = RELEASE) -> Release:
-    """Return the pin in @p path."""
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return Release(data["repository"], data["tag"], data["commit"], data["image"], dict(data["files"]))
+    """Return the kernel pin in @p path."""
+    return kernelpin.release(path)
 
 
 def packages_release(path: Path = PACKAGES) -> Release:
     """Return the overpressure/packages pin in @p path, for its files' URLs."""
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return Release(data["repository"], data["tag"], data["commit"], "", {})
-
-
-def sha256(path: Path) -> str:
-    """Return @p path's SHA-256 (empty for an empty file, which no pin names)."""
-    return backup.digest(path)["sha256"] if path.stat().st_size else ""
-
-
-#: What a build of the pinned commit gives that the release does not: Valve's configuration signs modules
-#: with a key each build generates and builds into Image.gz, so only the other files match the pin.
-BUILD_DIFFERS = ("Image.gz",)
-
-
-def mismatches(folder: Path, pin: Release, *, built: bool = False) -> list[str]:
-    """Return the files in @p folder that are missing or differ from the pin, as messages.
-
-    @p built: the folder is a build of the pinned commit, whose Image.gz has its own signing key (BUILD_DIFFERS).
-    """
-    found = []
-    for name, digest in pin.files.items():
-        path = folder / name
-        if not path.is_file():
-            found.append(f"{name}: missing")
-        elif sha256(path) != digest and not (built and name in BUILD_DIFFERS):
-            found.append(f"{name}: sha256 {sha256(path)}, pinned {digest}")
-    return found
+    return kernelpin.release(path)
 
 
 def current(folder: Path = OUT, pin: Release | None = None) -> bool:
     """Tell whether @p folder holds the pinned kernel's files."""
-    return not mismatches(folder, pin or release())
+    return kernelpin.current(folder, pin or release())
 
 
 def fetch(
     folder: Path = OUT, pin: Release | None = None, *, log: Log = print, opener: Opener | None = None
 ) -> list[str]:
-    """Download the pinned release's files into @p folder, each checked by hash; return their names.
+    """Download the pinned release's files into @p folder, each checked by hash; return their names."""
+    return kernelpin.fetch(folder, pin or release(), log=log, opener=opener)
 
-    A file that is there with its pinned hash is kept; nothing is written that fails its hash.
-    """
-    pin = pin or release()
-    folder.mkdir(parents=True, exist_ok=True)
-    log(f">> overpressure/linux {pin.tag} ({pin.commit[:12]})")
-    fetched = []
-    for name, digest in pin.files.items():
-        path = folder / name
-        if path.is_file() and sha256(path) == digest:
-            log(f"   {name}: there")
-            continue
-        data = tools.download(pin.url(name), digest, log, *([opener] if opener else []))
-        partial = path.with_name(path.name + ".part")
-        partial.write_bytes(data)
-        partial.replace(path)
-        fetched.append(name)
-    return fetched
+
+#: The kernel build's step in the build container: fetch the pinned commit, build it, check it, install it.
+STEP = "devices/phoenix/scripts/build-kernel-step.sh"
 
 
 def build_argv(work: str = WORK) -> list[str]:
     """Return the command line that builds the pinned commit here (in the build container)."""
-    step = "devices/phoenix/scripts/build-kernel-step.sh"
-    return [sys.executable, "-m", "overpressure", "container", "run", "--", "bash", step, work]
+    return kernelpin.build_argv(STEP, work)
 
 
 def build(work: str = WORK, pin: Release | None = None, call: Callable[..., int] = subprocess.call) -> int:
     """Build the pinned commit in the image the release was built with; return the build's exit status."""
-    pin = pin or release()
-    env = dict(os.environ, OVERPRESSURE_BUILDER=pin.image)
-    return call(build_argv(work), env=env, cwd=REPO)
+    return kernelpin.build(STEP, work, pin or release(), call)
 
 
 # -- the contracts ------------------------------------------------------------------------------
-@dataclass(frozen=True)
-class Contract:
-    """A name or path this repository uses and the kernel must provide.
-
-    Each side is a list of (file, pattern); every match's first group is a value. The contract holds
-    when this repository's values (after @p here_value) are all among the kernel's (after
-    @p kernel_value), and both sides found some.
-    """
-
-    name: str
-    kernel: tuple[tuple[str, str], ...]
-    here: tuple[tuple[str, str], ...]
-    kernel_value: Callable[[str], str] = field(default=lambda value: value)
-    here_value: Callable[[str], str] = field(default=lambda value: value)
-
-
-def _numbered(name: str) -> str:
-    """Return a workqueue's name as the kernel formats it: ring0 -> ring%d."""
-    return re.sub(r"\d+$", "%d", name)
-
-
 #: Where the kernel's names are used: the image's files, its build, Monado's cameras and panels.
 _PHOENIX = f"{IN_PACKAGES}phoenix"
 #: The system image's links to PICO OS's files on the headset, which the build script makes.
@@ -268,7 +177,7 @@ CONTRACTS = (
             ("drivers/gpu/drm/msm/msm_ringbuffer.c", r'msm_gem_object_set_name\(ring->bo, "([^"]+)"'),
         ),
         ((f"{_PHOENIX}/pico4-session/kthread-priorities", r"^for wq in ([^;]+);"),),
-        here_value=_numbered,
+        here_value=kernelpin.numbered,
     ),
     Contract(
         "the power supplies the scripts read",
@@ -300,40 +209,14 @@ CONTRACTS = (
 )
 
 
-def _values(text: str, pattern: str) -> list[str]:
-    """Return the first group of every match of @p pattern in @p text, split where a match lists several."""
-    found = []
-    for match in re.finditer(pattern, text, re.MULTILINE):
-        found += match.group(1).split()
-    return found
-
-
-def _here_text(path: str, root: Path) -> str:
-    """Return a file of this repository, or every file of a folder, as text."""
-    target = root / path
-    files = sorted(p for p in target.rglob("*") if p.is_file()) if target.is_dir() else [target]
-    return "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in files)
-
-
 def kernel_file(path: str, pin: Release | None = None, *, cache: Path = CACHE, opener: Opener | None = None) -> str:
     """Return the pinned commit's file @p path, kept in @p cache per commit."""
-    pin = pin or release()
-    kept = cache / pin.commit / path
-    if not kept.is_file():
-        url = pin.source_url(path)
-        if opener is None:
-            data = web.read(url, 60)
-        else:
-            with opener(url, timeout=60) as response:  # ty: ignore[invalid-context-manager]  # urlopen's response
-                data = response.read()
-        kept.parent.mkdir(parents=True, exist_ok=True)
-        kept.write_bytes(data)
-    return kept.read_text(encoding="utf-8", errors="replace")
+    return kernelpin.source_file(path, pin or release(), cache=cache, opener=opener)
 
 
 def packages_file(path: str, *, cache: Path = CACHE, opener: Opener | None = None) -> str:
     """Return the pinned overpressure/packages commit's file @p path, kept in @p cache per commit."""
-    return kernel_file(path, packages_release(), cache=cache, opener=opener)
+    return kernelpin.source_file(path, packages_release(), cache=cache, opener=opener)
 
 
 def check(
@@ -343,24 +226,7 @@ def check(
     packages: Callable[[str], str] = packages_file,
 ) -> list[str]:
     """Return the broken contracts, each as one line that names both sides."""
-
-    def here_text(path: str) -> str:
-        return packages(path.removeprefix(IN_PACKAGES)) if path.startswith(IN_PACKAGES) else _here_text(path, root)
-
-    broken = []
-    for contract in contracts:
-        kernel = {contract.kernel_value(v) for path, pattern in contract.kernel for v in _values(read(path), pattern)}
-        here = {contract.here_value(v) for path, pattern in contract.here for v in _values(here_text(path), pattern)}
-        if not here:
-            broken.append(f"{contract.name}: this repository's side found nothing ({contract.here[0][0]})")
-        elif not kernel:
-            broken.append(f"{contract.name}: the kernel's side found nothing ({contract.kernel[0][0]})")
-        elif not here <= kernel:
-            missing = ", ".join(sorted(here - kernel))
-            broken.append(
-                f"{contract.name}: this repository uses {missing}; the kernel has {', '.join(sorted(kernel))}"
-            )
-    return broken
+    return kernelpin.check(contracts, read, root, packages)
 
 
 def main(argv: list[str] | None = None) -> int:

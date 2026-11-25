@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Unlicense
-"""devices.phoenix.tooling.kernel: the pinned release of overpressure/linux, its download and the contracts."""
+"""devices.phoenix.tooling.kernel: the PICO 4's pin of overpressure/linux, its contracts and its build step.
+
+overpressure tests the pin's download, its checks and the contracts' machinery (tests/test_kernelpin.py).
+"""
 
 from __future__ import annotations
 
@@ -13,7 +16,7 @@ from pathlib import Path
 from unittest import mock
 
 from devices.phoenix.tooling import kernel
-from overpressure.api.v1 import REPO
+from overpressure.api.v1 import REPO, kernelpin
 
 
 def pin_of(files: dict[str, bytes]) -> kernel.Release:
@@ -45,60 +48,6 @@ class PinTests(unittest.TestCase):
         for digest in pin.files.values():
             self.assertRegex(digest, r"^[0-9a-f]{64}$")
 
-    def test_urls_quote_the_tags_slash(self):
-        pin = pin_of({})
-        self.assertEqual(
-            pin.url("Image.gz"), "https://github.com/overpressure/linux/releases/download/phoenix%2F7.2-9/Image.gz"
-        )
-        self.assertEqual(
-            pin.source_url("drivers/x.c"),
-            f"https://raw.githubusercontent.com/overpressure/linux/{'a' * 40}/drivers/x.c",
-        )
-
-
-class FetchTests(unittest.TestCase):
-    def setUp(self) -> None:
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.out = Path(tmp.name) / "kernel"
-        self.files = {"Image.gz": b"kernel", "version": b"7.2.0-pico4\n"}
-        self.pin = pin_of(self.files)
-
-    def test_each_file_is_downloaded_checked_and_kept(self):
-        opener = Opener({self.pin.url(n): d for n, d in self.files.items()})
-        self.assertEqual(kernel.fetch(self.out, self.pin, log=lambda _l: None, opener=opener), ["Image.gz", "version"])
-        self.assertEqual((self.out / "Image.gz").read_bytes(), b"kernel")
-        self.assertTrue(kernel.current(self.out, self.pin))
-        # A second run downloads nothing: the files are there with their hashes.
-        opener.asked.clear()
-        self.assertEqual(kernel.fetch(self.out, self.pin, log=lambda _l: None, opener=opener), [])
-        self.assertEqual(opener.asked, [])
-
-    def test_a_file_with_another_hash_is_refused_and_not_written(self):
-        opener = Opener({self.pin.url("Image.gz"): b"tampered", self.pin.url("version"): self.files["version"]})
-        with self.assertRaisesRegex(ValueError, "is not the pinned"):
-            kernel.fetch(self.out, self.pin, log=lambda _l: None, opener=opener)
-        self.assertFalse((self.out / "Image.gz").exists())
-        self.assertEqual(kernel.mismatches(self.out, self.pin), ["Image.gz: missing", "version: missing"])
-
-    def test_check_names_what_differs(self):
-        self.out.mkdir()
-        (self.out / "Image.gz").write_bytes(b"other")
-        (self.out / "version").write_bytes(self.files["version"])
-        found = kernel.mismatches(self.out, self.pin)
-        self.assertEqual(len(found), 1)
-        self.assertTrue(found[0].startswith("Image.gz: sha256 "))
-        self.assertFalse(kernel.current(self.out, self.pin))
-
-    def test_a_build_of_the_pinned_commit_differs_only_in_its_image(self):
-        # Each build signs modules with its own key, which Image.gz carries: the other files match the pin.
-        self.out.mkdir()
-        (self.out / "Image.gz").write_bytes(b"its own signing key")
-        (self.out / "version").write_bytes(self.files["version"])
-        self.assertEqual(kernel.mismatches(self.out, self.pin, built=True), [])
-        (self.out / "version").write_bytes(b"another release")
-        self.assertTrue(kernel.mismatches(self.out, self.pin, built=True)[0].startswith("version: sha256 "))
-
 
 class ContractTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -116,36 +65,14 @@ class ContractTests(unittest.TestCase):
     def broken(self, kernel_source: str) -> list[str]:
         return kernel.check((self.contract,), read=lambda _path: kernel_source, root=self.root)
 
-    def test_a_name_both_sides_use_holds(self):
-        self.assertEqual(self.broken('#define FW "pico4/a.bin"\n'), [])
-
-    def test_a_renamed_side_names_both(self):
-        broken = self.broken('#define FW "pico4/b.bin"\n')
-        self.assertEqual(broken, ["the file: this repository uses pico4/a.bin; the kernel has pico4/b.bin"])
-
-    def test_a_side_that_finds_nothing_fails(self):
-        self.assertIn("the kernel's side found nothing", self.broken("")[0])
-        (self.root / "scripts/install.sh").write_text("")
-        self.assertIn("this repository's side found nothing", self.broken('#define FW "pico4/a.bin"\n')[0])
-
     def test_every_contract_finds_this_repositorys_side(self):
         # The kernel's side and Monado's need the pinned commits' files (CI fetches them); this side is here.
         for contract in kernel.CONTRACTS:
             for path, pattern in contract.here:
                 if path.startswith(kernel.IN_PACKAGES):
                     continue
-                values = kernel._values(kernel._here_text(path, REPO), pattern)  # noqa: SLF001  # the checker's own reader
+                values = kernelpin.values(kernelpin.local_text(path, REPO), pattern)
                 self.assertTrue(values, f"{contract.name}: nothing in {path}")
-
-    def test_the_kernels_files_are_read_once_per_commit(self):
-        pin = pin_of({})
-        opener = Opener({pin.source_url("drivers/x.c"): b"source"})
-        with tempfile.TemporaryDirectory() as tmp:
-            for _ in range(2):
-                text = kernel.kernel_file("drivers/x.c", pin, cache=Path(tmp), opener=opener)
-            self.assertEqual(text, "source")
-            self.assertEqual(len(opener.asked), 1)
-            self.assertTrue((Path(tmp) / pin.commit / "drivers/x.c").is_file())
 
 
 class CommandTests(unittest.TestCase):
