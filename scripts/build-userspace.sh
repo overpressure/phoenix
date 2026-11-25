@@ -18,6 +18,8 @@
 #                       root; without it every build installs the same package versions.
 #                       Builds the project's packages here against them.
 #   --update-lock       write OUTPUT_DIR/packages.lock instead of checking the pinned one
+#   --databases DIR     the package databases a new base root starts with, when DIR holds one for each of
+#                       pacman.conf's repositories (the PC downloaded them before the install: tooling/prefetch.py)
 #
 # The image's definition (pacman.conf, packages.txt, packages.lock) and the project's packages
 # are overpressure/packages' (headsets/phoenix and its layers), at the commit
@@ -57,13 +59,14 @@ source "$source_dir/scripts/databases.sh"
 build_root=${1:?specify an isolated Linux-filesystem build directory}
 output=${2:?specify an output directory}
 shift 2
-packages_dir="" build_packages=0 refresh=0
+packages_dir="" build_packages=0 refresh=0 databases_dir=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
     --packages) packages_dir=$(realpath "${2:?}"); shift 2 ;;
     --build-packages) build_packages=1; shift ;;
     --refresh) refresh=1; shift ;;
     --update-lock) update_lock=1; shift ;;
+    --databases) databases_dir=$(realpath "${2:?}"); shift 2 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
     esac
 done
@@ -130,10 +133,13 @@ read -r packages_repository packages_tag packages_commit packages_sums < <(pytho
     'import json,sys; d=json.load(open(sys.argv[1])); print(d["repository"], d["tag"], d["commit"], d["sha256sums"])' \
     "$source_dir/userspace/packages.json")
 pinned=$repo/cache/packages/$packages_commit
+pinned_from=""
+[[ ! -s $pinned.tar.gz ]] || pinned_from=" from the PC's downloads"
 if [[ ! -f $pinned/.overpressure-commit ]]; then
-    log "fetching $packages_repository $packages_tag ($packages_commit)"
+    log "fetching $packages_repository $packages_tag ($packages_commit)$pinned_from"
     rm -rf "$pinned.new"
-    if command -v git >/dev/null; then
+    # GitHub's archive of the commit, when the PC downloaded it before the install (tooling/prefetch.py).
+    if [[ ! -s $pinned.tar.gz ]] && command -v git >/dev/null; then
         git init -q "$pinned.new"
         git -C "$pinned.new" fetch -q --depth 1 "https://github.com/$packages_repository.git" "$packages_commit"
         git -C "$pinned.new" -c advice.detachedHead=false checkout -q FETCH_HEAD
@@ -141,9 +147,9 @@ if [[ ! -f $pinned/.overpressure-commit ]]; then
     else
         # Without git (the headset builds its own system): GitHub's archive of that commit.
         mkdir -p "$pinned.new"
-        fetch "https://github.com/$packages_repository/archive/$packages_commit.tar.gz" "$pinned.tar.gz"
+        [[ -s $pinned.tar.gz ]] ||
+            fetch "https://github.com/$packages_repository/archive/$packages_commit.tar.gz" "$pinned.tar.gz"
         tar -xzf "$pinned.tar.gz" --strip-components=1 -C "$pinned.new"
-        rm -f "$pinned.tar.gz"
     fi
     rm -rf "$pinned.new/.git" "$pinned"
     echo "$packages_commit" > "$pinned.new/.overpressure-commit"
@@ -252,6 +258,12 @@ fi
 in_b() { chroot "$B" /usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/bin LANG=C.UTF-8 HOME=/root \
     SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" ${ALL_PROXY:+ALL_PROXY="$ALL_PROXY"} "$@"; }
 mkdir -p "$B/etc/pico4" "$B/var/cache/pico4-pkgs"
+# The upstream packages the PC downloaded (tooling/prefetch.py) into pacman's cache, as links: they stay where the PC
+# sent them, beside an environment that a new one replaces with an empty cache.
+if [[ -d $build_root/downloads/packages ]]; then
+    find "$build_root/downloads/packages" -maxdepth 1 -name '*.pkg.tar.zst' -exec ln -f -t "$B/var/cache/pico4-pkgs" {} +
+    log "$(find "$build_root/downloads/packages" -maxdepth 1 -name '*.pkg.tar.zst' | wc -l) packages from the PC's downloads"
+fi
 cp "$definition/pacman.conf" "$B/etc/pico4/pacman.conf"
 # Each layer's repository where pacman.conf's file:// servers name it.
 rm -rf "$B/var/cache/overpressure"
@@ -297,8 +309,11 @@ if [[ $refresh == 1 || ! -d "$base" || "$(cat "$build_root/base.key" 2>/dev/null
     mkdir -p "$base"/{dev,proc,sys,run,tmp,etc,var/lib/pacman/sync,var/cache/pacman/pkg}
     chmod 1777 "$base/tmp"
     sync=y
-    if [[ $refresh == 0 ]] && databases_complete "$definition/pacman.conf" "$dbs"; then
-        cp -a "$dbs"/. "$base/var/lib/pacman/sync/"
+    # The PC's databases come first: the packages it downloaded with them are what they list.
+    from=$dbs
+    [[ -z $databases_dir ]] || ! databases_complete "$definition/pacman.conf" "$databases_dir" || from=$databases_dir
+    if [[ $refresh == 0 ]] && databases_complete "$definition/pacman.conf" "$from"; then
+        cp -a "$from"/. "$base/var/lib/pacman/sync/"
         for layer in "${layers[@]}"; do
             cp "$B/var/cache/overpressure/$layer/overpressure-$layer.db" "$base/var/lib/pacman/sync/"
         done

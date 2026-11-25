@@ -1348,8 +1348,8 @@ class Plan:
             Stage(
                 computer.id,
                 computer.title,
-                "What the upgrade needs on this computer: the host tools are fetched, anything else is explained. "
-                "The headset is not needed.",
+                "What the upgrade needs on this computer: the host tools and the packages that changed since the last "
+                "install are downloaded, anything else is explained. The headset is not needed.",
                 computer.tasks[:1] + computer.tasks[2:],
             ),
             Stage(
@@ -1473,8 +1473,9 @@ class Plan:
             Stage(
                 "computer",
                 "Check this computer",
-                "What the install needs on this computer: the host tools and the unlock files are fetched, "
-                "anything else is explained. The headset is not needed.",
+                "What the install needs on this computer: the host tools, the unlock files and every package the "
+                "system is built from are downloaded (about 2.6 GB), anything else is explained. The headset is not "
+                "needed.",
                 (
                     self.step_task("tools", "Host tools", "about 1 min", done=self.tools_there, where=UNCHANGED),
                     self.step_task(
@@ -1487,6 +1488,8 @@ class Plan:
                         "under a minute",
                         where=UNCHANGED,
                     ),
+                    # Before anything is written: a connection that drops now changes nothing on the headset.
+                    self.step_task("prefetch", "Download the system's packages", "about 10 min", where=UNCHANGED),
                 ),
             ),
             Stage(

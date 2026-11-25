@@ -1,0 +1,6 @@
+{
+ "rootfs": "7e3fb88454e1ac633b7488abb72d3ca0cc7d2578a38146fdd7d58b50fcbd60bf",
+ "server": "https://holo-packages.steamos.cloud/holo-core-aarch64-preview/mash-20251118/$repo/os/$arch",
+ "repositories": ["core", "extra"],
+ "packages": ["python"]
+}

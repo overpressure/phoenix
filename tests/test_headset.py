@@ -1203,7 +1203,7 @@ class DevTests(HeadsetFixture):
             patch.object(devloop, "ROOT", self.root),
             patch.object(devloop, "source_date_epoch", lambda: 1700000000),
             patch.object(devloop, "source_commit", lambda: "abc123"),
-            patch.object(devloop.Dev, "build_tree", lambda _self, target, **_: target.write(b"tree")),
+            patch.object(devloop.Dev, "build_tree", lambda _self, target, *_, **__: target.write(b"tree")),
         ):
             # From the installed system (its session stops), and from stage 1 (pico4-install build).
             installed = dev.build_on_headset(stage1=False)

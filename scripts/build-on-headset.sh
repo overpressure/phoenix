@@ -10,7 +10,11 @@
 #
 #   BASE/host   the build host            BASE/root   build-userspace.sh's build root
 #   BASE/cache  the tree's cache/         BASE/out    the archive, its manifest, the system image
+#   BASE/downloads  what the PC downloaded for the build that no cache below keeps
 #
+# The PC downloads everything first (tooling/prefetch.py, docs/install.md#downloads-first) and sends it in
+# BASE/src/prefetch, laid out as BASE: each file goes into place, where the build finds it and downloads
+# nothing again. What the PC did not send is downloaded here, as without it.
 # Downloads go through ALL_PROXY when it is set (the PC's connection: a SOCKS proxy from ssh -R,
 # names resolved there), else over the headset's own network. SOURCE_DATE_EPOCH and
 # OVERPRESSURE_COMMIT name the tree, which has no Git.
@@ -72,12 +76,29 @@ in_host() {
 		${ALL_PROXY:+ALL_PROXY="$ALL_PROXY"} "$@"
 }
 
+# The PC's downloads into place (the paths hold no newlines: the PC's manifest).
+if [ -d "$src/prefetch" ]; then
+	(cd "$src/prefetch" && find . -type f) > "$base/.prefetch"
+	count=0
+	while IFS= read -r f; do
+		mkdir -p "$base/$(dirname "$f")"
+		mv -f "$src/prefetch/$f" "$base/$f"
+		count=$((count + 1))
+	done < "$base/.prefetch"
+	rm -rf "$src/prefetch" "$base/.prefetch"
+	log "$count files from the PC's downloads"
+fi
+
 # The Holo snapshot the pinned overpressure/packages builds in (its build/packages.sh).
 field() { sed -n "s/^ *\"$1\": *\"\([^\"]*\)\".*/\1/p" "$src/devices/phoenix/userspace/packages.json"; }
 repository=$(field repository) commit=$(field commit)
 [ -n "$repository" ] && [ ${#commit} = 40 ] || die "no packages pin in $src"
-fetch "https://raw.githubusercontent.com/$repository/$commit/build/packages.sh" "$base/packages.sh" ||
-	die "could not fetch $repository's build/packages.sh at $commit"
+if [ -s "$base/downloads/packages-$commit.sh" ]; then
+	cp "$base/downloads/packages-$commit.sh" "$base/packages.sh"
+else
+	fetch "https://raw.githubusercontent.com/$repository/$commit/build/packages.sh" "$base/packages.sh" ||
+		die "could not fetch $repository's build/packages.sh at $commit"
+fi
 setup=$(cat "$base/packages.sh")
 pin() { printf '%s\n' "$setup" | sed -n "s/^$1=//p"; }
 snapshot=$(pin HOLO_SNAPSHOT) sha=$(pin HOLO_SHA256)
@@ -102,7 +123,17 @@ if [ "$(cat "$host/.overpressure-host" 2>/dev/null)" != "$sha" ]; then
 	rm -f "$host/etc/resolv.conf"
 	: > "$host/etc/resolv.conf"
 	api "$host"
-	fetch_pacman in_host pacman -Sy --noconfirm --needed python >/dev/null
+	# python from the PC's downloads when they are for this rootfs's repository (userspace/build-host.json).
+	server=$(sed -n 's/^Server *= *//p' "$host/etc/pacman.d/mirrorlist" | head -n 1)
+	if [ -s "$base/downloads/host/server" ] && [ "$(cat "$base/downloads/host/server")" = "$server" ] &&
+		[ -s "$base/downloads/host/sync/core.db" ]; then
+		cp "$base"/downloads/host/sync/*.db "$host/var/lib/pacman/sync/"
+		cp "$base"/downloads/host/pkg/*.pkg.tar.zst "$host/var/cache/pacman/pkg/"
+		log "the build host's python from the PC's downloads"
+		fetch_pacman in_host pacman -S --noconfirm --needed python >/dev/null
+	else
+		fetch_pacman in_host pacman -Sy --noconfirm --needed python >/dev/null
+	fi
 	cleanup
 	echo "$sha" > "$host/.overpressure-host"
 fi
@@ -114,8 +145,12 @@ api "$host"
 # drives it: the maintenance stage 1 runs no fan service, and the build's compression took the headset
 # to 88 °C without it. The installed system's service drives it there. Stopped, it keeps its duty.
 if [ -e /sys/class/tty/ttyHS1 ] && ! pgrep -f "pico4-fan run" > /dev/null; then
-	fetch "https://raw.githubusercontent.com/$repository/$commit/phoenix/pico4-power/pico4-fan" \
-		"$host/run/pico4-fan-run" || die "could not fetch $repository's pico4-fan at $commit"
+	if [ -s "$base/downloads/pico4-fan-$commit" ]; then
+		cp "$base/downloads/pico4-fan-$commit" "$host/run/pico4-fan-run"
+	else
+		fetch "https://raw.githubusercontent.com/$repository/$commit/phoenix/pico4-power/pico4-fan" \
+			"$host/run/pico4-fan-run" || die "could not fetch $repository's pico4-fan at $commit"
+	fi
 	mkdir -p "$host/run/pico4-fan"
 	# Its last-resort power-off reaches no systemd from the build host: it signals PID 1 instead, which
 	# powers off on SIGUSR2 in the maintenance stage 1 (pico4-init) and on SIGRTMIN+4 under systemd.
@@ -136,5 +171,7 @@ done
 # recipes that differ from the pinned commit's are built here, as in the build container.
 packages=""
 [ ! -f "$src/packages/headsets/phoenix/layers" ] || packages="--packages /build/src/packages"
+# The image's package databases the PC downloaded, for a new base root.
+[ ! -d "$base/root/downloads/databases" ] || packages="$packages --databases /build/root/downloads/databases"
 in_host bash -c "bash /build/src/devices/phoenix/scripts/build-userspace.sh /build/root /build/out $packages &&
 	bash /build/src/devices/phoenix/scripts/build-system-image.sh /build/out/pico4-userspace.tar.zst /build/out/pico4-system.img"

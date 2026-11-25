@@ -235,6 +235,15 @@ class Phoenix(Headset):
                 "The engineering ABL and Firehose loader from PICO's public downloads, checked by hash.",
             ),
             Step(
+                "prefetch",
+                "Downloads for the headset",
+                "Headset",
+                ("dev", "prefetch"),
+                "Everything the headset's build downloads (Valve's packages, Holo's rootfs, the project's packages), "
+                "into cache/headset/phoenix before the install writes the headset, each file checked; the install "
+                "sends them along.",
+            ),
+            Step(
                 "preflight",
                 "Preflight on PICO OS",
                 "Headset",

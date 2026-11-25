@@ -242,6 +242,8 @@ files the image shares; about 1 MB) goes over SSH, and
   `build-system-image.sh` run in it as in the build container, so the archive is the container build's, byte for
   byte, from the same commit and pin: both take tar and zstd from the build environment, and the image holds no
   file that a base root's history or a random key could change.
+- **The downloads.** The PC downloads everything first and sends it along ([downloads first](#downloads-first)); what
+  follows is the way for whatever it did not send.
 - **The network.** Everything comes through the PC's connection: `ssh -R` gives the headset a SOCKS proxy on
   `127.0.0.1:1080`, names resolved on the PC (`socks5h`), 18 to 29 MB/s. The build's chroots pass `ALL_PROXY`
   on. Every download goes through [`scripts/fetch.sh`](../scripts/fetch.sh), which rides out a short outage of
@@ -278,11 +280,37 @@ files the image shares; about 1 MB) goes over SSH, and
 | --- | --- | --- |
 | From an empty build folder, installed system (fan service) | 507 s, 2.2 GB downloaded | 74 °C |
 | From an empty build folder, maintenance stage 1 (Valve's kernel, the build's fan): the first install | 504 s, 2.2 GB downloaded | 73.6 °C |
+| From an empty build folder, installed system, with the PC's downloads ([downloads first](#downloads-first)) | 912 s with sending the 3 GB (about 18 MB/s); nothing downloaded | |
 | Again, incremental (a new pin or tree), maintenance stage 1 | 174 to 256 s | 76 °C |
 | Writing `super` from the data partition, then the keys and the start | about 90 s | |
 
 The archive is the same, byte for byte, from all three and from the build container (one commit, one pin). An
 installed system built this way passes `dev check` (90.03 commits/s) with the tracker from its package.
+
+## Downloads first
+
+The headset's build downloads nothing the PC fetched before: `dev prefetch`
+([tooling/prefetch.py](../tooling/prefetch.py)), the installer's last task in *Check this computer*, downloads all of
+it before the install writes the headset, so a connection that drops then changes nothing on it, and an install started
+again fetches only what is missing. It works on every host: Python reads Valve's package databases (tar with xz).
+
+| What | From | Checked by |
+| --- | --- | --- |
+| overpressure/packages at the pinned commit (GitHub's archive), its `build/packages.sh` and `pico4-fan` | GitHub | the pinned commit in the URL |
+| The release's packages and layer databases | GitHub | its `SHA256SUMS`, pinned in `userspace/packages.json` |
+| Holo Core's rootfs for the build host | Valve | `packages.sh`'s pin |
+| The build host's `python` with everything it depends on, and its repository's databases | Valve | the databases' SHA-256; [userspace/build-host.json](../userspace/build-host.json) pins that repository for the rootfs it comes with |
+| The image's package databases and the 704 upstream packages `packages.lock` names, and `protobuf` 25 (adb's libraries) | Valve | the lock's SHA-256 (the databases' for protobuf) |
+
+About 3 GB, kept in `cache/headset/phoenix` for the next upgrade, laid out as the build folder holds them; files of
+an earlier pin go. A package whose version has an epoch (`1:1.6.8`) lies there with `%3A` for the colon, which Windows
+allows in no file name; the headset gets the name pacman gives it. The install sends the files in the tree's stream
+(`src/prefetch`), the maintenance stage 1 all of them, the installed system those its build folder lacks, and
+[build-on-headset.sh](../scripts/build-on-headset.sh) moves each into place before the build starts. The upstream
+packages lie beside the build environment (`root/downloads/packages`), whose package cache a new environment empties:
+`build-userspace.sh` links them into it. The build then
+starts a new base root with the PC's databases (`build-userspace.sh --databases`) and installs the build host's python
+without `-y`; whatever the PC did not send is downloaded through its connection as before.
 
 ## The installer
 
@@ -310,7 +338,7 @@ document and of [device-preparation.md](device-preparation.md):
 
 | Stage | Tasks | Headset |
 | --- | --- | --- |
-| Check this computer | `tools`, `device fetch-unlock-files`, then the doctor's checks: a failure stops it with the fixes, apart from what the installer finds out (serials, identity, backup); the build container's checks do not count (the headset builds the system) | not needed |
+| Check this computer | `tools`, `device fetch-unlock-files`, then the doctor's checks: a failure stops it with the fixes, apart from what the installer finds out (serials, identity, backup); the build container's checks do not count (the headset builds the system). Then `dev prefetch`: every package the system is built from ([downloads first](#downloads-first)) | not needed |
 | Connect your headset | an action ask (developer mode, USB debugging, the cable, the prompt in the headset); exactly one `adb devices` entry in state `device`, written to `PICO4_ADB_SERIAL`; `device probe` unless `PICO4_IDENTITY` already holds this headset on the build PICO OS runs now (another headset's record stops it: records are never overwritten; a build changed since, after a PICO OS update, gets a new record `backup/device-TIME.json` in `PICO4_IDENTITY`, and with it a new backup, the old ones staying); the firmware (`check_firmware`) and panel (`check_panel` on `/proc/cmdline` over adb). An unverified one ends the run | PICO OS |
 | Prepare your headset | one consent (it erases the headset; the backup is the way back); `adb reboot edl`, `edl-ng printgpt` for the LUNs (LUN 0 last) and the serial (`PICO4_EDL_SERIAL`), `device backup --execute` without userdata, `cache` and the crash dumps ([device-preparation.md](device-preparation.md#2-backup)), `device verify-backup` (a new backup goes to `backup/stock-TIME`, written to `PICO4_BACKUP`; this headset's unfinished one goes on from where it stopped, `--resume`, [device-preparation.md](device-preparation.md#a-stopped-backup), and any other stays); `dev stage-abl` (PICO OS on a headset unlocked before, fastboot on a locked one: [device-preparation.md](device-preparation.md#3-engineering-abl); the engineering ABL already in fastboot, locked, counts as staged, and a headset in fastboot with PICO's stock ABL goes into EDL by hand first, as the restore's stock bootloader does); `adb reboot bootloader` unless the headset is in fastboot already, exactly one fastboot device (`PICO4_FASTBOOT_SERIAL`), `device unlock --execute --accept-data-loss`; then, each skipped while its output is there and not older than its input, the images from the backup's own `boot` and `recovery`: stage-1 image, Valve's kernel, dev image (stage 1 on that kernel), boot image; `dev flash`, `dev connect` | EDL, fastboot, maintenance stage 1 |
 | Install | a form for Wi-Fi (both fields optional, kept in memory only; a skip is recorded, so a later run does not ask again); a form for the owner's own SSH public key (optional, checked to be one public key, saved as `out/dev/owner-key.pub` and named in `.env` as `PICO4_SSH_PUBLIC_KEY`; not asked when `.env` names one); `dev install --on-headset` (stage 1 formats `userdata`, builds the system there and writes it, [above](#built-on-the-headset)), `dev installed`; the Wi-Fi profile as a NetworkManager keyfile (WPA-PSK, or open) through SSH's stdin: `install -D -m 600 /dev/stdin /etc/NetworkManager/system-connections/overpressure-wifi.nmconnection && nmcli connection reload`, so neither name nor password is in a command line, a log or `.env`; then "Unplug it and put it on", whose page offers *Check the headset* ([below](#the-upgrade-and-the-way-back)) | on the cable |
@@ -334,7 +362,7 @@ the others' recorded progress (the install starts afresh after a restore).
 
 | Workflow | Stage | Tasks | Headset |
 | --- | --- | --- | --- |
-| Upgrade | Check this computer | `tools`, the doctor's checks | not needed |
+| Upgrade | Check this computer | `tools`, the doctor's checks, `dev prefetch` (what changed) | not needed |
 | Upgrade | Prepare the upgrade | the install's images from the backup; Valve's kernel and the boot image are made every time | not needed |
 | Upgrade | Install the upgrade | an action ask (switched on, on the cable); `dev flash` (this version's maintenance stage 1 into `recovery`, whose tools the build and the write need), `dev connect`, `dev install --on-headset` (stage 1 builds on the data partition, incrementally; data kept), `dev installed`; its page offers *Check the headset* too | installed system, fastboot, maintenance stage 1 |
 | Check | Check the headset | an action ask: the headset on a stable table, its front cameras facing the room, the controllers on beside it if wanted, untouched until the last check; `dev installed`; `dev check --installer --part system`, `--part imu` and `--part session`, each its own task (controllers SteamVR does not see, missed performance limits, and a headset that moved during each of three IMU measurements 10 s apart are a warning in the window, not a failure; everything else counts as in `dev check`); then "Checked" | installed system, on the cable |

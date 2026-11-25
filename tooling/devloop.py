@@ -39,14 +39,16 @@ import contextlib
 import datetime as dt
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import time
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Callable
+from typing import IO, TYPE_CHECKING, Callable, cast
 
 from devices.phoenix.kernel import recovery_image
 from overpressure.api.v1 import (
@@ -69,11 +71,13 @@ from overpressure.api.v1.fastboot import NOT_IN_FASTBOOT
 from overpressure.api.v1.fastboot import flash as flash_image
 from overpressure.api.v1.headset import manifest
 
-from . import FASTBOOT_MODE, USB_MODES, device, localconfig, stockfiles
+from . import FASTBOOT_MODE, USB_MODES, device, localconfig, prefetch, stockfiles
 from . import hardware_test as hw
 from .cycle import Headset, run
 
 if TYPE_CHECKING:
+    from collections.abc import Generator, Sequence
+
     from overpressure.api.v1.process import Timing
 
 ROOT = REPO
@@ -175,6 +179,25 @@ def _released(name: str) -> str:
 def source_commit() -> str:
     """Return this headset's commit as the build records it (git describe, a release's), "unknown" without."""
     return _git("describe", "--always", "--dirty", "--abbrev=12") or _released("commit")[:12] or "unknown"
+
+
+class _Counting:
+    """A writable stream that counts what goes through it on a progress meter (the downloads sent)."""
+
+    def __init__(self, sink: IO[bytes], meter: progress.Meter) -> None:
+        """Count what is written to @p sink on @p meter."""
+        self.sink = sink
+        self.meter = meter
+
+    def write(self, data: bytes) -> int:
+        """Write @p data and count it."""
+        written = self.sink.write(data)
+        self.meter.add(len(data))
+        return written
+
+    def flush(self) -> None:
+        """Flush the sink."""
+        self.sink.flush()
 
 
 def source_date_epoch() -> int:
@@ -762,22 +785,80 @@ class Dev(Headset):
             msg = f"the headset did not confirm {name}"
             raise RuntimeError(msg)
 
-    def build_tree(self, target: IO[bytes], packages: Path | None = None) -> None:
+    def build_tree(
+        self,
+        target: IO[bytes],
+        packages: Path | None = None,
+        prefetched: Sequence[str] = (),
+        cache: Path = prefetch.CACHE,
+    ) -> None:
         """Write what the headset's build reads of this repository (BUILD_TREE) as a gzip-compressed tar.
 
         @p packages, a checkout of overpressure/packages, goes along as packages/: the build takes its recipes that
-        differ from the pinned commit's (build-userspace.sh --packages), as in the build container.
+        differ from the pinned commit's (build-userspace.sh --packages), as in the build container. @p prefetched,
+        files of this PC's downloads in @p cache (tooling/prefetch.py), go along as prefetch/, laid out as the
+        build folder: build-on-headset.sh puts each into place. They are compressed already: gzip's fastest level.
         """
 
         def keep(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
             parts = Path(info.name).parts
             return None if "__pycache__" in parts or ".git" in parts or ".ruff_cache" in parts else info
 
-        with tarfile.open(fileobj=target, mode="w:gz") as tar:
+        with tarfile.open(fileobj=target, mode="w:gz", compresslevel=1) as tar:
             for name in BUILD_TREE:
                 tar.add(ROOT / name, arcname=name, filter=keep)
             if packages is not None:
                 tar.add(packages, arcname="packages", filter=keep)
+            for path in prefetched:
+                tar.add(cache / prefetch.local(path), arcname=f"prefetch/{path}")
+
+    def prefetched(self, *, stage1: bool, cache: Path = prefetch.CACHE) -> list[str]:
+        """Return this PC's downloads for the headset (tooling/prefetch.py) its build folder lacks.
+
+        The installed system's build folder says what it holds (an upgrade sends what changed); the maintenance
+        stage 1's lies on the data partition, which only its build mounts: all of them go.
+        """
+        listed = prefetch.manifest(cache)
+        if not listed or stage1:
+            return listed
+        folders = " ".join(sorted({path.rsplit("/", 1)[0] for path in listed}))
+        found = self.ssh(
+            f"cd /data/{HEADSET_BUILD} 2>/dev/null && find {folders} -maxdepth 1 -type f -printf '%s %p\\n' 2>/dev/null"
+            "; true",
+            120,
+        )
+        held: dict[str, str] = {}
+        for line in found.splitlines():
+            size, _, path = line.partition(" ")
+            held[path] = size
+        return [path for path in listed if held.get(path) != str((cache / prefetch.local(path)).stat().st_size)]
+
+    @contextlib.contextmanager
+    def tree_stream(
+        self, packages: Path | None, prefetched: Sequence[str], cache: Path = prefetch.CACHE
+    ) -> Generator[IO[bytes], None, None]:
+        """Yield the read end of a pipe that carries build_tree's tar, written as it is read: no copy on disk."""
+        size = sum((cache / prefetch.local(path)).stat().st_size for path in prefetched)
+        if prefetched:
+            print(f"sending {len(prefetched)} downloaded files to the headset ({size >> 20} MiB)", flush=True)
+        meter = progress.Meter(size, lambda done, total: f"sending the downloads: {progress.mib(done, total)}")
+        read, write = os.pipe()
+
+        def pump() -> None:
+            try:
+                with os.fdopen(write, "wb") as sink:
+                    target = (
+                        cast("IO[bytes]", _Counting(sink, meter)) if prefetched else sink
+                    )  # tarfile only writes to it
+                    self.build_tree(target, packages, prefetched, cache)
+            except OSError:
+                pass  # the headset stopped reading: ssh's exit status says why
+
+        thread = threading.Thread(target=pump, daemon=True)
+        thread.start()
+        with os.fdopen(read, "rb") as source:
+            yield source
+        thread.join(10)
 
     def build_on_headset(self, *, stage1: bool, packages: Path | None = None) -> dict:
         """Build the system on the headset itself (docs/install.md#built-on-the-headset).
@@ -808,11 +889,10 @@ class Dev(Headset):
             read = f"cat {base}/"
         argv = self.ssh_argv(command)
         argv[-2:-2] = ["-o", "ExitOnForwardFailure=yes", "-R", f"127.0.0.1:{HEADSET_PROXY_PORT}"]
+        prefetched = self.prefetched(stage1=stage1)
         print("building the system on the headset", flush=True)
         started = time.monotonic()
-        with tempfile.TemporaryFile() as tree:
-            self.build_tree(tree, packages=packages)
-            tree.seek(0)
+        with self.tree_stream(packages, prefetched) as tree:
             process.run_streamed(argv, HEADSET_BUILD_SECONDS, lambda line: print(line, flush=True), stdin=tree)
         print(f"built on the headset in {time.monotonic() - started:.0f} s", flush=True)
         record = json.loads(self.ssh(f"{read}out/pico4-system.img.json", 30))
@@ -1340,7 +1420,7 @@ def unanswered(*, linux: bool | None = None) -> str:
     return text
 
 
-def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per command word
+def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0912, PLR0915  # one branch per command word
     """Run the development loop's command line."""
     ap = argparse.ArgumentParser(
         prog="python -m overpressure dev", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1399,7 +1479,15 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901  # one branch per 
     restore_part.add_argument("--no-reboot", action="store_true")
     shell = sub.add_parser("ssh")
     shell.add_argument("words", nargs="+")
+    sub.add_parser("prefetch", help="what the headset's build downloads, into cache/headset/phoenix first")
     args = ap.parse_args(argv)
+    if args.command == "prefetch":  # before the install touches the headset: no headset needed
+        try:
+            prefetch.Prefetch().run()
+        except (ValueError, OSError) as exc:
+            print(f"error: {exc}; nothing on the headset changed", file=sys.stderr)
+            return 1
+        return 0
     dev = Dev(localconfig.load())
     try:
         if args.command == "stage-abl":

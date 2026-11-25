@@ -218,7 +218,8 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(
             [[t.id for t in s.tasks] for s in stages],
             [
-                ["tools", "unlock-files", "doctor"],
+                # Everything the headset's build downloads, before the headset is needed (#133).
+                ["tools", "unlock-files", "doctor", "prefetch"],
                 ["find", "identity", "panel"],
                 # The images take the backup's boot and recovery: after the backup, before the flash.
                 ["consent", "backup", "stage-abl", "unlock", *images, "flash", "maintenance"],
@@ -963,6 +964,9 @@ class WorkflowTests(unittest.TestCase):
     def test_the_upgrade_rebuilds_the_system_and_keeps_the_data(self):
         stages = {s.id: s for s in self.plan.upgrade_stages()}
         self.assertNotIn("unlock-files", [t.id for t in stages["computer"].tasks])
+        # The packages that changed are downloaded before the headset is plugged in.
+        self.assertEqual([t.id for t in stages["computer"].tasks], ["tools", "doctor", "prefetch"])
+        self.assertFalse(stages["computer"].tasks[-1].writes)
         build = {t.id: t for t in stages["build"].tasks}
         self.assertEqual({k for k, t in build.items() if t.done is None}, {"kernel", "boot-image"})
         tasks = [t.id for t in stages["install"].tasks]
