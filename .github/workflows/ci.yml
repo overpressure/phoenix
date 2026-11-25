@@ -19,7 +19,6 @@ jobs:
     with:
       codename: phoenix
       kernel: true
-      overpressure: feat/installer-helpers # interface 1.6, until overpressure/overpressure#82 merges
     permissions:
       contents: read
       actions: read # an earlier pass of the same tree
