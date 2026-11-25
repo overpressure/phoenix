@@ -50,16 +50,6 @@ def device_rows(output: str, states: Sequence[str] = ("device", "unauthorized", 
     return rows
 
 
-def select_device(tool: str, serial: str | None) -> str:
-    """Return @p serial when it is attached and usable, else the only attached device's."""
-    return android.select_device(tool, serial, run)
-
-
-def check_unlock(fastboot: str, serial: str, *, critical: bool = False) -> None:
-    """Raise unless the bootloader reports itself unlocked (and critical-unlocked when asked)."""
-    android.check_unlock(fastboot, serial, critical=critical, runner=run)
-
-
 def unlock_token(number: int) -> str:
     """Return the engineering ABL's OEM unlock token for a SoC ID."""
     # Protocol facts: mask the SoC ID, then substitute each hexadecimal digit.
@@ -305,7 +295,7 @@ def dispatch(args: argparse.Namespace) -> None:  # noqa: C901, PLR0911, PLR0912,
         unlockfiles.fetch(localconfig.load())
         return
     if args.command == "probe":
-        serial = select_device(args.adb, args.serial)
+        serial = android.select_device(args.adb, args.serial, run)
         base = [args.adb, "-s", serial, "shell"]
         identity = {
             "schema": 1,
@@ -319,8 +309,8 @@ def dispatch(args: argparse.Namespace) -> None:  # noqa: C901, PLR0911, PLR0912,
         print(f"Saved {args.output}; use 'python -m overpressure match' with fingerprint and oem_state")
         return
     if args.command == "check-unlocked":
-        serial = select_device(args.fastboot, args.serial)
-        check_unlock(args.fastboot, serial, critical=args.critical)
+        serial = android.select_device(args.fastboot, args.serial, run)
+        android.check_unlock(args.fastboot, serial, critical=args.critical, runner=run)
         return
     if args.command == "verify-backup":
         manifest = verified_backup_shown(args.backup)
@@ -407,11 +397,11 @@ def dispatch(args: argparse.Namespace) -> None:  # noqa: C901, PLR0911, PLR0912,
         if not args.accept_data_loss:
             msg = "Unlock wipes user data; execution requires --accept-data-loss"
             raise ValueError(msg)
-        serial = select_device(args.fastboot, args.serial or identity["serial"])
+        serial = android.select_device(args.fastboot, args.serial or identity["serial"], run)
         for command in commands:
             unlock_step(args.fastboot, serial, command)
         # fastboot itself waits for reconnection; subprocess timeout bounds that wait.
-        check_unlock(args.fastboot, serial, critical=True)
+        android.check_unlock(args.fastboot, serial, critical=True, runner=run)
         print(
             "Normal and critical unlock confirmed after bootloader reboot. "
             "See docs/device-preparation.md for reset, RAM testing and stock ABL restoration."
@@ -490,29 +480,22 @@ def parser() -> argparse.ArgumentParser:
     return ap
 
 
-class DumpError(ValueError):
-    """An EDL dump that failed: the message ends with its output's last part, @p output holds all of it.
-
-    The backup's edl.log takes the whole output (overpressure's capture_backup, since interface 1.5).
-    """
-
-    def __init__(self, msg: str, output: str) -> None:
-        """Keep the whole @p output for the backup's log; the message stays short."""
-        super().__init__(msg)
-        self.output = output
-
-
 def run_dump(command: list[str], timeout: int = 60) -> str:
-    """Run an EDL dump as android.run does, the partition it reads shown as it goes (qualcomm.DumpProgress)."""
+    """Run an EDL dump as android.run does, the partition it reads shown as it goes (qualcomm.DumpProgress).
+
+    A failed one raises process.CommandFailed, whose whole output the backup's edl.log takes (capture_backup).
+    """
     print(">> " + subprocess.list2cmdline(command), file=sys.stderr)
     try:
         output = process.run_streamed(command, timeout, DumpProgress())
+    except process.CommandFailed:
+        raise
     except RuntimeError as exc:
-        raise DumpError(str(exc), getattr(exc, "output", "")) from exc
+        raise process.CommandFailed(str(exc), "") from exc
     # macOS' libusb warns about transfers its caller retries and completes ("transfer error: timed out")
     if re.search(r"\b(?:FAILED|ERROR)\b", re.sub(r"(?m)^libusb: warning .*$", "", output), re.IGNORECASE):
         msg = f"Command failed: {output[-800:]}"
-        raise DumpError(msg, output)
+        raise process.CommandFailed(msg, output)
     return output
 
 
@@ -521,7 +504,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         dispatch(args)
-    except (ValueError, OSError, KeyError, TypeError, ET.ParseError, subprocess.TimeoutExpired) as exc:
+    except (
+        ValueError,
+        OSError,
+        KeyError,
+        TypeError,
+        ET.ParseError,
+        subprocess.TimeoutExpired,
+        process.CommandFailed,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0

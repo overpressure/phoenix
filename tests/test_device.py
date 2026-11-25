@@ -13,7 +13,7 @@ from typing import Any
 from unittest.mock import patch
 
 from devices.phoenix.tooling import device, hardware_test, localconfig, unlockfiles
-from overpressure.api.v1 import tools
+from overpressure.api.v1 import process, tools
 
 
 class ProtocolTests(unittest.TestCase):
@@ -122,17 +122,17 @@ class WorkflowTests(unittest.TestCase):
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
             self.assertIn("Dumping aop: 100.0%", device.run_dump([sys.executable, "-c", script]))
         self.assertEqual(out.getvalue().splitlines(), ["progress: reading aop (50%)", "progress: reading aop (100%)"])
-        with self.assertRaisesRegex(ValueError, "failed"), contextlib.redirect_stderr(io.StringIO()):
+        with self.assertRaisesRegex(process.CommandFailed, "failed"), contextlib.redirect_stderr(io.StringIO()):
             device.run_dump([sys.executable, "-c", "print('ERROR: no answer')"])
         noise = "print('libusb: warning [darwin_transfer_status] transfer error: timed out'); print('Dump completed')"
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertIn("Dump completed", device.run_dump([sys.executable, "-c", noise]))
         stalled = "print('libusb: error [submit_bulk_transfer] bulk transfer failed (dir = In): pipe is stalled')"
-        with self.assertRaises(device.DumpError), contextlib.redirect_stderr(io.StringIO()):
+        with self.assertRaises(process.CommandFailed), contextlib.redirect_stderr(io.StringIO()):
             device.run_dump([sys.executable, "-c", stalled])
         # The error keeps the output's end; the backup's edl.log takes all of it from the error.
         script = "print('first line'); print('x' * 2000); print('ERROR: QUD write to COM5 timed out')"
-        with self.assertRaises(device.DumpError) as caught, contextlib.redirect_stderr(io.StringIO()):
+        with self.assertRaises(process.CommandFailed) as caught, contextlib.redirect_stderr(io.StringIO()):
             device.run_dump([sys.executable, "-c", script])
         self.assertIn("first line", caught.exception.output)
         self.assertNotIn("first line", str(caught.exception))
@@ -285,7 +285,10 @@ class WorkflowTests(unittest.TestCase):
             return answers.get(argv[-1], "0x1234")
 
         output = self.identity.with_name("probed.json")
-        with patch.object(device, "run", side_effect=run), patch.object(device, "select_device", return_value="ABC"):
+        with (
+            patch.object(device, "run", side_effect=run),
+            patch.object(device.android, "select_device", return_value="ABC"),
+        ):
             self.call(["probe", "--adb", "adb", "--output", str(output)])
         record = json.loads(output.read_text())
         self.assertEqual((record["model"], record["ddr_type"]), ("PICO 4", "DDR4"))
@@ -303,7 +306,7 @@ class WorkflowTests(unittest.TestCase):
         output = self.identity.with_name("probed.json")
         with (
             patch.object(device, "run", side_effect=run),
-            patch.object(device, "select_device", return_value="ABC") as select,
+            patch.object(device.android, "select_device", return_value="ABC") as select,
             patch.object(device.localconfig, "load", return_value=settings),
             patch.object(tools, "program", return_value=fetched),
             patch.dict(os.environ, {"PATH": ""}),

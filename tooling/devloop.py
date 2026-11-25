@@ -156,16 +156,11 @@ def _git(*words: str) -> str:
         return ""
 
 
-def answers(url: str, timeout: float = 15) -> str:
-    """Return "" when this PC gets an answer from @p url (any HTTP status is one), else why not, TLS verified."""
-    return web.answers(url, timeout)
-
-
 def unreachable(urls: tuple[str, ...] = DOWNLOAD_HOSTS) -> list[str]:
     """Return the hosts of @p urls this PC gets no answer from, each with why."""
     found = []
     for url in urls:
-        why = answers(url)
+        why = web.answers(url)
         if why:
             found.append(f"{url.split('//', 1)[1]} ({why})")
     return found

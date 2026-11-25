@@ -15,17 +15,11 @@ from devices.phoenix.tooling import devloop, kernel
 class ReachTests(unittest.TestCase):
     def test_a_host_without_an_answer_is_named_with_why(self):
         reasons = {"https://github.com": "its TLS certificate is not trusted (unable to get issuer certificate)"}
-        with mock.patch.object(devloop, "answers", lambda url: reasons.get(url, "")):
+        web = types.SimpleNamespace(answers=lambda url: reasons.get(url, ""))
+        with mock.patch.object(devloop, "web", web):
             self.assertEqual(
                 devloop.unreachable(),
                 ["github.com (its TLS certificate is not trusted (unable to get issuer certificate))"],
-            )
-
-    def test_the_check_takes_overpressures_reason_where_it_has_one(self):
-        web = types.SimpleNamespace(answers=lambda url, timeout: f"the name does not resolve ({url}, {timeout})")
-        with mock.patch.object(devloop, "web", web):
-            self.assertEqual(
-                devloop.answers("https://github.com", 5), "the name does not resolve (https://github.com, 5)"
             )
 
 
