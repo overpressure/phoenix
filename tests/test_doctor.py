@@ -140,7 +140,7 @@ class PicoDoctorTests(unittest.TestCase):
     def test_the_pico_4_registers_its_checks(self):
         self.assertEqual(
             HEADSET.dependencies(),
-            (checks.settings_checks, checks.tool_checks, checks.ncm_checks, checks.usb_checks),
+            (checks.settings_checks, checks.tool_checks, checks.ncm_checks, checks.usb_checks, checks.link_checks),
         )
 
     def test_linux_checks_usb_access_to_its_three_modes(self):

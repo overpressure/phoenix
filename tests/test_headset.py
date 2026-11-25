@@ -781,6 +781,21 @@ class DevTests(HeadsetFixture):
         self.assertIn(f"rm -rf --one-file-system /data/{devloop.HEADSET_BUILD}", last)
         self.assertIn(f"grep -q ' /data/{devloop.HEADSET_BUILD}/' /proc/mounts", last)
 
+    def test_a_wait_over_the_usb_link_that_runs_out_names_a_link_without_the_headsets_address(self):
+        dev = self.make()
+
+        def no_route() -> None:
+            msg = "ssh failed (255): No route to host"
+            raise RuntimeError(msg)
+
+        with patch.object(devloop.usblink, "problem", return_value="The headset's USB link is up ... nmcli"):
+            with self.assertRaisesRegex(RuntimeError, r"(?s)No route to host.*\nThe headset's USB link is up"):
+                dev.until("stage-1 SSH", 0, no_route)
+            # fastboot is no network link: its wait says nothing of one.
+            with self.assertRaises(RuntimeError) as raised:
+                dev.until("fastboot", 0, no_route)
+        self.assertNotIn("USB link", str(raised.exception))
+
     def test_the_build_folder_is_not_removed_while_something_is_mounted_below_it(self):
         dev = self.make({"rm -rf --one-file-system": "mounted"})
         with self.assertRaisesRegex(RuntimeError, "something is still mounted below it"):

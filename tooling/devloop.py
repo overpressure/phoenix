@@ -48,7 +48,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Callable, cast
+from typing import IO, TYPE_CHECKING, Callable, TypeVar, cast
 
 from devices.phoenix.kernel import recovery_image
 from overpressure.api.v1 import (
@@ -71,7 +71,7 @@ from overpressure.api.v1.fastboot import NOT_IN_FASTBOOT
 from overpressure.api.v1.fastboot import flash as flash_image
 from overpressure.api.v1.headset import manifest
 
-from . import FASTBOOT_MODE, USB_MODES, device, localconfig, prefetch, stockfiles
+from . import FASTBOOT_MODE, USB_MODES, device, localconfig, prefetch, stockfiles, usblink
 from . import hardware_test as hw
 from .cycle import Headset, run
 
@@ -80,6 +80,7 @@ if TYPE_CHECKING:
 
     from overpressure.api.v1.process import Timing
 
+T = TypeVar("T")
 ROOT = REPO
 WORK = ROOT / "out" / "dev"
 HOST = "172.16.42.1"
@@ -299,6 +300,23 @@ class Dev(Headset):
         super().__init__(settings, work, runner, clock, *([edl_count] if edl_count else []))
         self.work = work
         self.out = out
+
+    #: The waits for the headset's own systems, over its USB network link.
+    LINK_WAITS = frozenset({"stage-1 SSH", "installed system", "stage 1 or the installed system"})
+
+    def until(self, name: str, seconds: float, operation: Callable[[], T]) -> T:
+        """Wait as the cycle does; a wait over the USB link that runs out names a link without the headset's address.
+
+        Linux: another NetworkManager profile can take the headset's interface (usblink); a replug would not help.
+        """
+        try:
+            return super().until(name, seconds, operation)
+        except RuntimeError as exc:
+            wrong = usblink.problem() if name in self.LINK_WAITS and not isinstance(exc, process.Final) else ""
+            if not wrong:
+                raise
+            msg = f"{exc}\n{wrong}"
+            raise RuntimeError(msg) from exc
 
     def identity(self) -> dict:
         """Return the headset's saved identity, checked."""

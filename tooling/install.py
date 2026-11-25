@@ -49,7 +49,7 @@ from overpressure.api.v1 import backup as backups
 from overpressure.api.v1.install import Ask, Context, Failed, Field, NoBackup, Stage, Task
 from overpressure.api.v1.process import Final, until
 
-from . import ADB_MODE, CHECK_WORKFLOW, FASTBOOT_MODE, USB_MODES, device, devloop, localconfig, unlockfiles
+from . import ADB_MODE, CHECK_WORKFLOW, FASTBOOT_MODE, USB_MODES, device, devloop, localconfig, unlockfiles, usblink
 from . import doctor as checks
 from . import kernel as pinned_kernel
 
@@ -313,10 +313,25 @@ def unusable(output: str, mode: usbaccess.UsbMode) -> bool:
     )
 
 
-def replug_until(ctx: Context, what: str, seconds: float, operation: Callable[[], T]) -> T:
+def link_ask(problem: str) -> Ask:
+    """Return the ask for a USB link that is up without the headset's address (usblink.problem's @p problem)."""
+    return Ask(
+        "usb-link",
+        "action",
+        "Give the headset's USB link its address",
+        f"{problem}\n\nThen press Done: the installer waits for the headset again. Cancel stops here; starting the "
+        "installer again goes on from this step.",
+    )
+
+
+def replug_until(
+    ctx: Context, what: str, seconds: float, operation: Callable[[], T], link: Callable[[], str] | None = None
+) -> T:
     """Wait as until() does; when @p seconds run out, ask the owner to plug the headset in again, then wait anew.
 
-    A Final error ends the wait at once, as in until(); declining the ask stops the run.
+    A USB link that is up without the headset's address (Linux: another NetworkManager profile took it, @p link
+    tells, usblink.problem by default) asks for its fix instead: a replug would not help. A Final error ends the
+    wait at once, as in until(); declining the ask stops the run.
     """
     while True:
         try:
@@ -326,7 +341,10 @@ def replug_until(ctx: Context, what: str, seconds: float, operation: Callable[[]
         except RuntimeError as exc:
             seen = usb_seen()
             ctx.log(f"{exc}" + (f"; {seen}" if seen else ""))
-            ctx.ask(replug(what, seconds))
+            wrong = (link or usblink.problem)()
+            if wrong:
+                ctx.log(wrong.splitlines()[0])
+            ctx.ask(link_ask(wrong) if wrong else replug(what, seconds))
 
 
 class AskingDev(devloop.Dev):
