@@ -241,6 +241,7 @@ builds fails nothing: whether the session runs on it is the headset's check befo
 | Formatting, lint and types (CI runs them; `make lint` runs them here and in every headset in `devices/`) | `uv run ruff format --check devices/phoenix`, `uv run ruff check devices/phoenix`, `uv run ty check devices/phoenix` | seconds |
 | Stage-1 recovery policy (CI runs it under dash, the closest to BusyBox ash) | `bash devices/phoenix/tests/test_recovery_policy.sh` | seconds |
 | The builds' downloads against a fake server (CI runs it under dash; python3 and curl) | `bash devices/phoenix/tests/test_fetch.sh` | about 10 s |
+| The package databases a new base root keeps or downloads again (CI runs it under dash) | `bash devices/phoenix/tests/test_databases.sh` | seconds |
 | The host tests and every shell test above | `make test` (on Linux) | seconds |
 | The same on any host, in the build container, as root | `python -m overpressure container run -- make test` (`make container-test`) | as `make test`, once the image is built |
 | C tests of this repository's own sources (CI runs them) | `bash devices/phoenix/scripts/c-tests.sh` (a C compiler) | seconds |

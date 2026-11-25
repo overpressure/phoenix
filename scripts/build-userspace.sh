@@ -52,6 +52,8 @@ source_dir=$(cd "$(dirname "$0")/.." && pwd)   # devices/phoenix
 repo=$(cd "$source_dir/../.." && pwd)            # overpressure (its package, cache/)
 # shellcheck source=fetch.sh
 source "$source_dir/scripts/fetch.sh"
+# shellcheck source=databases.sh
+source "$source_dir/scripts/databases.sh"
 build_root=${1:?specify an isolated Linux-filesystem build directory}
 output=${2:?specify an output directory}
 shift 2
@@ -283,20 +285,19 @@ base_key=$({ cat "$definition/packages.txt" "$definition/pacman.conf"; printf '%
     sha256sum | cut -d' ' -f1)
 if [[ $refresh == 1 || ! -d "$base" || "$(cat "$build_root/base.key" 2>/dev/null)" != "$base_key" ]]; then
     phase "installing packages.txt into a new base root"
-    rm -f "$build_root/base.key"
-    # Without --refresh the new base root keeps the package databases of the last one.
+    # Without --refresh the new base root keeps the package databases of the last one that finished
+    # (scripts/databases.sh): one whose download stopped has only some, and pacman -S without -y then
+    # downloads nothing. A set that lacks a repository's database is downloaded again.
     dbs=$build_root/base-databases
-    if [[ $refresh == 0 && -d "$base/var/lib/pacman/sync" ]]; then
-        rm -rf "$dbs"
-        cp -a "$base/var/lib/pacman/sync" "$dbs"
-    fi
+    [[ $refresh == 1 ]] || keep_databases "$base" "$build_root/base.key" "$dbs"
+    rm -f "$build_root/base.key"
     unmount_below "$T"
     unmount_below "$base"
     rm -rf "$base"
     mkdir -p "$base"/{dev,proc,sys,run,tmp,etc,var/lib/pacman/sync,var/cache/pacman/pkg}
     chmod 1777 "$base/tmp"
     sync=y
-    if [[ $refresh == 0 && -d "$dbs" ]]; then
+    if [[ $refresh == 0 ]] && databases_complete "$definition/pacman.conf" "$dbs"; then
         cp -a "$dbs"/. "$base/var/lib/pacman/sync/"
         for layer in "${layers[@]}"; do
             cp "$B/var/cache/overpressure/$layer/overpressure-$layer.db" "$base/var/lib/pacman/sync/"

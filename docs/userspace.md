@@ -264,7 +264,9 @@ How it works:
   `--packages` checkout's changed recipes built here. Built here (those, or all with `--build-packages` and
   `--refresh`), they rebuild only when their recipe folder changes. Each layer
   becomes a local pacman repository `overpressure-LAYER`. Package databases are downloaded only by the first
-  build and with `--refresh`.
+  build and with `--refresh`; a new base root otherwise keeps the last finished one's
+  ([databases.sh](../scripts/databases.sh)). A base root whose download stopped keeps none, and a kept set that
+  lacks a database of `pacman.conf`'s repositories is downloaded again, so a stopped build can always be run again.
 - The base root ([packages.txt](https://github.com/overpressure/packages/blob/main/headsets/phoenix/packages.txt)) is kept between builds; each build assembles the image
   root as an overlay on it with the project packages, among them the adaptation layer's (`pico4-base`, `-power`,
   `-audio`, `-xr`, `-session`, `-checks`), whose presets enable their units, and the session user.

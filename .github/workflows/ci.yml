@@ -147,6 +147,7 @@ jobs:
         run: |
           dash devices/phoenix/tests/test_recovery_policy.sh
           dash devices/phoenix/tests/test_fetch.sh
+          dash devices/phoenix/tests/test_databases.sh
       - name: Shellcheck
         run: python3 scripts/run-shellcheck.py --repo devices/phoenix
       - name: C tests
