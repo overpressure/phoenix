@@ -19,7 +19,6 @@ jobs:
     with:
       codename: phoenix
       kernel: true
-      overpressure: feat/headset-workflows # until overpressure/overpressure#80 merges
     permissions:
       contents: read
       actions: read # an earlier pass of the same tree

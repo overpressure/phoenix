@@ -23,7 +23,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: devices/phoenix
-      - uses: ./.github/actions/uv # overpressure's, checked out at the root
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+        with:
+          version: "0.13.4" # overpressure's start scripts'
       - run: uv sync --locked
       - name: The build container
         run: uv run python -m overpressure container pull
