@@ -76,7 +76,9 @@ its DSPs, video codec and wireless chip. The image holds none of them, only link
   out of the backup ([overpressure/lp.py](https://github.com/overpressure/overpressure/blob/main/overpressure/lp.py)) with the project's ext4 reader, takes
   the same files as from PICO's OTA of that firmware ([`assets.py`](../tooling/assets.py)) and writes them,
   laid out as the system expects them, into a gzip-compressed tar with a manifest and `SHA256SUMS`; the same
-  backup gives the same archive. `dev install` sends it to the maintenance stage 1 after the keys
+  backup gives the same archive. `dev install` makes it before it builds or writes anything, so a backup it
+  cannot be read from (a PICO OS build whose controller libraries are not known) leaves the headset as it was,
+  and sends it to the maintenance stage 1 after the keys
   (`pico4-install stock`), which checks the archive's size and hash and every file, and replaces the old copy
   only when the new one is complete; a headset that holds the same manifest is skipped (`stock-hash`).
   `python -m overpressure stock-files OUTPUT` writes the archive alone (`--assets DIR` from assets folders).

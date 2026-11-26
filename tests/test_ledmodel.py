@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import struct
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from devices.phoenix.tooling import ledmodel
 
@@ -30,22 +32,31 @@ def outward(scale: float = 1.0) -> list[list[float]]:
     return [[scale * math.cos(i * math.pi / 10), scale * math.sin(i * math.pi / 10), 0.0] for i in range(ledmodel.LEDS)]
 
 
+#: The real builds' layouts; each synthetic library places its data at one of them.
+BUILDS = list(ledmodel.LAYOUTS.values())
+
+
 def library(
     points: dict[str, list[list[float]]] | None = None,
     *,
     mapped: bool = True,
     normals: list[list[float]] | None = None,
+    where: ledmodel.Layout = BUILDS[0],
+    known: bool = True,
 ) -> bytes:
-    """Build a minimal ELF64 with one PT_LOAD segment holding the rings and normals at the expected addresses."""
+    """Build a minimal ELF64 with one PT_LOAD segment holding the rings and normals at @p where's addresses.
+
+    With @p known it is registered as a build of that layout (by its SHA-256, in the test's copy of LAYOUTS).
+    """
     points = points or {"left": ring("left"), "right": ring("right")}
     normals = normals or outward()
     data_offset, size = 0x1000, 0x10000
     data = bytearray(size)
-    for side, address in ledmodel.MODEL_ADDRESSES.items():
+    for side, address in where.models.items():
         flat = [v for p in points[side] for v in p]
         struct.pack_into(f"<{len(flat)}f", data, address - BASE, *flat)
     flat = [v for n in normals for v in n]
-    struct.pack_into(f"<{len(flat)}d", data, ledmodel.RIGHT_NORMALS_ADDRESS - BASE, *flat)
+    struct.pack_into(f"<{len(flat)}d", data, where.right_normals - BASE, *flat)
     header = bytearray(64)
     header[:6] = b"\x7fELF\x02\x01"
     struct.pack_into("<Q", header, 0x20, 64)  # program headers right after the header
@@ -55,19 +66,36 @@ def library(
     image = bytearray(data_offset) + data
     image[:64] = header
     image[64 : 64 + len(phdr)] = phdr
+    if known:
+        ledmodel.LAYOUTS[hashlib.sha256(image).hexdigest()] = where
     return bytes(image)
 
 
 class LedModelTests(unittest.TestCase):
-    def test_reads_both_rings_by_virtual_address(self):
-        result = ledmodel.models(library())
-        for side in ("left", "right"):
-            for got, want in zip(result[side], ring(side)):
-                for g, w in zip(got, want):
-                    self.assertAlmostEqual(g, w, places=6)
+    def setUp(self):
+        layouts = patch.dict(ledmodel.LAYOUTS)  # the synthetic libraries' entries go when the test ends
+        layouts.start()
+        self.addCleanup(layouts.stop)
+
+    def test_reads_both_rings_where_each_build_keeps_them(self):
+        for where in BUILDS:
+            with self.subTest(where.builds):
+                result = ledmodel.models(library(where=where))
+                for side in ("left", "right"):
+                    for got, want in zip(result[side], ring(side)):
+                        for g, w in zip(got, want):
+                            self.assertAlmostEqual(g, w, places=6)
+
+    def test_refuses_a_build_whose_addresses_are_not_known(self):
+        # Another build's addresses hold other data: 5.13.3's library read at 5.13.7's gave no ring at all.
+        unknown = library(known=False)
+        with self.assertRaisesRegex(ledmodel.LedModelError, "not one whose LED models are known .*5.13.3"):
+            ledmodel.models(unknown)
+        with self.assertRaises(ledmodel.LedModelError):
+            ledmodel.normals(unknown, ledmodel.models(unknown, BUILDS[0]))
 
     def test_reads_the_normals_and_mirrors_them_for_the_left_hand(self):
-        lib = library()
+        lib = library(where=BUILDS[-1])
         result = ledmodel.models(lib)
         normal = ledmodel.normals(lib, result)
         for got, want in zip(normal["right"], outward()):

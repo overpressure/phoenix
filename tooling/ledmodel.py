@@ -9,22 +9,24 @@ float64; the left normals are the right ones with y negated), which decides from
 LED can be seen. The assets command (tooling/assets.py) reads both from the
 stock firmware; the values are vendor data and stay out of the repository.
 
+Each build of the library keeps them at its own addresses: LAYOUTS knows them by the library's
+SHA-256. PICO OS 5.13.7 and 5.13.8 ship the same library; 5.13.3's holds the same values elsewhere,
+loaded by its code the same way.
+
     python -m devices.phoenix.tooling.ledmodel LIBRARY OUTPUT.json
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import struct
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 LEDS = 20
-#: Virtual addresses of the left and right models in the PICO OS 5.13.7 library.
-MODEL_ADDRESSES = {"left": 0xB47FF0, "right": 0xB480E0}
-#: The right LEDs' unit normals (60 float64) in the same library; the left are mirrored in y.
-RIGHT_NORMALS_ADDRESS = 0xB4CC20
 #: Plausibility: every LED within this distance of the model's origin (metres).
 MIN_RADIUS_M, MAX_RADIUS_M = 0.005, 0.15
 #: The left ring is the right one mirrored in y, point by point, within this (metres).
@@ -43,6 +45,37 @@ class LedModelError(ValueError):
     """The library holds no plausible LED model."""
 
 
+@dataclass(frozen=True)
+class Layout:
+    """Where one build of the library keeps the models: their virtual addresses and the right normals'."""
+
+    builds: str
+    models: dict[str, int]
+    right_normals: int
+
+
+#: The known builds of the library, by its SHA-256.
+LAYOUTS = {
+    "749b655313ac161ec0f8a7b081ec33bef8f3d5d04c271e9f11b066c87d30bf60": Layout(
+        "PICO OS 5.13.7 and 5.13.8", {"left": 0xB47FF0, "right": 0xB480E0}, 0xB4CC20
+    ),
+    "10d9cd91acfac85630948289db99c7092169838853951ef2ee3ed4803d545791": Layout(
+        "PICO OS 5.13.3", {"left": 0xB46340, "right": 0xB46430}, 0xB4AE90
+    ),
+}
+
+
+def layout(elf: bytes) -> Layout:
+    """Return the layout of this build of the library; refuse a build whose addresses are not known."""
+    digest = hashlib.sha256(elf).hexdigest()
+    try:
+        return LAYOUTS[digest]
+    except KeyError:
+        known = ", ".join(layout.builds for layout in LAYOUTS.values())
+        msg = f"this build of the library (SHA-256 {digest[:12]}) is not one whose LED models are known ({known})"
+        raise LedModelError(msg) from None
+
+
 def read_virtual(elf: bytes, address: int, size: int) -> bytes:
     """Bytes at a virtual address of a 64-bit little-endian ELF, from its file-backed PT_LOAD segments."""
     if elf[:4] != b"\x7fELF" or elf[4] != ELFCLASS64 or elf[5] != ELFDATA2LSB:
@@ -59,19 +92,23 @@ def read_virtual(elf: bytes, address: int, size: int) -> bytes:
     raise LedModelError(msg)
 
 
-def models(elf: bytes) -> dict[str, list[list[float]]]:
-    """Both nominal models, validated."""
+def models(elf: bytes, where: Layout | None = None) -> dict[str, list[list[float]]]:
+    """Both nominal models, validated, at @p where (by default this build's layout)."""
+    where = where or layout(elf)
     result = {}
-    for side, address in MODEL_ADDRESSES.items():
+    for side, address in where.models.items():
         values = struct.unpack(f"<{3 * LEDS}f", read_virtual(elf, address, 3 * LEDS * 4))
         result[side] = [list(values[3 * i : 3 * i + 3]) for i in range(LEDS)]
     validate(result)
     return result
 
 
-def normals(elf: bytes, result: dict[str, list[list[float]]]) -> dict[str, list[list[float]]]:
-    """Both sides' LED normals, checked against the models of `result`."""
-    values = struct.unpack(f"<{3 * LEDS}d", read_virtual(elf, RIGHT_NORMALS_ADDRESS, 3 * LEDS * 8))
+def normals(
+    elf: bytes, result: dict[str, list[list[float]]], where: Layout | None = None
+) -> dict[str, list[list[float]]]:
+    """Both sides' LED normals, checked against the models of `result`, at @p where (by default this build's)."""
+    where = where or layout(elf)
+    values = struct.unpack(f"<{3 * LEDS}d", read_virtual(elf, where.right_normals, 3 * LEDS * 8))
     right = [list(values[3 * i : 3 * i + 3]) for i in range(LEDS)]
     out = {"right": right, "left": [[x, -y, z] for x, y, z in right]}
     for side in ("left", "right"):

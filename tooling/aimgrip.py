@@ -11,13 +11,16 @@ falls back to 14 built-in doubles. They are two blocks, left then right, of a po
 (x, y, z, metres) followed by a unit quaternion (w, x, y, z), in the aim frame. No configuration
 file of the system image sets the key, so the built-in values apply.
 The assets command (tooling/assets.py) reads them from the stock firmware; they are vendor data
-and stay out of the repository.
+and stay out of the repository. The addresses above are 5.13.7's; each build of the library keeps the
+built-in doubles at its own address, which DEFAULTS knows by the library's SHA-256 (PICO OS 5.13.7 and
+5.13.8 ship the same library; 5.13.3's holds the same values elsewhere, read by its code the same way).
 
     python -m devices.phoenix.tooling.aimgrip LIBRARY OUTPUT.json
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import struct
@@ -26,8 +29,11 @@ from pathlib import Path
 
 from .ledmodel import LedModelError, read_virtual
 
-#: Virtual address of the built-in 14 doubles in the PICO OS 5.13.7 libpvrtrackingservice.so.
-DEFAULTS_ADDRESS = 0x75560
+#: The virtual address of the built-in 14 doubles in each known build of libpvrtrackingservice.so, by its SHA-256.
+DEFAULTS = {
+    "88b34f8425bfac498c52daca4eb95ac872dd3fd0d62437399c240836b92d098e": ("PICO OS 5.13.7 and 5.13.8", 0x75560),
+    "d8048902ef09352fe24c8b849d4a5c86b89e6044813fc86a93e6dd8a7e3e7975": ("PICO OS 5.13.3", 0x75130),
+}
 HANDS = ("left", "right")
 #: Plausibility: the grip point lies within this distance of the aim point (metres).
 MAX_OFFSET_M = 0.2
@@ -43,10 +49,21 @@ class AimGripError(ValueError):
     """The library holds no plausible aim-to-grip transform."""
 
 
-def transforms(elf: bytes) -> dict[str, dict[str, list[float]]]:
-    """Both hands' transforms, validated."""
+def defaults_address(elf: bytes) -> int:
+    """Return where this build of the library keeps the built-in doubles; refuse a build that is not known."""
+    digest = hashlib.sha256(elf).hexdigest()
     try:
-        raw = read_virtual(elf, DEFAULTS_ADDRESS, 14 * 8)
+        return DEFAULTS[digest][1]
+    except KeyError:
+        known = ", ".join(builds for builds, _address in DEFAULTS.values())
+        msg = f"this build of the library (SHA-256 {digest[:12]}) is not one whose transforms are known ({known})"
+        raise AimGripError(msg) from None
+
+
+def transforms(elf: bytes, address: int | None = None) -> dict[str, dict[str, list[float]]]:
+    """Both hands' transforms, validated, from @p address (by default this build's)."""
+    try:
+        raw = read_virtual(elf, defaults_address(elf) if address is None else address, 14 * 8)
     except LedModelError as exc:
         raise AimGripError(str(exc)) from exc
     values = struct.unpack("<14d", raw)

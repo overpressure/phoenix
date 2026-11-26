@@ -499,15 +499,27 @@ class Dev(Headset):
             msg = "the headset did not confirm the keys"
             raise RuntimeError(msg)
 
-    def write_stock(self) -> None:
+    def prepare_stock(self) -> str:
+        """Make the archive of PICO OS's files from the headset's own backup; return its manifest's SHA-256.
+
+        The install makes it before anything is written: a backup whose files cannot be read (a PICO OS
+        build whose libraries are not known) stops the install while the headset is still as it was.
+        """
+        archive = self.work / "stock-files.tar.gz"
+        return stockfiles.manifest_sha256(
+            stockfiles.from_backup(self.s.path("backup"), archive, log=lambda _line: None)
+        )
+
+    def write_stock(self, want: str | None = None) -> None:
         """Write PICO OS's files to the data partition (pico4-install stock) unless it holds them already.
 
-        They come from the headset's own backup (stockfiles.from_backup): the system image holds
-        none of them, and super's copy of PICO OS is gone once the system image is written.
+        They come from the headset's own backup (prepare_stock, or @p want: the archive that made already):
+        the system image holds none of them, and super's copy of PICO OS is gone once the system image is
+        written.
         """
         backup = self.s.path("backup")
         archive = self.work / "stock-files.tar.gz"
-        want = stockfiles.manifest_sha256(stockfiles.from_backup(backup, archive, log=lambda _line: None))
+        want = want or self.prepare_stock()
         size = qualcomm.partition_size(backup, "userdata")
         if self.ssh(f"pico4-install stock-hash --size {size}", 60).split()[-1:] == [want]:
             print("userdata holds PICO OS's files already", flush=True)
@@ -993,6 +1005,8 @@ class Dev(Headset):
             msg = f"{packages} is no checkout of overpressure/packages"
             raise ValueError(msg)
         boot = boot or self.work.parent / "kernel/valve-boot.img"
+        # PICO OS's files first, before a build or a write: a backup they cannot be read from changes nothing.
+        stock = self.prepare_stock()
         built = self.install_inputs(system, boot, on_headset=on_headset, format_data=format_data, packages=packages)
         # A repeat after an install that got as far as starting the system: back into stage 1 first.
         if self.in_fastboot():
@@ -1037,7 +1051,7 @@ class Dev(Headset):
         progress.say("adding this computer's key", INSTALL_WRITES + 0.03)
         self.write_keys()
         progress.say("PICO OS's files from the backup", INSTALL_WRITES + 0.04)
-        self.write_stock()
+        self.write_stock(stock)
         progress.say("starting the installed system", INSTALL_WRITES + 0.05)
         self.normal()
         progress.say("removing the build's files", INSTALL_WRITES + 0.08)
