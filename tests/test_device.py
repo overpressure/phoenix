@@ -543,5 +543,143 @@ class WorkflowTests(unittest.TestCase):
         self.assertGreaterEqual(clock.now, device.BACK_IN_FASTBOOT_SECONDS)
 
 
+SECTOR = 4096
+SECTORS = 64  # the fake headset's one LUN
+
+
+class RestoreAllTests(unittest.TestCase):
+    """device restore-all: a one-LUN backup written back through a fake edl-ng that holds the LUN's bytes."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        self.identity = self.root / "device.json"
+        record = {
+            "schema": 1,
+            "serial": "ABC",
+            "chip_id": 1234567,
+            "fingerprint": "Pico/Phoenix_ovs/PICOA8110:10/5.13.7/build:user/dev-keys",
+            "oem_state": "true",
+        }
+        self.identity.write_text(json.dumps(record))
+        self.backup = self.root / "backup"
+        folder = self.backup / "lun0"
+        folder.mkdir(parents=True)
+        rows = [
+            ("PrimaryGPT", "gpt_main0.bin", "0", 6),
+            ("BackupGPT", "gpt_backup0.bin", "NUM_DISK_SECTORS-5.", 5),
+            ("abl", "abl.bin", "6", 4),
+            ("userdata", "userdata.bin", "10", 40),
+        ]
+        programs = "".join(
+            f'<program filename="{name}" label="{label}" start_sector="{start}" num_partition_sectors="{n}" '
+            f'SECTOR_SIZE_IN_BYTES="{SECTOR}" physical_partition_number="0" />'
+            for label, name, start, n in rows
+        )
+        (folder / "rawprogram0.xml").write_text(f"<data>{programs}</data>")
+        header = b"EFI PART" + bytes(24) + (SECTORS - 1).to_bytes(8, "little")
+        files = {
+            "gpt_main0.bin": bytes(SECTOR) + header.ljust(SECTOR, b"\0") + bytes(4 * SECTOR),
+            "gpt_backup0.bin": b"B" * 5 * SECTOR,
+            "abl.bin": b"A" * 4 * SECTOR,
+        }  # userdata is never kept: it gets zeros
+        for name, data in files.items():
+            (folder / name).write_bytes(data)
+        manifest = {
+            "schema": 1,
+            "identity": record,
+            "luns": [0],
+            "files": {f"lun0/{name}": device.digest(folder / name) for name in files},
+        }
+        (self.backup / "manifest.json").write_text(json.dumps(manifest))
+        self.loader = self.root / "loader.elf"
+        self.loader.write_bytes(b"test loader")
+        self.disk = bytearray(b"\xff" * SECTORS * SECTOR)
+        self.storage = f'"total_blocks": {SECTORS}\nUFS Current LUN Number: = 0x0'
+        self.serial = "Serial Number: EDL1"
+        self.commands: list[list[str]] = []
+
+    def edl(self, argv: list[str], _timeout: float = 60) -> str:
+        self.commands.append(argv)
+        if "printgpt" in argv:
+            return f"{self.serial}\n{self.storage}"
+        at = argv.index("write-sector") if "write-sector" in argv else argv.index("read-sector")
+        start = int(argv[at + 1]) * SECTOR
+        if argv[at] == "write-sector":
+            data = Path(argv[at + 2]).read_bytes()
+            self.disk[start : start + len(data)] = data
+        else:
+            Path(argv[at + 3]).write_bytes(bytes(self.disk[start : start + int(argv[at + 2]) * SECTOR]))
+        return "OK"
+
+    def call(self, *extra: str) -> tuple[int, str]:
+        args = [
+            "restore-all",
+            *("--identity", str(self.identity), "--backup", str(self.backup), "--loader", str(self.loader)),
+            *("--edl-backend", "edl-ng", "--edl", "edl-ng", "--work", str(self.root / "work")),
+            *extra,
+        ]
+        out = io.StringIO()
+        with (
+            patch.object(device, "run", side_effect=self.edl),
+            contextlib.redirect_stdout(out),
+            contextlib.redirect_stderr(out),
+        ):
+            code = device.main(args)
+        return code, out.getvalue()
+
+    def execute(self, *extra: str) -> tuple[int, str]:
+        return self.call("--execute", "--confirm-device", "ABC", "--edl-serial", "EDL1", *extra)
+
+    def test_the_preview_lists_every_write_and_contacts_nothing(self):
+        code, out = self.call()
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.commands, [])
+        self.assertEqual(out.count("write-sector"), 4)
+        self.assertIn(f"write-sector {SECTORS - 5} ", out)  # the backup GPT at the LUN's end
+        self.assertIn("4 writes", out)
+
+    def test_every_partition_goes_back_and_userdata_gets_zeros_at_its_start(self):
+        code, out = self.execute()
+        self.assertEqual(code, 0, out)
+        disk = bytes(self.disk)
+        self.assertEqual(disk[6 * SECTOR : 10 * SECTOR], b"A" * 4 * SECTOR)
+        self.assertEqual(disk[(SECTORS - 5) * SECTOR :], b"B" * 5 * SECTOR)
+        self.assertEqual(disk[10 * SECTOR : 50 * SECTOR], bytes(40 * SECTOR))
+        self.assertEqual(disk[50 * SECTOR : (SECTORS - 5) * SECTOR], b"\xff" * 9 * SECTOR)  # outside any write
+        words = [next(w for w in c if w in ("printgpt", "write-sector", "read-sector")) for c in self.commands]
+        self.assertEqual(words, ["printgpt", *["write-sector", "read-sector"] * 4])  # each write read back
+
+    def test_nothing_is_written_to_another_headset_a_stale_session_or_other_luns(self):
+        for serial, storage, message in (
+            ("Serial Number: EDL2", self.storage, "not the configured headset"),
+            ("Detected device mode: Firehose", self.storage, "earlier session"),
+            (self.serial, f'"total_blocks": {SECTORS * 2}\nUFS Current LUN Number: = 0x0', "128 sectors"),
+            (self.serial, '"total_blocks": 8\nUFS Current LUN Number: = 0x1', "LUNs"),
+        ):
+            self.serial, self.storage, self.commands = serial, storage, []
+            code, out = self.execute()
+            self.assertEqual(code, 1, message)
+            self.assertIn(message, out)
+            self.assertEqual([c for c in self.commands if "write-sector" in c], [])
+
+    def test_execution_needs_the_serial_edl_ng_and_a_work_folder_outside_the_backup(self):
+        for extra, message in (
+            (("--execute", "--confirm-device", "ABC"), "--edl-serial"),
+            (("--execute", "--confirm-device", "XYZ", "--edl-serial", "EDL1"), "--confirm-device"),
+        ):
+            code, out = self.call(*extra)
+            self.assertEqual(code, 1, message)
+            self.assertIn(message, out)
+        code, out = self.execute("--work", str(self.backup / "work"))
+        self.assertEqual(code, 1)
+        self.assertIn("outside the backup", out)
+        code, out = self.execute("--edl-backend", "bkerler")
+        self.assertEqual(code, 1)
+        self.assertIn("edl-ng", out)
+        self.assertEqual(self.commands, [])
+
+
 if __name__ == "__main__":
     unittest.main()

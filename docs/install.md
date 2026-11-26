@@ -377,7 +377,7 @@ the others' recorded progress (the install starts afresh after a restore).
 | Upgrade | Install the upgrade | an action ask (switched on, on the cable); `dev flash` (this version's maintenance stage 1 into `recovery`, whose tools the build and the write need), `dev connect`, `dev install --on-headset` (stage 1 builds on the data partition, from the PC's downloads; data kept, the build folder removed at the end), `dev installed`; its page offers *Check the headset* too | installed system, fastboot, maintenance stage 1 |
 | Check | Check the headset | an action ask: the headset on a stable table, its front cameras facing the room, the controllers on beside it if wanted, untouched until the last check; `dev installed`; `dev check --installer --part system`, `--part imu` and `--part session`, each its own task (controllers SteamVR does not see, missed performance limits, and a headset that moved during each of three IMU measurements 10 s apart are a warning in the window, not a failure; everything else counts as in `dev check`); then "Checked" | installed system, on the cable |
 | Restore | Check the backup | `tools`; `device verify-backup` of `PICO4_BACKUP`, which must be the headset `PICO4_IDENTITY` describes, and of the build PICO OS runs when it answers (another build's backup would put its system next to this build's firmware) | not needed |
-| Restore | Restore PICO OS | one consent (it erases the system and its data); an action ask; a headset that answers `adb devices` with its serial runs PICO OS already and is left alone, any other is taken into the maintenance stage 1 by the installer itself (`dev recovery`'s steps), then one task per part, `dev restore --installed --only system`, `data` and `recovery` ([back to stock](#back-to-stock)): a retry goes on from the part that failed | maintenance stage 1, fastboot |
+| Restore | Restore PICO OS | one consent (it erases the system and its data); an action ask; a headset that answers `adb devices` with its serial runs PICO OS already and is left alone, any other is taken into the maintenance stage 1 by the installer itself (`dev recovery`'s steps), then one task per part, `dev restore --installed --only system`, `data` and `recovery` ([back to stock](#back-to-stock)): a retry goes on from the part that failed. A headset found in EDL mode gets *Your backup over EDL* instead, `cycle --restore-all` ([below](#the-whole-backup-over-edl)), which also writes its stock bootloader | maintenance stage 1, fastboot, EDL |
 | Restore | Set PICO OS up | an action ask: PICO OS's first-time setup worn and on the cable (its first start may update the lens and fan MCU), developer mode and USB debugging; exactly one `adb devices` entry, written to `PICO4_ADB_SERIAL`; then the wait for PICO OS's MCU check ([cooling.md](cooling.md#an-mcu-that-answers-f1)) | PICO OS |
 | Restore | Stock bootloader | `cycle --restore-only`: stock boot verified, stock ABL written back; then "Back on PICO OS". The bootloader stays unlocked | PICO OS |
 
@@ -388,6 +388,11 @@ A headset that comes back to fastboot within two minutes instead of starting PIC
 its stock bootloader first: *Stock bootloader first* asks the owner into EDL by hand (powered off, both volume
 buttons while plugging in USB) and runs `cycle --restore-only` from there, which checks the headset and its boot
 partition against the backup, writes the stock ABL and waits for PICO OS. The last stage then has nothing left to write.
+
+**A headset in EDL mode.** Any other headset that is the one EDL device when the restore looks for it (after an
+EDL accident no bootloader starts it any more) gets its whole backup written back over EDL instead of the other
+writes: *Your backup over EDL* runs `cycle --restore-all` ([below](#the-whole-backup-over-edl)), the boot chain and
+the stock bootloader with it. PICO OS's setup follows, and the last stage has nothing left to write.
 
 ### A headset that does not show up
 
@@ -520,7 +525,30 @@ it. This follows from the order and the boot rules; it was not tried with a pull
 | `super` or `boot` is written | every boot starts the maintenance stage 1 (`misc` keeps the request) | `dev restore` again: it writes everything again |
 | `userdata` and `metadata` are wiped, or `misc` is cleared | the maintenance stage 1, or, once `misc` is clear, PICO OS on stock `super` and `boot`, making its data anew | `dev restore` again from the maintenance stage 1; from PICO OS: `adb reboot bootloader`, then `dev restore-partition recovery` |
 | stock `recovery` is written through fastboot | every boot ends in fastboot: the ABL checks recovery's chain on every boot | `dev restore-partition recovery` |
-| any of these, and nothing answers | — | EDL, which the chip's ROM always answers ([device-preparation.md](device-preparation.md#entering-and-leaving-edl)), and the backup written back from there |
+| any of these, and nothing answers | — | EDL by hand, which the chip's ROM always answers ([device-preparation.md](device-preparation.md#entering-and-leaving-edl)), then `cycle --restore-all` ([below](#the-whole-backup-over-edl)), or *Restore to stock*, which finds the headset there |
+
+### The whole backup over EDL
+
+`python -m overpressure cycle --restore-all` writes every partition of the backup back over EDL, LUN by LUN in the
+backup's order (LUN 0 last), the boot chain (`xbl`, `abl`, ...) and both GPTs too; for a headset that is the one EDL
+device and that no bootloader starts any more. It runs `device restore-all --execute --confirm-device
+PICO4_ADB_SERIAL --edl-serial PICO4_EDL_SERIAL` as the first session after EDL was entered by hand, then resets the
+headset into PICO OS's first setup. Only that session's handshake names the serial: once a loader runs, later sessions
+name none, and the loader leaves a restart into a fresh EDL session undone after a session that read the partition
+tables. A headset whose loader runs already is refused; it goes off (power key held 10 s) and into EDL by hand again.
+`device restore-all` without `--execute` lists its writes and writes nothing. Before its first write it checks:
+
+- the backup against its manifest, and that it is the headset `PICO4_IDENTITY` describes;
+- the EDL serial against `PICO4_EDL_SERIAL`, in its first session's handshake;
+- each LUN's own size (the loader's storage information) against the backup's GPT, which a broken partition
+  table on the headset does not change, and the LUNs' number.
+
+`userdata` and `metadata` get zeros over their first 64 MiB (PICO OS makes new file systems and keys); `cache` and the
+crash dumps, which a backup never holds, stay as they are. Each write is read back and compared: a difference stops
+there, with the partitions before it written and the headset in EDL mode, and the same command goes on afresh. The
+bootable LUN stays LU A (`bBootLunEn` 1, `xbl` on LUN 1): partition writes do not change it
+([device-preparation.md](device-preparation.md#the-bootable-lun)). About 9.8 GiB go over USB. After the final reset
+the headset on the cable may start in PICO OS's charger mode; holding the power key starts PICO OS and its setup.
 
 ## Verified results
 
@@ -547,13 +575,15 @@ it. This follows from the order and the boot rules; it was not tried with a pull
 | Boot indication | Monado and SteamVR's compositor take the display from `pico4-splash.service` (it exits within 0.5 s) |
 | Power-off | stays off without the cable until USB power comes; with the cable attached it starts again with `androidboot.mode=charger` |
 | Installer | host tests with fakes: the stages, done checks, serials written to `.env`, refusals before any write, the Wi-Fi password on stdin only. On the headset, on Windows, from PICO OS: the headset's half in about 11 minutes, from finding it through the panel check over adb, the engineering ABL, the unlock (also of a headset unlocked before) and the maintenance stage 1 without a factory reset, to the install and `dev check` (backup, identity and builds there already, no Wi-Fi given) |
+| The whole backup over EDL | `cycle --restore-all` on Windows, from EDL entered by hand on a headset with the installed system: 102 writes (9.83 GiB) each read back identical in 9 min 30 s, 10 min 17 s with the backup's check; the reset ended in PICO OS's charger mode on the cable, and the power key started PICO OS on its stock bootloader into its first setup |
 | Restore to stock in the window | on the headset, on Windows: from the installed system through all four stages to PICO OS with its stock bootloader; the install's recorded progress and `out/dev/installed.json` gone afterwards |
 | The backup as one file | a 12.5 GiB backup: exported with the readback in 57 s, imported elsewhere and verified in 81 s, with the SSH key and the serials. Without its zero runs: 6.9 GiB on this computer after `backup compact` (verified against its manifest), and a 6.86 GiB export in 39 s with its readback |
 
 ## Open work
 
-1. **The way back.** Not run on the headset: a restore interrupted part way ([above](#an-interrupted-restore))
-   and a restore from an imported backup on another computer.
+1. **The way back.** Not run on the headset: a restore interrupted part way ([above](#an-interrupted-restore)),
+   a restore from an imported backup on another computer, and the whole backup over EDL from the window or on
+   Linux and macOS.
 2. **Integrity.** The system image is checked when written, not at boot (no dm-verity).
 3. **The direct boot.** Still to run: a boot without the PC, and `dev check` with both controllers connected.
 4. **The installer.** The Wi-Fi keyfile on the installed system (WPA2; a WPA3-only network may need

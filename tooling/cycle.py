@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Unlicense
 """Unattended acceptance cycle that ends on stock boot and stock ABL (docs/hardware-testing.md).
 
-  python -m overpressure cycle [--skip-stage] [--keep-abl | --restore-only]
+  python -m overpressure cycle [--skip-stage] [--keep-abl | --restore-only | --restore-all]
 
 1. Engineering ABL: ADB to EDL, write and read back (python -m overpressure device stage), EDL
    reset, PICO OS. --skip-stage when it is already staged (after the dev loop). The cycle needs a
@@ -13,7 +13,9 @@
    (python -m overpressure device restore-abl, read back). --keep-abl stops before this.
 4. EDL reset; PICO OS must finish booting.
 
---restore-only does steps 3 and 4 (after "python -m overpressure dev restore"). The cycle stops
+--restore-only does steps 3 and 4 (after "python -m overpressure dev restore"). --restore-all writes the whole
+backup back over EDL instead (device restore-all) for a headset in EDL mode that no bootloader starts, then
+resets it into PICO OS's first setup. The cycle stops
 at the first failure and says where the headset is. Evidence goes to out/cycle-<time>/.
 Settings come from .env (devices/phoenix/tooling/localconfig.py).
 """
@@ -167,19 +169,25 @@ class Headset:
             print(
                 "   the EDL device runs an earlier session's loader: restarting it into a fresh EDL session", flush=True
             )
-            self.run(
-                qualcomm.fresh_edl_argv(self.s.edl_program(), self.s.path("loader")),
-                60,
-                log=self.folder / "edl-fresh.log",
-            )
-            self.drain()
-            qualcomm.wait_fresh_edl(self.edl_count, self.clock)
-            usbaccess.require(qualcomm.EDL_MODE, USB_MODES, self.clock)
+            self.fresh_edl("edl-fresh")
             output = self.edl("printgpt", log="edl-identify-fresh", timeout=120)
         self.check_edl_serial(output)
 
+    def fresh_edl(self, log: str) -> None:
+        """Restart the EDL device into a fresh EDL session (no storage written): its next session names its serial."""
+        self.run(
+            qualcomm.fresh_edl_argv(self.s.edl_program(), self.s.path("loader")), 60, log=self.folder / f"{log}.log"
+        )
+        self.drain()
+        qualcomm.wait_fresh_edl(self.edl_count, self.clock)
+        usbaccess.require(qualcomm.EDL_MODE, USB_MODES, self.clock)
+
     def device_args(self) -> list[str | Path]:
         """Return the device command's arguments for the ABL with this headset's backup and loader."""
+        return [*self.backup_args(), "--partition", "abl"]
+
+    def backup_args(self) -> list[str | Path]:
+        """Return the device command's arguments for this headset's backup, loader and edl-ng."""
         return [
             "--identity",
             self.s.path("identity"),
@@ -191,8 +199,6 @@ class Headset:
             "edl-ng",
             "--edl",
             self.s.edl_program(),
-            "--partition",
-            "abl",
         ]
 
     def identity_chip(self) -> int | None:
@@ -507,6 +513,49 @@ class Cycle(Headset):
         )
         print(f"   final PICO OS: {self.reset_to_pico_os('reset-final')}", flush=True)
 
+    def restore_all(self) -> None:
+        """Write the whole backup back over EDL (device restore-all), then reset the headset into PICO OS's first setup.
+
+        For a headset no bootloader starts any more, in EDL mode entered by hand. The device command opens the
+        first session after that, whose handshake names the serial, and checks it before anything is written:
+        once a loader runs, later sessions name none, and the PICO 4's loader leaves a restart into a fresh
+        EDL session undone after a session that read its partition tables. PICO OS starts with fresh data, so
+        its setup comes before adb answers again, and the cycle does not wait for it.
+        """
+        self.s.require("adb_serial", "edl_serial")
+        print(">> the whole backup written back over EDL", flush=True)
+        if self.edl_count() != 1:
+            msg = (
+                "the headset is not the one device in EDL mode: hold both volume buttons while plugging USB into "
+                "the powered-off headset; nothing was written"
+            )
+            raise RuntimeError(msg)
+        usbaccess.require(qualcomm.EDL_MODE, USB_MODES, self.clock)
+        self.run(
+            [
+                sys.executable,
+                "-m",
+                "overpressure",
+                "--device",
+                "phoenix",
+                "device",
+                "restore-all",
+                *self.backup_args(),
+                "--edl-serial",
+                self.s.edl_serial,
+                "--work",
+                self.folder / "restore-all",
+                "--execute",
+                "--confirm-device",
+                self.s.adb_serial,
+            ],
+            4 * 3600,
+            log=self.folder / "restore-all.log",
+        )
+        self.edl("reset", "--mode", "Reset", log="reset-final")
+        self.drain()  # Linux: the loader resets only once its last message is read
+        print("   written back and read back; PICO OS starts its first setup", flush=True)
+
 
 def main(argv: list[str] | None = None) -> int:
     """Run the acceptance cycle; it stops at the first failure and says where the headset is."""
@@ -517,6 +566,9 @@ def main(argv: list[str] | None = None) -> int:
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--keep-abl", action="store_true", help="stop before restoring the stock ABL")
     mode.add_argument("--restore-only", action="store_true", help="only verify stock boot and restore stock ABL")
+    mode.add_argument(
+        "--restore-all", action="store_true", help="the whole backup written back over EDL, the headset in EDL mode"
+    )
     args = ap.parse_args(argv)
     settings = localconfig.load()
     folder = ROOT / "out" / ("cycle-" + dt.datetime.now(dt.timezone.utc).astimezone().strftime("%Y%m%d-%H%M%S"))
@@ -524,6 +576,10 @@ def main(argv: list[str] | None = None) -> int:
     cycle = Cycle(settings, folder)
     code = 0
     try:
+        if args.restore_all:
+            cycle.restore_all()
+            print(f"PASSED: evidence in {folder}", flush=True)
+            return 0
         if not args.restore_only:
             # Only the flash-run uses fastboot: the restore goes through PICO OS and EDL (restore_abl), and an
             # install that stopped before its unlock never learnt the fastboot serial.

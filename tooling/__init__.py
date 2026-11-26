@@ -130,7 +130,7 @@ class Phoenix(Headset):
             "device": Command(
                 "device",
                 "identity, EDL backups, engineering ABL, unlock and restore",
-                headset=("probe", "check-unlocked", "backup", "stage", "unlock", "restore-abl"),
+                headset=("probe", "check-unlocked", "backup", "stage", "unlock", "restore-abl", "restore-all"),
             ),
             "hwtest": Command("hardware_test", "preflight and the bounded acceptance runner", headset=True),
             "dev": Command(
@@ -359,6 +359,15 @@ class Phoenix(Headset):
                 "Headset",
                 ("cycle", "--restore-only"),
                 'After "Back to stock: boot": verified stock boot and ABL, PICO OS.',
+                writes=True,
+            ),
+            Step(
+                "restore-all",
+                "Back to stock: the whole backup over EDL",
+                "Headset",
+                ("cycle", "--restore-all"),
+                "For a headset in EDL mode that no bootloader starts: every partition of its backup written back and "
+                "read back, then PICO OS's first setup.",
                 writes=True,
             ),
         )

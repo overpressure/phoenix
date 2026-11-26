@@ -152,6 +152,15 @@ PICO_OS_RAN = "pico-os"
 PICO_OS_STUCK = "pico-os-stuck"
 #: What the stock bootloader's first write records once it is done: the restore's last stage needs no second one.
 BOOTLOADER_WRITTEN = "written"
+#: What it records when the headset is in EDL mode, where nothing else answers (no bootloader starts any more):
+#: the whole backup goes back over EDL instead of the restore's other writes, the stock bootloader with it.
+EDL_ONLY = "edl"
+#: What the restore says before it writes the whole backup over EDL.
+EDL_RESTORE = (
+    "Your headset is in EDL mode. Every partition of its backup goes back over EDL, its boot chain and stock "
+    "bootloader too, each one read back and compared; its data starts fresh. That takes about 15 minutes; keep the "
+    "cable in."
+)
 #: How long a headset started from fastboot has to leave it, then to come back if it cannot start PICO OS.
 LEAVE_FASTBOOT_SECONDS, BACK_IN_FASTBOOT_SECONDS = 30, 120
 #: How long the owner has to bring the headset into EDL mode by hand.
@@ -914,7 +923,9 @@ class Plan:
         """Start the maintenance system from wherever the headset is, for the restore's writes (dev recovery).
 
         A headset that runs PICO OS already has its stock system: the restore's writes are skipped
-        (PICO_OS_RAN). Any other is taken to carry the installed system, also where another
+        (PICO_OS_RAN). One whose install stopped before its maintenance system still has PICO OS's: only the
+        stock bootloader goes back. One in EDL mode otherwise, where no bootloader starts any more, gets the whole
+        backup over EDL (EDL_ONLY). Any other is taken to carry the installed system, also where another
         computer installed it.
         """
         ctx.ask(RESTORE_PLUG_IN)
@@ -929,6 +940,10 @@ class Plan:
             ctx.remember(PICO_OS_STUCK if stuck else PICO_OS_RAN)
             if stuck:
                 ctx.note(STUCK)
+            return
+        if self.edl_count() == 1:
+            ctx.note(EDL_RESTORE)
+            ctx.remember(EDL_ONLY)
             return
         ctx.remember("")
         AskingDev(ctx, self.work).recovery()
@@ -1020,7 +1035,7 @@ class Plan:
 
     def maintenance_done(self, ctx: Context) -> bool:
         """Tell whether the restore needs no maintenance system (done, or PICO OS's system is there) or one runs."""
-        if ctx.completed("recovery") or ctx.recall("maintenance") in (PICO_OS_RAN, PICO_OS_STUCK):
+        if ctx.completed("recovery") or ctx.recall("maintenance") in (PICO_OS_RAN, PICO_OS_STUCK, EDL_ONLY):
             return True
         return devloop.Dev(ctx.settings(Settings), self.work).maintenance_running()
 
@@ -1060,8 +1075,8 @@ class Plan:
 
     @staticmethod
     def restore_written(part: str) -> Callable[[Context], bool]:
-        """Return the done check of the restore's @p part: written in an earlier run, or not needed (PICO OS ran)."""
-        return lambda ctx: ctx.completed(part) or ctx.recall("maintenance") in (PICO_OS_RAN, PICO_OS_STUCK)
+        """Return the done check of the restore's @p part: written in an earlier run, or not needed (PICO OS, EDL)."""
+        return lambda ctx: ctx.completed(part) or ctx.recall("maintenance") in (PICO_OS_RAN, PICO_OS_STUCK, EDL_ONLY)
 
     def restore_stages(self) -> tuple[Stage, ...]:
         """Return the way back to stock: the backup checked, PICO OS's system, its setup, the stock bootloader."""
@@ -1098,6 +1113,14 @@ class Plan:
                         done=self.maintenance_done,
                         where="The headset is in its bootloader or its maintenance system, or the system still runs; "
                         "nothing was written. " + AGAIN,
+                    ),
+                    self.step_task(
+                        "restore-all",
+                        "Your backup over EDL",
+                        "about 15 min",
+                        done=lambda ctx: ctx.recall("maintenance") != EDL_ONLY or ctx.completed("restore-all"),
+                        where="The headset is in EDL mode, its partitions written back up to where it stopped; what "
+                        "was written is read back. " + written,
                     ),
                     Task(
                         "system",
@@ -1165,7 +1188,10 @@ class Plan:
                         "restore-abl",
                         "Stock bootloader",
                         "about 10 min",
-                        done=lambda ctx: ctx.recall("bootloader-first") == BOOTLOADER_WRITTEN,
+                        done=lambda ctx: (
+                            ctx.recall("bootloader-first") == BOOTLOADER_WRITTEN
+                            or ctx.recall("maintenance") == EDL_ONLY
+                        ),
                         where="PICO OS runs; its bootloader may still be the engineering one. " + written,
                     ),
                     Task("restored", "Back on PICO OS", lambda ctx: ctx.note(RESTORED), ""),

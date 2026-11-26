@@ -2,11 +2,11 @@
 
 **TL;DR.** `python -m overpressure device` ([tooling/device.py](../tooling/device.py)) makes an original PICO 4
 recoverable and unlocked, and returns it to stock: identity, a verified EDL backup, the engineering ABL, the
-unlock, and later the stock ABL. The installer (`python -m overpressure install`,
+unlock, and later the stock ABL, or, after an EDL accident, the whole backup. The installer (`python -m overpressure install`,
 [install.md](install.md#the-installer)) runs these steps itself; `dev stage-abl` and `cycle` run `stage` and `restore-abl` unattended
-([Development mode](#development-mode)). `backup`, `stage`, `unlock` and `restore-abl` only print their
-external commands unless `--execute` is given. Every command that touches the headset (`probe`,
-`check-unlocked`, `backup`, `stage`, `unlock`, `restore-abl`) first asks the disclaimer
+([Development mode](#development-mode)). `backup`, `stage`, `unlock`, `restore-abl` and `restore-all` only print
+their external commands unless `--execute` is given. Every command that touches the headset (`probe`,
+`check-unlocked`, `backup`, `stage`, `unlock`, `restore-abl`, `restore-all`) first asks the disclaimer
 (`--accept-disclaimer` for unattended runs).
 
 | Step | Command | Headset in |
@@ -17,6 +17,7 @@ external commands unless `--execute` is given. Every command that touches the he
 | 4. Unlock | `device unlock` | fastboot, engineering ABL |
 | 5. Factory reset (only for PICO OS), stage 1 | PICO OS recovery; `dev flash` ([stage1.md](stage1.md), [hardware-testing.md](hardware-testing.md)) | fastboot, then development mode |
 | 6. Stock ABL, when leaving development | `device restore-abl` | EDL |
+| 7. The whole backup, when no bootloader starts | `device restore-all` | EDL |
 
 All of it has run on the tested headset (original PICO 4, PICO OS 5.13.7). The implementation is independent,
 informed by [PicoUnlock's documented process](https://github.com/chaixshot/more-picohaxx-tool) and
@@ -309,6 +310,29 @@ the return to Android with the engineering ABL still installed; it neither resto
 normal PICO OS boot after restoring the ABL (`cycle` waits for it). The manual boot sequence in
 [stage1.md](stage1.md#writing-boot-by-hand) is a separate, persistent operation that needs a working recovery path.
 
+## 7. The whole backup
+
+A headset that no bootloader starts any more (an EDL accident: a broken boot chain or partition table) gets every
+partition of its verified backup back from EDL, which the chip's ROM always answers. `python -m overpressure cycle
+--restore-all` does it unattended from EDL entered by hand ([install.md](install.md#the-whole-backup-over-edl)), the
+installer's *Restore to stock* when it finds the headset in EDL:
+
+```sh
+python -m overpressure device restore-all --identity backup/device.json --backup backup/stock --loader assets/firehose.elf --edl-backend edl-ng
+```
+
+The preview lists each `write-sector` and writes nothing. `--execute --confirm-device ADB_SERIAL --edl-serial
+EDL_SERIAL` checks the backup, the serial in edl-ng's handshake and each LUN's size, then writes LUN by LUN, every
+write read back into `--work` (`out/restore-all`, never inside the backup); `userdata` and `metadata` get zeros at
+their start. A difference stops with the headset in EDL mode; it stays there afterwards too.
+
+### The bootable LUN
+
+The headset boots from UFS LU A: `bBootLunEn` is 1, LU A is LUN 1 (`xbl`, `xbl_config`), LU B LUN 2 (`xblbak`).
+Writing partitions inside the LUNs does not change it, so the whole backup needs no `setbootablestoragedrive`. The
+loader reports each LUN's own size (`getstorageinfo`'s `total_blocks`, 4096-byte sectors): LUN 0 30693376, LUNs 1
+and 2 2048 each, LUN 3 8192, LUN 4 524288, LUN 5 8192, as the backup's GPTs record them.
+
 ## Development mode
 
 `dev stage-abl` and `cycle` wrap `stage` and `restore-abl` with the edl-ng backend, without buttons: the first
@@ -318,7 +342,7 @@ enters development mode, in which the headset stays between tasks; the second re
 | Command | Steps |
 | --- | --- |
 | `python -m overpressure dev stage-abl` | `adb reboot edl` (unless exactly one EDL device is attached), `device stage --partition abl` with hash check and readback, EDL reset, then wait for PICO OS (a headset unlocked before) or for fastboot with the bootloader locked (a new headset, ready for the unlock); fastboot on an unlocked headset, or neither within 5 minutes, stops. A headset whose engineering ABL already waits in fastboot, locked, from an earlier run is staged already: no EDL, the unlock goes on. The engineering ABL tells itself apart in fastboot by its `oem device-info` (`Device unlocked: no`); PICO's stock ABL answers `DeviceUnlocked=` or refuses oem commands without the unlock token. A headset in fastboot with any other ABL is not staged: `adb reboot edl` needs PICO OS and the stock ABL's EDL command the unlock token, so the step stops and names EDL by hand (the installer asks for it and goes on) |
-| `python -m overpressure cycle` | the same staging (`--skip-stage` skips it; a locked headset stops it), `hwtest flash-run`, then EDL, a readback of `boot` that must match the backup and come from `PICO4_EDL_SERIAL`, `device restore-abl` with readback, EDL reset, PICO OS. `--keep-abl` stops before the ABL restore; `--restore-only` runs only the readback, the restore and the reset |
+| `python -m overpressure cycle` | the same staging (`--skip-stage` skips it; a locked headset stops it), `hwtest flash-run`, then EDL, a readback of `boot` that must match the backup and come from `PICO4_EDL_SERIAL`, `device restore-abl` with readback, EDL reset, PICO OS. `--keep-abl` stops before the ABL restore; `--restore-only` runs only the readback, the restore and the reset; `--restore-all` the [whole backup](#7-the-whole-backup) from EDL, then the reset into PICO OS's first setup |
 
 Both read `.env` at the overpressure checkout's root (a new one starts with this repository's
 [env.example](../env.example)); the keys are in
@@ -328,4 +352,4 @@ Both read `.env` at the overpressure checkout's root (a new one starts with this
 
 `python -m unittest` runs [tests/test_device.py](../tests/test_device.py) and the cycle and dev-loop tests with
 simulated tools: protocol vectors, tool failures, ambiguous or unauthorized devices, backup tampering, previews,
-write and readback, data-loss gating and unlock persistence.
+write and readback, data-loss gating and unlock persistence, and the whole backup through a fake edl-ng.
