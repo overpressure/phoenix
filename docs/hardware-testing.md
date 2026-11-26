@@ -27,7 +27,7 @@ so every acceptance boot writes `boot` and restores it.
 - **Headset** prepared as in [device-preparation.md](device-preparation.md): identity record, verified EDL
   backup, unlocked bootloader, engineering ABL, Firehose loader. `hwtest`, `cycle` and `dev stage-abl`
   start from PICO OS with USB debugging authorized, `dev flash` from PICO OS or development mode, the other
-  `dev` commands from development mode. `adb reboot edl` works from PICO OS and EDL needs no buttons.
+  `dev` commands from development mode. `adb reboot edl` works from PICO OS, `dev edl` from our systems, and EDL needs no buttons.
 - **Host**: Python 3.9+, `adb`, `fastboot` and edl-ng (`python -m overpressure tools` fetches them), OpenSSH
   (`ssh`, `ssh-keygen`), a USB network driver for the NCM link and a route to 172.16.42.1; on Windows, for a
   stage 1 on the stock kernel (`hwtest flash-run`, `cycle`), the

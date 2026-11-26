@@ -23,6 +23,7 @@ Put the results in the tag's message.
 | A login without a key | refused from another machine, on USB and on Wi-Fi, for root and `steamos` | 2 min |
 | Boot without the PC | power button, no cable: session starts, tracked | 1 min |
 | Charger mode | power off with the cable in: the battery in both lenses for about 4 s at the start and on a short press, then dark; held 2 s, it starts the system. Power off without a cable, plug a USB-C charger in 10 s later: the status LED comes on and charger mode starts, no key pressed | 2 min |
+| EDL restart | `dev edl` from the installed system: exactly one EDL device; edl-ng's reset starts the system again | 1 min |
 | Unfinished boots | `systemctl set-default multi-user.target`, two reboots: the third boot starts the maintenance stage 1; `dev normal`, `systemctl set-default graphical.target`, a reboot: the system starts | 3 min |
 | A hang | PID 1 stopped with ptrace (no watchdog pings): the headset restarts within 40 s, and the system starts again | 2 min |
 | The buttons' way out | from the powered-off headset, both volume buttons while connecting USB: EDL answers | 1 min |

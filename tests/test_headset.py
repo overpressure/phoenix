@@ -901,6 +901,41 @@ class DevTests(HeadsetFixture):
         dev.to_fastboot()
         self.assertTrue(self.fastboot_listed)
 
+    def edl_dev(self, responses: dict[str, str | Callable[[], str]] | None = None) -> devloop.Dev:
+        dev = self.make(responses)
+        dev.edl_count = self.edl_count
+        return dev
+
+    def test_our_system_restarts_into_edl_without_the_buttons(self):
+        def restart() -> str:
+            self.restarting = [0, 0, 0]  # the headset leaves USB and comes back in EDL mode
+            self.edl = 1
+            return ""
+
+        self.edl_dev({"--reboot-argument=edl": restart}).to_edl()
+        sent = [t for t in self.texts() if "--reboot-argument=edl" in t]
+        # Stage 1 has no systemd: pico4-reboot passes the same argument there, as any of its versions does.
+        self.assertEqual(len(sent), 1)
+        self.assertIn("systemctl reboot --reboot-argument=edl 2>/dev/null || pico4-reboot -r edl", sent[0])
+        self.assertFalse(any(" reboot edl" in t for t in self.texts()))  # no adb: PICO OS is not running
+
+    def test_pico_os_goes_into_edl_through_adb(self):
+        self.adb_listed = {"ADB1": 1234567}
+        self.edl_dev().to_edl()
+        self.assertTrue(any(t.endswith("-s ADB1 reboot edl") for t in self.texts()))
+        self.assertFalse(any("--reboot-argument=edl" in t for t in self.texts()))
+
+    def test_a_kernel_without_the_edl_restart_runs_out_saying_so(self):
+        dev = self.edl_dev({"--reboot-argument=edl": ""})  # it starts the system again instead
+        with self.assertRaisesRegex(RuntimeError, "may not restart into it"):
+            dev.to_edl()
+        self.assertGreaterEqual(self.clock.monotonic(), devloop.EDL_SECONDS)
+
+    def test_a_headset_in_edl_already_is_left_alone(self):
+        self.edl = 1
+        self.edl_dev().to_edl()
+        self.assertEqual(self.calls, [])
+
     def test_on_linux_the_error_points_to_the_doctor(self):
         self.assertIn("python -m overpressure doctor", devloop.unanswered(linux=True))
         self.assertNotIn("doctor", devloop.unanswered(linux=False))
@@ -963,6 +998,23 @@ class DevTests(HeadsetFixture):
         self.assertTrue(any(t.endswith("-s FB1 reboot") for t in self.texts()))
         self.fastboot_listed = False
         self.assertFalse(self.make().start_from_fastboot())
+
+    def test_normal_meets_a_stage_1_the_dev_loop_did_not_start(self):
+        # edl-ng's reset after dev edl starts stage 1 with new host keys: the old one must not refuse it.
+        dev = self.make({"cat /etc/overpressure/test-run": "dev-loop\n1234567", "bootmode normal": "bootmode normal"})
+        known = self.root / "dev/known_hosts"
+        known.write_text("172.16.42.1 ssh-ed25519 OLDKEY\n")
+        with patch.object(dev, "ssh_reboot"), patch.object(dev, "wait_installed"):
+            dev.normal()
+        self.assertFalse(known.exists())
+        sent = [t for t in self.texts() if "test-run" in t or "bootmode normal" in t]
+        self.assertIn("test-run", sent[0])  # the proof before the write to misc
+        # Another headset's stage 1 is refused before misc is touched.
+        self.calls.clear()
+        other = self.make({"cat /etc/overpressure/test-run": "dev-loop\n7654321"})
+        with self.assertRaisesRegex(RuntimeError, "not this headset"):
+            other.normal()
+        self.assertFalse(any("bootmode normal" in t for t in self.texts()))
 
     def test_which_system_runs_by_its_first_process(self):
         self.assertTrue(self.make({"cat /proc/1/comm": "systemd\n"}).installed_running())

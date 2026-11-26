@@ -177,6 +177,7 @@ The ABL starts `recovery` instead of `boot` while `misc` holds the bootloader me
 | --- | --- | --- | --- |
 | Installed | `boot`: the kernel mounts `super`, preinit mounts `userdata` and executes systemd, with or without a PC; a failure reboots into recovery | a boot with an empty bootloader message | `dev recovery` |
 | Maintenance | `recovery`: the dev image's stage 1 on Valve's kernel with its deadlines; `dev install` writes from here | `fastboot reboot recovery` (the ABL writes `boot-recovery`), or a reboot with reason `recovery` (once) | `pico4-install bootmode normal` (`dev normal`) |
+| EDL | the boot ROM's emergency download mode, for edl-ng | `dev edl`: a restart with the argument `edl` from the installed system or the maintenance stage 1 ([kernel.md](kernel.md)); `adb reboot edl` from PICO OS; both volume buttons while plugging in USB | edl-ng's reset (`reset --mode Reset`), or a long press of the power key |
 
 The maintenance stage 1's deadlines return the headset to fastboot; with `boot-recovery` in `misc`, every boot
 from there starts the maintenance stage 1 again.
@@ -542,6 +543,7 @@ it. This follows from the order and the boot rules; it was not tried with a pull
 | Persistence | files in `/home`, `/var`, `/etc` and `/root` survive a reboot and a system update (new image in `super`, its package database taken over) |
 | `dev check` on the installed system | userspace check passes (USB link, storage, systemd, no unexpected listener); head IMU passes; Valve's session: 90.03 commits/s, 0.0 % late, 0 stalls, hottest zone 67.1 °C after 30 s; SteamVR saw the headset (the controllers were not connected) |
 | Development loop | `dev recovery`, `dev reboot` (stays in maintenance), `dev normal` (installed system again); from fastboot without the recovery request, `dev reboot` connects to the installed system |
+| EDL restart | `dev edl` from the installed system: one EDL device after about 17 s; edl-ng's reset starts the system again after about 10 s, without returning to EDL. A plain restart stays a hard reset |
 | Boot indication | Monado and SteamVR's compositor take the display from `pico4-splash.service` (it exits within 0.5 s) |
 | Power-off | stays off without the cable until USB power comes; with the cable attached it starts again with `androidboot.mode=charger` |
 | Installer | host tests with fakes: the stages, done checks, serials written to `.env`, refusals before any write, the Wi-Fi password on stdin only. On the headset, on Windows, from PICO OS: the headset's half in about 11 minutes, from finding it through the panel check over adb, the engineering ABL, the unlock (also of a headset unlocked before) and the maintenance stage 1 without a factory reset, to the install and `dev check` (backup, identity and builds there already, no Wi-Fi given) |

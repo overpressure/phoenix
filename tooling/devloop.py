@@ -28,6 +28,7 @@ results live in out/dev/.
   python -m overpressure dev support-bundle    logs for a bug report, identifiers masked
   python -m overpressure dev ssh COMMAND...    run a command on the headset
   python -m overpressure dev reboot            what misc and boot select, also from fastboot
+  python -m overpressure dev edl               into EDL mode from PICO OS, stage 1 or the installed system
   python -m overpressure dev restore           leave development mode: PICO OS from the backup
   python -m overpressure dev restore-partition PARTITION   one partition from the backup
 """
@@ -92,6 +93,12 @@ CONTACT = contract.CONTACT  # uptime of the last command (recovery-watch)
 #: What the headset echoes when it answers over SSH, and how long it may take to (a system that is still starting).
 REACHED = "reachable"
 REACH_SECONDS = 60.0
+#: How long the headset has to show up in EDL mode after its system's restart into it (about 17 s), and why not.
+EDL_SECONDS = 90.0
+EDL_NOT_REACHED = (
+    "the headset is not the one device in EDL mode: its kernel may not restart into it (phoenix/7.2-10 or newer "
+    "does), or another EDL device is connected"
+)
 ARCHIVE = ROOT / "out" / "userspace" / "pico4-userspace.tar.zst"
 #: Boot images the dev loop writes through fastboot: the dev image to recovery, stock boot back.
 BOOT_PARTITIONS = ("boot", "recovery")
@@ -553,6 +560,31 @@ class Dev(Headset):
             self.reach()
             self.ssh_reboot("systemctl reboot --reboot-argument=bootloader 2>/dev/null || pico4-reboot bootloader")
         self.until("fastboot", 180, ready)
+
+    def to_edl(self) -> None:
+        """From PICO OS (ADB, as enter_edl), stage 1 or stage 2 (SSH) into EDL mode, as the one EDL device there.
+
+        Our systems restart with the argument "edl", which Valve's kernel turns into EDL mode (qcom_scm sets the
+        boot ROM's bit, the restart is a warm one); pico4-reboot -r passes it in stage 1, which has no systemd. A
+        kernel without that restart starts the system again instead, and the wait runs out saying so.
+        """
+        if self.edl_count() == 1:
+            return
+        self.release_adb()
+        adb_rows = android.device_rows(self.run([self.s.tool("adb"), "devices"], 30, check=False), ("device",))
+        self.release_adb()  # that look started the adb server again
+        if self.s.adb_serial and self.s.adb_serial in adb_rows:
+            self.enter_edl()
+            return
+        self.reach()
+        self.ssh_reboot("systemctl reboot --reboot-argument=edl 2>/dev/null || pico4-reboot -r edl")
+
+        def one() -> None:
+            if self.edl_count() != 1:
+                raise RuntimeError(EDL_NOT_REACHED)
+
+        self.until("EDL mode", EDL_SECONDS, one)
+        usbaccess.require(qualcomm.EDL_MODE, USB_MODES, self.clock)
 
     def check_boot_partition(self, image: Path, name: str = "boot") -> None:
         """Run the acceptance runner's checks before it writes a boot image.
@@ -1035,7 +1067,13 @@ class Dev(Headset):
             raise RuntimeError(msg)
 
     def normal(self) -> None:
-        """From the maintenance stage 1 into the installed system: clear the recovery request."""
+        """From the maintenance stage 1 into the installed system: clear the recovery request.
+
+        Stage 1 makes new host keys on every boot, also one the dev loop did not start (edl-ng's reset after dev
+        edl): the old key goes, and the stage 1 that answers proves itself first, as connect has it do.
+        """
+        (self.work / "known_hosts").unlink(missing_ok=True)
+        self.authenticate()
         if self.ssh("pico4-install bootmode normal", 30).splitlines()[-1:] != ["bootmode normal"]:
             msg = "could not clear the recovery request in misc"
             raise RuntimeError(msg)
@@ -1455,6 +1493,7 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0912, PLR0915 
         "normal",
         "recovery",
         "installed",
+        "edl",
     ):
         sub.add_parser(name)
     sub.choices["check"].add_argument(
@@ -1535,6 +1574,9 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901, PLR0912, PLR0915 
             dev.restore_partition(args.partition, reboot=not args.no_reboot)
         elif args.command == "ssh":
             print(dev.ssh(" ".join(args.words), 600, check=False))
+        elif args.command == "edl":  # Headset.edl runs edl-ng
+            dev.to_edl()
+            print("the headset is in EDL mode; edl-ng's reset or a long press of the power key starts it again")
         else:
             getattr(dev, args.command)()
     except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as exc:

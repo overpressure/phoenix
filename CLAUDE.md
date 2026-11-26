@@ -199,8 +199,8 @@ passed.
   plain boot image, or every boot ends in fastboot. Large raw fastboot downloads crash the ABL;
   `dev flash`/`dev restore-partition` send big images sparse.
 - **Entering development mode** (from PICO OS): `dev stage-abl`, `dev image`, `dev flash`,
-  `dev connect`. It runs unattended: `adb reboot edl` works from PICO OS, and EDL needs no
-  buttons. `.env` holds the headset's serials and the paths of its backup, loader and
+  `dev connect`. It runs unattended: `adb reboot edl` works from PICO OS, `dev edl` from our systems, and EDL
+  needs no buttons. `.env` holds the headset's serials and the paths of its backup, loader and
   engineering ABL (see `env.example`).
 - **Engineering ABL.** Flashing stage 1 needs the engineering ABL (`python -m overpressure dev
   stage-abl`). The stock ABL reports `DeviceUnlocked=true`, and the runner refuses it. Writing

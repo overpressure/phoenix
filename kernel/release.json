@@ -1,10 +1,10 @@
 {
  "repository": "overpressure/linux",
- "tag": "phoenix/7.2-9",
- "commit": "a0f9c148343486020c48ed27fbb41de6ebbb10b7",
+ "tag": "phoenix/7.2-10",
+ "commit": "d6aaea55dad71b007cde875a9e09c162c179446d",
  "image": "ghcr.io/overpressure/builder:2026.11.16@sha256:28a94d24c806a861406a7b462f3da5e19df1b120cf5964ed641340855911712d",
  "files": {
-  "Image.gz": "8f308a167ef256179fe08a61195205a0ede89133933a8c0fab5cad1ceee0a56c",
+  "Image.gz": "1f79430a5bb7906a80f595135707dff032ae6cc46cd22e2dfe0c8d25025a2025",
   "sm8250-pico4-phoenix.dtb": "6a4e49102c7e3604cffb80ee1f786d876fce6fca402c292375a1598a277b6009",
   "config": "1a11b02cfcce1f6b937b1b2958fd9e9a9c0b5c0b26cc0da6f2bb6323b0f981e3",
   "version": "09c671222d5f2fced0b46bdcd76e4c98c55b06ab74f1847a95ceb88a61ac1049"

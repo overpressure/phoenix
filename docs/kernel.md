@@ -29,7 +29,7 @@ As shipped:
 
 | File | Purpose |
 | --- | --- |
-| [release.json](../kernel/release.json) | the pin: overpressure/linux's tag (`phoenix/7.2-9`), its commit, the build image it was built with, and the SHA-256 of `Image.gz`, the device tree, `config` and `version` |
+| [release.json](../kernel/release.json) | the pin: overpressure/linux's tag (`phoenix/7.2-10`), its commit, the build image it was built with, and the SHA-256 of `Image.gz`, the device tree, `config` and `version` |
 | [tooling/kernel.py](../tooling/kernel.py) | `kernel fetch` (the installer's step: the release's files into `out/kernel`), `kernel build` (the pinned commit built here in the release's build image, [below](#building-it-yourself)), `kernel check DIR`, `kernel contracts` ([below](#contracts)) |
 | [build-tree.sh](../kernel/build-tree.sh) | a checkout of overpressure/linux's `phoenix/7.2` to `Image.gz`, the device tree, `config`, `version` and `build.json` (release, commit, banner, camera table, the tooling's commit, the build image, hashes); `uname -v` names the commit. That repository's CI builds each change with it once, through ccache when `CCACHE_DIR` is set (its check builds), and each tag twice on two machines without it, and releases a tag whose builds agree |
 | [imx471_mode.py](../kernel/imx471_mode.py) | the RGB camera's register table, from the camera module in the stock vendor image: the file the driver loads |
@@ -57,7 +57,7 @@ check` takes the record whose kernel release runs.
 | Storage | UFS with all six LUNs and their partitions; every block device read-only |
 | USB NCM | Windows 11's in-box driver works without the NCM initialization the stock kernel needs |
 | SoC | 8 CPUs, 7.4 GB RAM; `cpufreq-hw` (three policies, up to 2.84 GHz); TSENS zones; RPMh regulators at the stock voltages; SPMI, PMIC RTC, watchdog, `socinfo` |
-| Reboots | `pico4-reboot bootloader` reaches fastboot. The firmware refuses the warm reset a panic asks for (`reboot=panic_warm`; `SYSTEM_RESET2` answers -2); the tree's PS_HOLD reset restarts the headset, about 40 s from a forced panic to SSH, with the RAM console kept. PSCI's ordinary reset (the kernel commit “firmware: psci: a refused reset ends in a cold reset”) stands behind it, not yet needed |
+| Reboots | `pico4-reboot bootloader` reaches fastboot. A restart with the argument `edl` (`dev edl`, `systemctl reboot --reboot-argument=edl`, `pico4-reboot edl`) ends in EDL mode after about 17 s, as PICO OS's restart does: `qcom_scm` sets the boot ROM's EDL bit in TCSR's download-mode register through the firmware, the debug image off, and drops PS_HOLD through the firmware; `qcom-pon` makes it a warm reset, which keeps the bit (the kernel commits “firmware: qcom: scm: restart into EDL mode on "edl"” and “power: reset: qcom-pon: a restart into EDL is a warm reset”). edl-ng's reset starts the system again. The firmware refuses the warm reset a panic asks for (`reboot=panic_warm`; `SYSTEM_RESET2` answers -2); the tree's PS_HOLD reset restarts the headset, about 40 s from a forced panic to SSH, with the RAM console kept. PSCI's ordinary reset (the kernel commit “firmware: psci: a refused reset ends in a cold reset”) stands behind it, not yet needed |
 
 | Display and GPU | Result on the headset |
 | --- | --- |

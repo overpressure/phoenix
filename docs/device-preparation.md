@@ -125,6 +125,8 @@ What the packages also say (their `updater-script` and firmware):
 ## Entering and leaving EDL
 
 * From PICO OS with USB debugging authorized: `adb reboot edl`. No buttons are needed.
+* From the installed system or the maintenance stage 1: `python -m overpressure dev edl` (a restart with the
+  argument `edl`, [kernel.md](kernel.md)). No buttons are needed.
 * By hand: hold both volume buttons while connecting USB to the powered-off headset.
 * In EDL the headset is Qualcomm HS-USB QDLoader 9008 (`05c6:9008`).
 * `edl-ng --loader assets/firehose.elf --memory Ufs reset --mode Reset` leaves EDL and starts the headset (the

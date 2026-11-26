@@ -74,6 +74,7 @@ DEV_ON_HEADSET = (
     "install",
     "restore-partition",
     "ssh",
+    "edl",
 )
 
 
@@ -329,6 +330,13 @@ class Phoenix(Headset):
                 "The logs a bug report needs, identifiers masked, into out/support.",
             ),
             Step("reboot", "Reboot", "Headset", ("dev", "reboot"), "What misc and boot select, also from fastboot."),
+            Step(
+                "edl",
+                "EDL mode",
+                "Headset",
+                ("dev", "edl"),
+                "Into EDL mode from PICO OS, the maintenance stage 1 or the installed system, without the buttons.",
+            ),
             Step(
                 "normal",
                 "Normal boot",

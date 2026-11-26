@@ -313,7 +313,7 @@ earlycon parser dereferences the missing argument and the kernel panics before a
 | `pico4-info` | status summary, also the login banner |
 | `pico4-probe` | hardware inventory into `/run/overpressure/report/` and `report.tar.gz` |
 | `overpressure-mount-ro PART [DIR]` | mount a stock partition read-only (default `/mnt/PART`): ext4 with `noload` (no journal replay), f2fs with `norecovery`, vfat; not the partitions inside `super` |
-| `pico4-reboot [bootloader\|recovery\|poweroff]` | reboot into a mode, without argument a normal reboot; `-r STRING` passes another reason; unknown words are refused; aliases `fastboot-mode`, `android` |
+| `pico4-reboot [bootloader\|recovery\|edl\|poweroff]` | reboot into a mode (`edl`: EDL mode, [kernel.md](kernel.md)), without argument a normal reboot; `-r STRING` passes another reason; unknown words are refused; aliases `fastboot-mode`, `android` |
 | `pico4-install write\|format-data\|keys\|hash\|wipe\|bootmode\|status` | the maintenance stage 1's installer, the only writer of `boot`, `super`, `userdata` (its file system, the SSH keys and install ID on it), `metadata` and `misc`'s bootloader message, each against the backup's size and read back where it writes raw ([install.md](install.md#install-and-update)) |
 | `drm_info`, `modetest`, `evtest`, `i2cdetect`, `gpioinfo`, `tinymix`, `lsusb`, `lspci`, `lsblk`, `dtc`, `dmsetup`, `strace`, `htop` | exploration tools |
 

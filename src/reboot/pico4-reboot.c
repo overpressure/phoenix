@@ -14,6 +14,7 @@
  * usage: pico4-reboot                 plain reboot
  *        pico4-reboot bootloader      reboot into fastboot
  *        pico4-reboot recovery        reboot into recovery
+ *        pico4-reboot edl             reboot into EDL (the kernel's qcom_scm sets its bit)
  *        pico4-reboot poweroff        power off
  *        pico4-reboot -r <reason>     any other reboot command string
  *
@@ -68,8 +69,8 @@ long pico4_main(long argc, char **argv)
 	if (eq(mode, "-r") && argc == 3 && *argv[2]) {
 		mode = argv[2];
 	} else if (argc > 2 || !(eq(mode, "") || eq(mode, "bootloader") || eq(mode, "recovery") ||
-				 eq(mode, "poweroff"))) {
-		say("usage: pico4-reboot [bootloader|recovery|poweroff]\n"
+				 eq(mode, "edl") || eq(mode, "poweroff"))) {
+		say("usage: pico4-reboot [bootloader|recovery|edl|poweroff]\n"
 		    "       pico4-reboot -r <reboot command string>\n");
 		return eq(mode, "-h") || eq(mode, "--help") ? 0 : 2;
 	}
