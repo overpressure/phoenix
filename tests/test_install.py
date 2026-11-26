@@ -894,7 +894,7 @@ class BackupSetTests(unittest.TestCase):
 
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
-        self.plan = plan.Plan(HEADSET, root=Path("/nowhere"), computer=list)
+        self.plan = plan.Plan(HEADSET, root=Path("/nowhere"), computer=list, edl_count=lambda: 0)
 
     def test_with_an_older_overpressure_the_install_and_upgrade_check_at_their_end(self):
         # Without Workflow.changes (interface 1.3) the check is no workflow of its own: it would erase the
@@ -963,7 +963,7 @@ class WorkflowTests(unittest.TestCase):
         tasks = [t for s in stages for t in s.tasks]
         writes = [t.id for t in tasks if t.writes]
         # Each part its own task, so a retry goes on from the part that failed.
-        self.assertEqual(writes, ["system", "data", "recovery", "bootloader-first", "restore-abl"])
+        self.assertEqual(writes, ["restore-all", "system", "data", "recovery", "bootloader-first", "restore-abl"])
         ids = [t.id for t in tasks]
         self.assertLess(ids.index("verify-backup"), ids.index("consent"))
         self.assertLess(ids.index("consent"), ids.index("maintenance"))
@@ -1062,6 +1062,31 @@ class WorkflowTests(unittest.TestCase):
                 task.run(ctx)
                 ctx.ask.assert_not_called()
                 self.assertEqual(order, ["stage-abl"])
+
+    def test_a_headset_found_in_edl_gets_its_whole_backup_over_edl_instead_of_the_other_writes(self):
+        # No bootloader starts it any more: the whole backup, boot chain and stock bootloader with it.
+        ctx = mock.Mock()
+        ctx.settings.return_value = mock.Mock(adb_serial="SERIAL", tool=mock.Mock(return_value="adb"))
+        ctx.output.return_value = "List of devices attached\n"
+        restore = plan.Plan(HEADSET, root=Path("/nowhere"), computer=list, edl_count=lambda: 1)
+        with mock.patch.object(plan, "AskingDev") as dev:
+            restore.restore_maintenance(ctx)
+        dev.return_value.recovery.assert_not_called()
+        ctx.remember.assert_called_once_with(plan.EDL_ONLY)
+        self.assertEqual(ctx.note.call_args.args[0], plan.EDL_RESTORE)
+        ctx.recall.side_effect = lambda task: plan.EDL_ONLY if task == "maintenance" else ""
+        ctx.completed.return_value = False
+        tasks = {t.id: t for s in restore.restore_stages() for t in s.tasks}
+        done = {key: check(ctx) for key, task in tasks.items() if (check := task.done) is not None}
+        self.assertFalse(done["restore-all"])
+        for key in ("maintenance", "system", "data", "recovery", "bootloader-first", "restore-abl"):
+            self.assertTrue(done[key], key)
+        self.assertEqual(restore.steps["restore-all"].argv, ("cycle", "--restore-all"))
+        # Any other headset skips it.
+        ctx.recall.side_effect = lambda _task: ""
+        check = tasks["restore-all"].done
+        assert check is not None
+        self.assertTrue(check(ctx))
 
     def test_a_headset_that_boots_back_into_fastboot_gets_its_stock_bootloader_first_from_edl(self):
         # #39: after an early stop every start ends in fastboot, so PICO OS's setup would wait for ever.

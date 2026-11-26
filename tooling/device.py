@@ -372,6 +372,9 @@ def dispatch(args: argparse.Namespace) -> None:  # noqa: C901, PLR0911, PLR0912,
         )
         print("Image bytes verified by EDL readback; no reboot performed.")
         return
+    if args.command == "restore-all":
+        restore_all(args, manifest)
+        return
     if args.command == "unlock":
         # A fresh bootloader session first: on a locked headset the engineering ABL lands in fastboot
         # after refusing to boot PICO OS, and in that session the unlock flags cannot be saved (00000050).
@@ -424,6 +427,50 @@ def restart_bootloader(fastboot: str, serial: str) -> None:
         print(f"the headset was not seen leaving fastboot within {LEAVE_FASTBOOT_SECONDS} s", file=sys.stderr)
 
 
+def restore_all(args: argparse.Namespace, manifest: dict) -> None:
+    """Write the whole verified backup back over EDL, each write read back (qualcomm.write_back); preview by default.
+
+    Before any write, one read-only session at edl-ng's debug level names the serial, which must be
+    @p args.edl_serial (.env's), and each LUN's own size, which must be the backup's: a broken partition
+    table does not change them. userdata and metadata get zeros at their start, the other partitions a
+    backup leaves out stay as they are. The headset stays in EDL mode afterwards.
+    """
+    plan = qualcomm.write_back_plan(args.backup, manifest)
+    size = sum(write.size for write in plan) / (1 << 30)
+    program = android.executable(args.edl)
+    if not args.execute:
+        for write in plan:
+            image = write.image or f"zeros:{write.size}"
+            words = ["write-sector", str(write.start), str(image), "--lun", str(write.lun)]
+            print(subprocess.list2cmdline([str(a) for a in qualcomm.edl_ng(program, args.loader, *words)]))
+        print(f"{len(plan)} writes, {size:.2f} GiB, each read back and compared (preview: nothing was written)")
+        return
+    if args.edl_backend != "edl-ng":
+        msg = "restore-all writes through edl-ng: pass --edl-backend edl-ng"
+        raise ValueError(msg)
+    if not args.edl_serial:
+        msg = "restore-all needs --edl-serial (PICO4_EDL_SERIAL): only that headset may be written"
+        raise ValueError(msg)
+    work, backup_folder = args.work.resolve(), args.backup.resolve()
+    if work == backup_folder or backup_folder in work.parents:
+        msg = "--work must lie outside the backup, which stays as it is"
+        raise ValueError(msg)
+    output = run([str(a) for a in qualcomm.edl_ng(program, args.loader, "--loglevel", "Debug", "printgpt")], 300)
+    if not qualcomm.serial_shown(output):
+        msg = (
+            "the EDL device runs an earlier session's loader and names no serial: nothing was written; power the "
+            "headset off (power key held 10 s), then hold both volume buttons while plugging in USB, and run this first"
+        )
+        raise RuntimeError(msg)
+    qualcomm.check_edl_serial(output, args.edl_serial)
+    backup = {lun: qualcomm.backup_lun_sectors(args.backup, lun) for lun in manifest["luns"]}
+    qualcomm.check_storage(backup, qualcomm.storage_sectors(output))
+    qualcomm.write_back(
+        plan, program, args.loader, args.work, lambda argv, timeout: run([str(a) for a in argv], int(timeout))
+    )
+    print(f"Wrote {len(plan)} partitions ({size:.2f} GiB), each read back; the headset is in EDL mode, not reset.")
+
+
 def unlock_step(fastboot: str, serial: str, command: list[str]) -> None:
     """Run one fastboot command of the unlock; a flashing command refused as done already counts.
 
@@ -455,7 +502,7 @@ def parser() -> argparse.ArgumentParser:
     check.add_argument("--critical", action="store_true")
     verify = sub.add_parser("verify-backup")
     verify.add_argument("--backup", type=Path, required=True)
-    for name in ("backup", "stage", "unlock", "restore-abl"):
+    for name in ("backup", "stage", "unlock", "restore-abl", "restore-all"):
         p = sub.add_parser(name, help="preview by default; --execute operates on the headset")
         p.add_argument("--identity", type=Path, required=True)
         p.add_argument("--backup", type=Path, required=True)
@@ -490,6 +537,14 @@ def parser() -> argparse.ArgumentParser:
         if name in ("stage", "restore-abl"):
             p.add_argument("--partition", required=True, help="exact partition name from the captured GPT")
             p.add_argument("--readback", type=Path, required=True)
+        if name == "restore-all":
+            p.add_argument("--edl-serial", help="the headset's EDL serial (PICO4_EDL_SERIAL); needed with --execute")
+            p.add_argument(
+                "--work",
+                type=Path,
+                default=Path("out/restore-all"),
+                help="where each write is read back, not the backup",
+            )
         if name == "stage":
             p.add_argument("--image", type=Path, required=True)
             p.add_argument("--sha256", required=True, help="expected engineering image hash from your trusted source")
@@ -525,6 +580,7 @@ def main(argv: list[str] | None = None) -> int:
         OSError,
         KeyError,
         TypeError,
+        RuntimeError,  # restore-all: another headset, a stale session, a readback that differs
         ET.ParseError,
         subprocess.TimeoutExpired,
         process.CommandFailed,

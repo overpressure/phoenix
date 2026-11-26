@@ -215,6 +215,7 @@ class HeadsetFixture(unittest.TestCase):
                 ("hwtest flash-run", "flash-run"),
                 ("read-part boot", "readback"),
                 ("device restore-abl", "restore-abl"),
+                ("device restore-all", "restore-all"),
                 ("getprop sys.boot_completed", "pico-os"),
                 (" flash boot ", "flash-boot"),
             ):
@@ -252,6 +253,35 @@ class CycleTests(HeadsetFixture):
             contextlib.redirect_stdout(io.StringIO()),
         ):
             self.assertEqual(cycle.main(["--restore-only"]), 0)
+        self.assertEqual(restored, [True])
+
+    def test_the_whole_backup_goes_back_in_the_first_session_after_edl_by_hand(self):
+        # Only the first session's handshake names the serial, which the device command checks before writing.
+        self.edl = 1  # in EDL by hand: no bootloader starts any more
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.make().restore_all()
+        self.assertEqual(self.steps(), ["restore-all", "edl-reset"])
+        modes = [w[w.index("--mode") + 1] for w in self.calls if "reset" in w]
+        self.assertEqual(modes, ["Reset"])  # then PICO OS's first setup
+        command = next(w for w in self.calls if "restore-all" in w)
+        self.assertEqual(command[command.index("--edl-serial") + 1], self.settings.edl_serial)
+        self.assertEqual(command[command.index("--confirm-device") + 1], "ADB1")
+        self.assertIn("--execute", command)
+        self.assertNotIn("--partition", command)
+
+    def test_the_whole_backup_waits_for_the_headset_in_edl_and_writes_nothing_without_it(self):
+        self.edl = 0
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(RuntimeError, "nothing was written"):
+            self.make().restore_all()
+        self.assertEqual(self.calls, [])
+        restored = []
+        with (
+            patch.object(cycle, "ROOT", self.root),
+            patch.object(cycle.localconfig, "load", return_value=self.settings),
+            patch.object(cycle.Cycle, "restore_all", lambda _c: restored.append(True)),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(cycle.main(["--restore-all"]), 0)
         self.assertEqual(restored, [True])
 
     def test_full_cycle_order_ends_on_stock(self):
