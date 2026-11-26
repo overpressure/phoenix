@@ -249,7 +249,9 @@ python -m overpressure device unlock --identity backup/device.json --backup back
 This previews, in order: `reboot bootloader`, `oem <token> unlock`, `oem setenforce 0`, `flashing unlock`,
 `flashing unlock_critical`, `reboot bootloader`. The first restart gives the unlock a fresh bootloader session: in
 the fastboot that a failed boot leaves, the unlock flags cannot be saved (`00000050`), and the OEM authorization
-holds for one session only. Execution needs `--execute --confirm-device ADB_SERIAL --accept-data-loss`. **Unlocking
+holds for one session only. After each restart the tool sends nothing until the headset has left fastboot and is
+listed again (up to 120 s): macOS's fastboot otherwise writes to the leaving headset and fails ("could not clear
+input pipe"). Execution needs `--execute --confirm-device ADB_SERIAL --accept-data-loss`. **Unlocking
 wipes user data, and the sequence sets SELinux to permissive.** If fastboot shows another serial than ADB, pass
 `--serial FASTBOOT_SERIAL` after checking the device. Every command must succeed; a `flashing` command refused as
 already unlocked counts as done.

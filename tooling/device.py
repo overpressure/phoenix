@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 from overpressure.api.v1 import android, process, qualcomm
 from overpressure.api.v1.android import run
 from overpressure.api.v1.backup import digest, partition_names, save_new, verified_backup, verified_backup_shown
+from overpressure.api.v1.fastboot import Fastboot
 from overpressure.api.v1.qualcomm import (
     DumpProgress,
     backup_commands,
@@ -38,6 +39,10 @@ if TYPE_CHECKING:
 
 #: The SoC ID is a 32-bit number.
 CHIP_ID_MAX = 0xFFFFFFFF
+#: How long the headset has to leave fastboot once told to restart into it, then to be back there.
+LEAVE_FASTBOOT_SECONDS, BACK_IN_FASTBOOT_SECONDS = 30, 120
+#: The time the unlock's waits use; tests replace it.
+CLOCK: process.Timing = process.Clock()
 
 
 def unlock_token(number: int) -> str:
@@ -389,13 +394,34 @@ def dispatch(args: argparse.Namespace) -> None:  # noqa: C901, PLR0911, PLR0912,
             raise ValueError(msg)
         serial = android.select_device(args.fastboot, args.serial or identity["serial"], run)
         for command in commands:
-            unlock_step(args.fastboot, serial, command)
-        # fastboot itself waits for reconnection; subprocess timeout bounds that wait.
+            if command == ["reboot", "bootloader"]:
+                restart_bootloader(args.fastboot, serial)
+            else:
+                unlock_step(args.fastboot, serial, command)
         android.check_unlock(args.fastboot, serial, critical=True, runner=run)
         print(
             "Normal and critical unlock confirmed after bootloader reboot. "
             "See docs/device-preparation.md for reset, RAM testing and stock ABL restoration."
         )
+
+
+def restart_bootloader(fastboot: str, serial: str) -> None:
+    """Restart the headset into its bootloader and wait for its new session (macOS: Fastboot.restart_bootloader).
+
+    A restart too quick to be seen leaving goes on after the bound: the unlock's check at the end still decides.
+    One that does not come back ends the unlock with nothing more sent.
+    """
+    headset = Fastboot(fastboot, serial, lambda argv, timeout: run(argv, timeout=int(timeout)))
+    try:
+        seen = headset.restart_bootloader(CLOCK, LEAVE_FASTBOOT_SECONDS, BACK_IN_FASTBOOT_SECONDS)
+    except RuntimeError as exc:
+        msg = (
+            f"The headset did not come back to its bootloader within {BACK_IN_FASTBOOT_SECONDS} s of the restart; "
+            f"nothing more was sent to it ({exc})"
+        )
+        raise ValueError(msg) from exc
+    if not seen:
+        print(f"the headset was not seen leaving fastboot within {LEAVE_FASTBOOT_SECONDS} s", file=sys.stderr)
 
 
 def unlock_step(fastboot: str, serial: str, command: list[str]) -> None:

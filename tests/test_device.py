@@ -16,6 +16,17 @@ from devices.phoenix.tooling import device, hardware_test, localconfig, unlockfi
 from overpressure.api.v1 import process, tools
 
 
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
 class ProtocolTests(unittest.TestCase):
     def test_vectors(self):
         # 1234567 = 0x12d687, masked to 0x12d206; max ID masks to 0xf7f3f37f.
@@ -421,37 +432,49 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(self.call([*self.args("restore-abl"), "--execute", "--confirm-device", "ABC"]), 0)
         self.assertEqual(Path(commands[0][3]), (self.backup / "abl.bin").resolve())
 
-    def test_unlock_checks_after_reboot_and_stops_on_failure(self):
-        commands = []
+    def restarting_headset(self, commands: list[list[str]], gone: int = 2) -> Any:  # noqa: ANN401  # device.run's fake
+        """Fake fastboot for a headset that leaves USB for @p gone listings after each restart into its bootloader."""
+        state = {"gone": 0}
 
         def fake(command: list[str], timeout: float = 60) -> str:  # noqa: ARG001  # device.run's signature
             commands.append(command)
             if command[-1] == "devices":
+                if state["gone"]:
+                    state["gone"] -= 1
+                    return ""
                 return "ABC fastboot"
+            if command[-2:] == ["reboot", "bootloader"]:
+                state["gone"] = gone
             if command[-1] == "device-info":
                 return "Device unlocked: true\nDevice critical unlocked: true"
             return "OKAY"
 
+        return fake
+
+    def test_unlock_checks_after_reboot_and_stops_on_failure(self):
+        commands = []
+        fake = self.restarting_headset(commands)
         args = [*self.args("unlock"), "--execute", "--confirm-device", "ABC", "--accept-data-loss"]
-        with patch.object(device, "run", side_effect=fake):
+        with patch.object(device, "run", side_effect=fake), patch.object(device, "CLOCK", FakeClock()):
             self.assertEqual(self.call(args), 0)
+        sent = [command[3:] for command in commands if command[-1] != "devices"]
         # A fresh bootloader session first: a locked headset is in the fastboot its failed boot left,
         # where the unlock flags cannot be saved. The OEM authorization belongs to the new session.
-        self.assertEqual(commands[1][3:], ["reboot", "bootloader"])
-        self.assertEqual(commands[2][3], "oem")
-        self.assertEqual(commands[2][-1], "unlock")
+        self.assertEqual(sent[0], ["reboot", "bootloader"])
+        self.assertEqual(sent[1][0], "oem")
+        self.assertEqual(sent[1][-1], "unlock")
         # Real engineering ABL rejected persistent unlock writes until permissive
         # mode was enabled. Normal unlock must also precede critical unlock.
         self.assertEqual(
-            [command[3:] for command in commands[3:6]],
+            sent[2:5],
             [
                 ["oem", "setenforce", "0"],
                 ["flashing", "unlock"],
                 ["flashing", "unlock_critical"],
             ],
         )
-        self.assertEqual(commands[-2][-2:], ["reboot", "bootloader"])
-        self.assertEqual(commands[-1][-2:], ["oem", "device-info"])
+        self.assertEqual(sent[-2], ["reboot", "bootloader"])
+        self.assertEqual(sent[-1], ["oem", "device-info"])
         with patch.object(device, "run", side_effect=["ABC fastboot", ValueError("failure")]) as run:
             self.assertEqual(self.call(args), 1)
             self.assertEqual(run.call_count, 2)
@@ -465,7 +488,7 @@ class WorkflowTests(unittest.TestCase):
             return fake(command)
 
         commands.clear()
-        with patch.object(device, "run", side_effect=unlocked_before):
+        with patch.object(device, "run", side_effect=unlocked_before), patch.object(device, "CLOCK", FakeClock()):
             self.assertEqual(self.call(args), 0)
         self.assertEqual(commands[-1][-2:], ["oem", "device-info"])
         # Any other refusal still stops it.
@@ -477,12 +500,47 @@ class WorkflowTests(unittest.TestCase):
             ),
         ):
             self.assertEqual(self.call(args), 1)
-        with patch.object(
-            device,
-            "run",
-            side_effect=lambda c, **_: "ABC fastboot" if c[-1] == "devices" else "Device unlocked: false",
-        ):
+        commands.clear()
+        locked = self.restarting_headset(commands)
+
+        def still_locked(command: list[str], timeout: float = 60) -> str:
+            return "Device unlocked: false" if command[-1] == "device-info" else locked(command, timeout)
+
+        with patch.object(device, "run", side_effect=still_locked), patch.object(device, "CLOCK", FakeClock()):
             self.assertEqual(self.call(args), 1)
+
+    def unlock(self, fake: Any, clock: FakeClock) -> int:  # noqa: ANN401  # device.run's fake
+        args = [*self.args("unlock"), "--execute", "--confirm-device", "ABC", "--accept-data-loss"]
+        with patch.object(device, "run", side_effect=fake), patch.object(device, "CLOCK", clock):
+            return self.call(args)
+
+    def test_unlock_sends_nothing_after_a_restart_until_the_headset_is_back(self):
+        # macOS: fastboot's reboot returns while the headset is still listed; a command sent then fails
+        # writing to the leaving headset ("could not clear input pipe").
+        commands = []
+        self.assertEqual(self.unlock(self.restarting_headset(commands, gone=3), FakeClock()), 0)
+        restarts = [i for i, command in enumerate(commands) if command[-2:] == ["reboot", "bootloader"]]
+        self.assertEqual(len(restarts), 2)
+        for i in restarts:
+            # Not listed three times (it left), then listed again (back), then the next command.
+            self.assertEqual([command[-1] for command in commands[i + 1 : i + 5]], ["devices"] * 4)
+            self.assertNotEqual(commands[i + 5][-1], "devices")
+
+    def test_unlock_goes_on_after_a_restart_too_quick_to_be_seen(self):
+        commands, clock = [], FakeClock()
+        self.assertEqual(self.unlock(self.restarting_headset(commands, gone=0), clock), 0)
+        self.assertEqual(commands[-1][-2:], ["oem", "device-info"])
+        # Each of the two restarts waited out its bound once, and no longer.
+        self.assertGreaterEqual(clock.now, 2 * device.LEAVE_FASTBOOT_SECONDS)
+        self.assertLess(clock.now, 2 * device.LEAVE_FASTBOOT_SECONDS + 2)
+
+    def test_unlock_stops_when_the_headset_does_not_come_back(self):
+        commands, clock = [], FakeClock()
+        self.assertEqual(self.unlock(self.restarting_headset(commands, gone=10**6), clock), 1)
+        # Nothing after the first restart but listings: no OEM command to a headset that is not there.
+        first = next(i for i, command in enumerate(commands) if command[-2:] == ["reboot", "bootloader"])
+        self.assertTrue(all(command[-1] == "devices" for command in commands[first + 1 :]))
+        self.assertGreaterEqual(clock.now, device.BACK_IN_FASTBOOT_SECONDS)
 
 
 if __name__ == "__main__":
