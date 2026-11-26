@@ -183,8 +183,10 @@ from there starts the maintenance stage 1 again.
 
 ### Charger mode
 
-With the USB cable attached, a powered-off headset starts again with `androidboot.mode=charger`. PICO OS then
-runs AOSP's `charger`; preinit starts systemd with `pico4-charger.target`: `basic.target`,
+A powered-off headset starts with `androidboot.mode=charger` when USB power comes: at the power-off with the cable
+attached, or when a charger or a computer is plugged in later. The shutdown ends a PD contract by detaching the
+source and then leaves the Type-C port on, so that a USB-C source sees a sink and turns its power on, as on PICO OS.
+PICO OS then runs AOSP's `charger`; preinit starts systemd with `pico4-charger.target`: `basic.target`,
 `pico4-charger.service` ([`charger`](https://github.com/overpressure/packages/blob/main/phoenix/pico4-base/charger)), the USB link,
 systemd-networkd and sshd. The boot indication does not run. As AOSP's charger shows the battery when it starts
 and on a press of the power key, the lenses show the battery for 4 s then: its level, red at 15 % and below, a bolt
@@ -535,12 +537,13 @@ it. This follows from the order and the boot rules; it was not tried with a pull
 | Start without stage 1 | preinit at 1.4 s, systemd at 1.9 s (storage sweep 0.03 s); USB link at about 4 s, `wlan0` (re-probed) at about 9 s; systemd `running`, no failed units; `/` read-only from `sda7`, `/data` writable, `/etc` an overlay; governor `schedutil` |
 | Boot time | the graphical target 9.7 s and 11.0 s after the kernel starts, `pico4-session.service` started at 5.3 to 5.7 s; the audio DSP's chain (`pico4-lpass-macros`, 5 to 6 s) ends it |
 | Charger mode | a power-off with the cable in starts `pico4-charger.target` (10.7 s): charger service, `sshd` and USB link run, boot indication and session do not; a plain reboot from it starts the system |
+| Charger mode from a plug-in | powered off from Steam's menu without a cable, then a USB-C PD charger or a computer's USB-C port plugged in 10 s later: the status LED comes on and charger mode starts; on the PD charger with the same contract as the running system (3 A at 5 V at 97 %) |
 | Charger mode's battery, looked at | shown in both lenses when charger mode starts and on a short press of the power key, then dark again; holding the key 2 s starts the system |
 | Persistence | files in `/home`, `/var`, `/etc` and `/root` survive a reboot and a system update (new image in `super`, its package database taken over) |
 | `dev check` on the installed system | userspace check passes (USB link, storage, systemd, no unexpected listener); head IMU passes; Valve's session: 90.03 commits/s, 0.0 % late, 0 stalls, hottest zone 67.1 °C after 30 s; SteamVR saw the headset (the controllers were not connected) |
 | Development loop | `dev recovery`, `dev reboot` (stays in maintenance), `dev normal` (installed system again); from fastboot without the recovery request, `dev reboot` connects to the installed system |
 | Boot indication | Monado and SteamVR's compositor take the display from `pico4-splash.service` (it exits within 0.5 s) |
-| Power-off | stays off without the cable; with the cable attached it starts again with `androidboot.mode=charger` |
+| Power-off | stays off without the cable until USB power comes; with the cable attached it starts again with `androidboot.mode=charger` |
 | Installer | host tests with fakes: the stages, done checks, serials written to `.env`, refusals before any write, the Wi-Fi password on stdin only. On the headset, on Windows, from PICO OS: the headset's half in about 11 minutes, from finding it through the panel check over adb, the engineering ABL, the unlock (also of a headset unlocked before) and the maintenance stage 1 without a factory reset, to the install and `dev check` (backup, identity and builds there already, no Wi-Fi given) |
 | Restore to stock in the window | on the headset, on Windows: from the installed system through all four stages to PICO OS with its stock bootloader; the install's recorded progress and `out/dev/installed.json` gone afterwards |
 | The backup as one file | a 12.5 GiB backup: exported with the readback in 57 s, imported elsewhere and verified in 81 s, with the SSH key and the serials. Without its zero runs: 6.9 GiB on this computer after `backup compact` (verified against its manifest), and a 6.86 GiB export in 39 s with its readback |
