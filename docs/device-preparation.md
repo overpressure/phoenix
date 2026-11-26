@@ -94,6 +94,18 @@ written: the boot chain (XBL and its configuration, AOP,
 TrustZone and its libraries, the hypervisor, devcfg, the serial engines' firmware, the UEFI volume) and the board
 overlay in `dtbo`. The ABL is not among them: the install replaces it with the engineering ABL.
 
+**PICO OS's files on the other builds.** From PICO's packages, compared with 5.13.7 `global-seko`'s as the install
+copies them (`stock-files`):
+
+- **5.13.3:** byte-identical, except two controller libraries and five firmware images.
+  - `libpico_controller_tracking.pxr.so` and `libpvrtrackingservice.so` are other builds. They hold the same LED
+    models, LED normals and aim-to-grip defaults at other addresses, which their code loads the same way.
+  - The GPU's zap shader, the video codec's firmware and the three DSPs' differ only in their hash segment.
+- **5.13.8:** the three controller libraries are byte-identical to 5.13.7's.
+
+The extractors (`tooling/ledmodel.py`, `tooling/aimgrip.py`) know each library build's addresses by its
+SHA-256, and refuse an unknown build before anything is written.
+
 `python -m overpressure bootchain` compares those members of each package with 5.13.7 `global-seko`'s: an image
 runs the same code when every segment but its hash segment (hashes, signature, certificates) is byte-identical;
 `dtbo` is compared overlay by overlay, by `compatible` and `qcom,board-id` (kona MTP and kona-iot MTP share a

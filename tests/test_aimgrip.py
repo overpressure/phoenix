@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import struct
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from devices.phoenix.tooling import aimgrip
 
@@ -27,12 +29,21 @@ def block(
     return list(position) + [math.cos(half)] + [math.sin(half) * a / n for a in axis]
 
 
-def library(values: list[float] | None = None, *, mapped: bool = True) -> bytes:
-    """Build a minimal ELF64 with one PT_LOAD segment holding 14 doubles at the expected address."""
+#: The real builds' entries (builds, address); each synthetic library places its doubles at one of them.
+BUILDS = list(aimgrip.DEFAULTS.values())
+
+
+def library(
+    values: list[float] | None = None, *, mapped: bool = True, build: tuple[str, int] = BUILDS[0], known: bool = True
+) -> bytes:
+    """Build a minimal ELF64 with one PT_LOAD segment holding 14 doubles at @p build's address.
+
+    With @p known it is registered as that build (by its SHA-256, in the test's copy of DEFAULTS).
+    """
     values = values if values is not None else block(20) + block(-10, position=(-0.01, 0.02, 0.03))
     data_offset, size = 0x1000, 0x10000
     data = bytearray(size)
-    struct.pack_into(f"<{len(values)}d", data, aimgrip.DEFAULTS_ADDRESS - BASE, *values)
+    struct.pack_into(f"<{len(values)}d", data, build[1] - BASE, *values)
     header = bytearray(64)
     header[:6] = b"\x7fELF\x02\x01"
     struct.pack_into("<Q", header, 0x20, 64)
@@ -42,16 +53,31 @@ def library(values: list[float] | None = None, *, mapped: bool = True) -> bytes:
     image = bytearray(data_offset) + data
     image[:64] = header
     image[64 : 64 + len(phdr)] = phdr
+    if known:
+        aimgrip.DEFAULTS[hashlib.sha256(image).hexdigest()] = build
     return bytes(image)
 
 
 class AimGripTests(unittest.TestCase):
-    def test_reads_the_left_then_the_right_block(self):
-        result = aimgrip.transforms(library())
+    def setUp(self):
+        defaults = patch.dict(aimgrip.DEFAULTS)  # the synthetic libraries' entries go when the test ends
+        defaults.start()
+        self.addCleanup(defaults.stop)
+
+    def test_reads_the_left_then_the_right_block_where_each_build_keeps_them(self):
         want = {"left": block(20), "right": block(-10, position=(-0.01, 0.02, 0.03))}
-        for hand in aimgrip.HANDS:
-            self.assertEqual(result[hand]["position"], want[hand][:3])
-            self.assertEqual(result[hand]["orientation"], want[hand][3:])
+        for build in BUILDS:
+            with self.subTest(build[0]):
+                result = aimgrip.transforms(library(build=build))
+                for hand in aimgrip.HANDS:
+                    self.assertEqual(result[hand]["position"], want[hand][:3])
+                    self.assertEqual(result[hand]["orientation"], want[hand][3:])
+
+    def test_refuses_a_build_whose_address_is_not_known(self):
+        unknown = library(known=False)
+        with self.assertRaisesRegex(aimgrip.AimGripError, "not one whose transforms are known .*5.13.3"):
+            aimgrip.transforms(unknown)
+        self.assertEqual(aimgrip.transforms(unknown, BUILDS[0][1])["left"]["position"], block(20)[:3])
 
     def test_refuses_data_that_is_not_a_transform(self):
         cases: dict[str, dict[str, Any]] = {

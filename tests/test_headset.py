@@ -784,6 +784,19 @@ class DevTests(HeadsetFixture):
         # The keys and the install ID go to the data partition, never into an image.
         self.assertIn(f"pico4-install keys --size {27804115 * 4096} --id dev-loop", steps[4])
 
+    def test_install_reads_pico_oss_files_before_anything_is_written(self):
+        # #158: a backup whose libraries are not known (5.13.3 before its addresses) failed after boot and super.
+        dev, system = self.install_setup()
+
+        def unreadable(_backup: Path, _archive: Path, *, log: Callable[[str], None] = print) -> dict:  # noqa: ARG001  # its signature
+            msg = "left: LEDs 0.000-0.000 m from the origin, not a controller ring"
+            raise devloop.stockfiles.AssetError(msg)
+
+        with patch.object(devloop.stockfiles, "from_backup", unreadable), self.assertRaises(RuntimeError):
+            dev.install(system)
+        self.assertFalse([t for t in self.texts() if "pico4-install" in t and "pico4-install hash" not in t])
+        self.assertFalse((dev.work / devloop.INSTALLED).exists())
+
     def test_install_reports_its_progress_the_writes_first(self):
         dev, system = self.install_setup()
         out = io.StringIO()
