@@ -54,7 +54,7 @@ EDL_RESTART = (
     "again: the headset enters EDL mode afresh."
 )
 #: The installer's other workflows (overpressure/headset.py, Workflow).
-UPGRADE, RESTORE, CHECK = "upgrade", "restore", "check"
+UPGRADE, RESTORE, CHECK, RESCUE = "upgrade", "restore", "check", "rescue"
 #: The check of the headset is a workflow of its own where the engine runs it afresh and leaves the install's
 #: record (interface 1.3, Workflow.changes); with an older overpressure the install and the upgrade check at
 #: their end, as before.
@@ -141,6 +141,9 @@ class Phoenix(Headset):
             ),
             "cycle": Command("cycle", "unattended acceptance cycle that ends on stock boot and ABL", headset=True),
             "kernel": Command("kernel", "the pinned release of overpressure/linux: download, check, contracts"),
+            "rescue": Command(
+                "rescue", "PICO OS back without a backup, from PICO's own downloads over EDL", headset=("look", "write")
+            ),
         }
 
     def steps(self) -> Sequence[Step]:
@@ -371,6 +374,29 @@ class Phoenix(Headset):
                 "read back, then PICO OS's first setup.",
                 writes=True,
             ),
+            Step(
+                "rescue-look",
+                "Rescue: look at the headset in EDL mode",
+                "Headset",
+                ("rescue", "look"),
+                "Read-only: the serial, the partition table and the boot chain, which names the PICO OS build.",
+            ),
+            Step(
+                "rescue-prepare",
+                "Rescue: that build's package",
+                "Headset",
+                ("rescue", "prepare"),
+                "PICO's full package of the build (about 3.7 GB), its images rebuilt and super laid out anew; the "
+                "headset is not needed.",
+            ),
+            Step(
+                "rescue-write",
+                "Rescue: PICO OS over EDL",
+                "Headset",
+                ("rescue", "write", "--execute"),
+                "The ABL, boot, recovery, dtbo, both vbmeta and super written and read back; data and misc cleared.",
+                writes=True,
+            ),
         )
 
     def dependencies(self) -> Sequence[Callable[[Host], list[Check]]]:
@@ -412,6 +438,14 @@ class Phoenix(Headset):
                 "everything on it is erased.",
                 erases=True,
             ),
+            Workflow(
+                RESCUE,
+                "Rescue PICO OS",
+                "For a headset without a backup that starts nothing useful: PICO OS goes back from PICO's own "
+                "downloads over EDL mode, the build its firmware has. Everything on it is erased; about 3.7 GB are "
+                "downloaded.",
+                erases=True,
+            ),
         ) + (
             (
                 Workflow(
@@ -436,6 +470,7 @@ class Phoenix(Headset):
             UPGRADE: plan.upgrade_stages,
             RESTORE: plan.restore_stages,
             CHECK: plan.check_stages,
+            RESCUE: plan.rescue_stages,
         }[workflow]()
 
     def workflow_problem(self, workflow: str) -> str:
@@ -456,6 +491,7 @@ class Phoenix(Headset):
         from .look import Look  # noqa: PLC0415  # it needs interface 1.11's Found
 
         look = Look(localconfig.load(), devloop.WORK, install.OUT, self.info.codename)
+        look.backup_there = (self.backup_set().folder / "manifest.json").is_file
         return look.found(USB_MODES, qualcomm.EDL_MODE)
 
     def after_install(self) -> AfterInstall:

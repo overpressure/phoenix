@@ -594,6 +594,45 @@ bootable LUN stays LU A (`bBootLunEn` 1, `xbl` on LUN 1): partition writes do no
 ([device-preparation.md](device-preparation.md#the-bootable-lun)). About 9.8 GiB go over USB. After the final reset
 the headset on the cable may start in PICO OS's charger mode; holding the power key starts PICO OS and its setup.
 
+### Without a backup: the rescue
+
+*Rescue PICO OS* (`install --workflow rescue`; by hand `python -m overpressure rescue look`, `prepare`, `write
+--execute`, [`tooling/rescue.py`](../tooling/rescue.py)) brings PICO OS back to a headset whose owner has no backup,
+from PICO's own full package, over EDL mode. The look offers it for a headset in EDL mode when this computer has no
+backup of it (with one, *Restore to stock*).
+
+1. **EDL mode**: by itself from PICO OS or our systems when one answers (`dev edl`), else by hand.
+2. **The look**, read-only, in the first session after EDL mode was entered: the serial (against `PICO4_EDL_SERIAL`
+   when `.env` has one), the partition table, then `xbl`, `xbl_config`, `tz`, `aop` and `hyp`. The install never
+   writes these, and each build's are its own (every member differs between builds, signed anew), so their SHA-256
+   against `firmware.json`'s pins names the build: version, region and track, without a download. The DDR4 XBL is
+   the original PICO 4's (PICO's own updater picks the DDR5 one by `/sys/hwinfo/lpddr_device_type`); the DDR5 one
+   (PICO 4 Pro and Enterprise) is refused, and so is a boot chain that is no pinned build's.
+3. **That build's package** (about 3.7 GB, resumed after a break; `ota.extract`) from the fastest of PICO's hosts
+   that have it (`firmware.json`'s `mirrors`, `ota.fastest`): `abl.elf`, `boot.img`,
+   `recovery.img`, `dtbo.img`, both `vbmeta`s and the dynamic partitions rebuilt from their block images. Every
+   member must match its pin in `firmware.json` (its size and SHA-256, under each build's `rescue`) before anything
+   is rebuilt: what goes on the headset is what the pins name, whatever the download served. A build without pins
+   is refused before its download. `python -m overpressure rescue pin [BUILD...]` makes the pins from PICO's packages
+   (`--small` leaves out the dynamic partitions' block images, gigabytes each); hashes are not PICO's files, so they
+   are published. The same build goes back, so the system fits the firmware it starts on. `super` is laid out anew from the package's
+   `dynamic_partitions_op_list` (`lp.build`): one group, each partition one read-only extent on the disk's 512 KiB
+   boundaries, as PICO OS's own metadata has them.
+4. **The consent**, then **the writes**, each read back (`qualcomm.write_back`), after a check that the EDL device
+   still has the looked-at partition table and XBL: super's metadata and its logical partitions at their extents,
+   the six images, zeros over the first 64 MiB of `userdata` and `metadata`, `misc` cleared. The boot chain and the
+   headset's own partitions (`persist`, the modem's, `devinfo`, keys) are never written: no package has the latter.
+5. **A restart**: PICO OS starts its first-time setup.
+
+Checked against the user's headset's backup, without the headset: its boot chain named 5.13.7-global-seko (all five
+partitions, the DDR4 XBL) and no other build; that build's package, from PICO's US host and checked against its
+pins, rebuilt every image the rescue writes byte for byte as the backup holds it, the four logical partitions whole
+(`system` with dm-verity's FEC and the AVB footer in its last blocks); the plan is 14 writes, 6.76 GiB. Against
+`super`'s stock metadata the new layout has the same geometry, group, block device and partition entries; only the
+extents differ (one each instead of the stock layout's fragments from earlier updates). `firmware.json` pins every
+build's boot chain and images, and 5.13.7-global-seko's block images too: the others need `rescue pin BUILD` (3.6
+GB each) before their rescue. Not run on a headset yet.
+
 ## Verified results
 
 | Check | Result |

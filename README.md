@@ -94,6 +94,7 @@ to PICO OS is part of it.
 | Install | ✅ | From Windows and Linux; macOS is not tested yet ([#33](https://github.com/overpressure/phoenix/issues/33)) |
 | Upgrade to a new release | ✅ | Keeps your data, Wi-Fi, room and Steam sign-in |
 | Back to PICO OS | ✅ | From the backup the install made |
+| Back to PICO OS without a backup | 🟡 | From PICO's own downloads, the build the headset's firmware has; not run on a headset yet |
 
 Everything that is still open: [the issues](https://github.com/overpressure/phoenix/issues).
 
@@ -116,7 +117,8 @@ Everything that is still open: [the issues](https://github.com/overpressure/phoe
 
 **Upgrade** installs a newer release and keeps your data. **Restore to stock** brings PICO OS back from the
 backup; wear the headset on the cable through PICO OS's setup, whose first start may update the lens and fan
-controller.
+controller. Without a backup, **Rescue PICO OS** brings it back from PICO's own downloads
+([docs/install.md](docs/install.md#without-a-backup-the-rescue)).
 
 ## If something goes wrong
 

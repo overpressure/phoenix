@@ -4,7 +4,10 @@
     "Pick the build that matches the headset: adb shell getprop ro.build.fingerprint,",
     "ro.pvr.internal.version (build number _bNNNN_) and ro.oem.state",
     "(true = SEKO/OEM build, empty = SEK/non-OEM build). The same OTA serves",
-    "PICO 4, PICO 4 Pro and PICO 4 Enterprise. Only boot.img (~16 MB) is downloaded."
+    "PICO 4, PICO 4 Pro and PICO 4 Enterprise.",
+    "Each build's mirrors are the same archive on PICO's other hosts (same name and size); a download takes",
+    "the fastest (ota.fastest). Its rescue pins the size and SHA-256 of each member the rescue reads",
+    "(python -m overpressure rescue pin), so whichever host serves it, the same bytes go on the headset."
   ],
   "builds": {
     "5.13.8-global-seko": {
@@ -13,7 +16,81 @@
       "fingerprint": "Pico/Phoenix_ovs/PICOA8110:10/5.13.8/smartcm.1788350898:user/dev-keys",
       "url": "https://lf-stone-iot-my.dlpicovr.com/obj/stone-iot-my/5.13.8-202609021949-RELEASE-user-phoenix-b10102-5cc013c385.zip",
       "zip_size": 3723661327,
-      "zip_md5": "5cc013c3859b3c302964e4f0c7c7ca7f"
+      "zip_md5": "5cc013c3859b3c302964e4f0c7c7ca7f",
+      "rescue": {
+        "firmware-update/xbl.elf": {
+          "size": 3435672,
+          "sha256": "f4814a29ba69463b9cb56e27d411849372b23cd44afb01b44641b9fc322ae867"
+        },
+        "firmware-update/xbl_ddr5.elf": {
+          "size": 3459800,
+          "sha256": "785db07ec2cace855d53fc29bb2af16f674485f778ebc4173e16369e200ecc4f"
+        },
+        "firmware-update/xbl_config.elf": {
+          "size": 92568,
+          "sha256": "e253c7cafe3e764eba0c5ab65d1bcdbf825f77a0e90aa699051777412119d7b6"
+        },
+        "firmware-update/xbl_config_ddr5.elf": {
+          "size": 92568,
+          "sha256": "533bfbbfbefef9550a4892cc593b6464cf34d1694aea338c6d607eade37d5d3e"
+        },
+        "firmware-update/tz.mbn": {
+          "size": 3190848,
+          "sha256": "556c359f4cac2dad3d73801a27e4e330d8763cbeea45345f466dcf8d92ca142f"
+        },
+        "firmware-update/aop.mbn": {
+          "size": 203372,
+          "sha256": "0f14c316110a00eabb5037b21bcba34b8b8923729ae67141c731393fb8c36566"
+        },
+        "firmware-update/hyp.mbn": {
+          "size": 449416,
+          "sha256": "d5e993ec79a85ad2685b827963ba23bed87b6ed33e87238f9828959db03c9a3b"
+        },
+        "firmware-update/abl.elf": {
+          "size": 208896,
+          "sha256": "2b9afd8aedfacafb00a3f171ce0ccdd00219d27d0b8e78fff4d54009d0c19748"
+        },
+        "boot.img": {
+          "size": 100663296,
+          "sha256": "347997b681e2f3ac829b155bdef705dd2a8f95fd4645be670149b64db45f0bb8"
+        },
+        "recovery.img": {
+          "size": 104857600,
+          "sha256": "9882dd73e985377aba137106bef6fc9244d67719faf87c1651dafc61e6315d19"
+        },
+        "firmware-update/dtbo.img": {
+          "size": 8388608,
+          "sha256": "57648e649f228730275a6995592dc176e5dcef711ded68682a829d5547134577"
+        },
+        "firmware-update/vbmeta.img": {
+          "size": 8192,
+          "sha256": "c0ae0cb7654aaf1687b6c70c0b5f47ef376eeb1d42357d7137ef2d0c83ffb109"
+        },
+        "firmware-update/vbmeta_system.img": {
+          "size": 4096,
+          "sha256": "76c55107351652b561e4730850e0d65703c192e3cf0761ace4dd8050696965f4"
+        },
+        "dynamic_partitions_op_list": {
+          "size": 821,
+          "sha256": "0ce16aa49e59fa1687141b2567f8da44a3d4cb621cd8732e33e2bcce9144c2aa"
+        },
+        "product.transfer.list": {
+          "size": 15499,
+          "sha256": "90d85fc212503e9cdccfe99b9f310c20ff1cdfb69b3ce829f7c495f8349b4bd9"
+        },
+        "vendor.transfer.list": {
+          "size": 4376,
+          "sha256": "95a58e656926936f4cd544fd385605617fb1264b5d2f71551ca32e3d889cc74a"
+        },
+        "system.transfer.list": {
+          "size": 28032,
+          "sha256": "f317a7cdfcb464746e01f5131098615f258ebc57d3f966d79c4dad7d010db289"
+        },
+        "odm.transfer.list": {
+          "size": 149,
+          "sha256": "60492ae624d2771be42bf9287ddb4cfd21bf9c78020c29d728e946e1e085ad5d"
+        }
+      }
     },
     "5.13.8-global-sek": {
       "build": "b10113",
@@ -21,48 +98,598 @@
       "fingerprint": "Pico/Phoenix_ovs/PICOA8110:10/5.13.8/smartcm.1788408867:user/dev-keys",
       "url": "https://lf-stone-iot-my.dlpicovr.com/obj/stone-iot-my/5.13.8-202609031155-RELEASE-user-phoenix-b10113-8e443f50c3.zip",
       "zip_size": 3723728178,
-      "zip_md5": "8e443f50c3627f76a2e29f8354d84eb4"
+      "zip_md5": "8e443f50c3627f76a2e29f8354d84eb4",
+      "rescue": {
+        "firmware-update/xbl.elf": {
+          "size": 3435672,
+          "sha256": "71b154de1424f7e826e0542b39aea85f3939fb35d59bc391cdf83a38c2f12700"
+        },
+        "firmware-update/xbl_ddr5.elf": {
+          "size": 3459800,
+          "sha256": "d4126ffe01be60216f7fbc3c415e4ffe3bedf9b7eb6ddc76dde241a80b10168a"
+        },
+        "firmware-update/xbl_config.elf": {
+          "size": 92568,
+          "sha256": "97e4215f2ac2287257eb447ceaa1c112d3380fb7c02b3b173727351978d6e743"
+        },
+        "firmware-update/xbl_config_ddr5.elf": {
+          "size": 92568,
+          "sha256": "49766f171274bfc2fbc940b432aae6930316888b51f4fdcf84ce53e5466a1051"
+        },
+        "firmware-update/tz.mbn": {
+          "size": 3190848,
+          "sha256": "0e6d1939895ffec8335968e47eb23499b4ad80f8c65f3f81fabee59987ae79f4"
+        },
+        "firmware-update/aop.mbn": {
+          "size": 203372,
+          "sha256": "9f5e297782fc8bfe42d8cf26c97a85dbc238dd86e95347448e606bf12726caca"
+        },
+        "firmware-update/hyp.mbn": {
+          "size": 449416,
+          "sha256": "cbda9611b526fbc93445259523f7e46ec2e20a9ac30faaa12519505f0d66a635"
+        },
+        "firmware-update/abl.elf": {
+          "size": 208896,
+          "sha256": "635bd84f476cdb77b4d5c5be666e0cb93412ab08445fe60570f37c113a831438"
+        },
+        "boot.img": {
+          "size": 100663296,
+          "sha256": "88bc82fb3257836d4145906506a8bb8b4a4237879d5d6f356553c1963afb04ae"
+        },
+        "recovery.img": {
+          "size": 104857600,
+          "sha256": "bc15988b183db9539ecf7b274059a36c179bcded40c002caee10818847202762"
+        },
+        "firmware-update/dtbo.img": {
+          "size": 8388608,
+          "sha256": "007b794943ec865c29e8ba721dc63c2bf0afb77af4e1fd5cc31f2b10164713fb"
+        },
+        "firmware-update/vbmeta.img": {
+          "size": 8192,
+          "sha256": "731f802b2edb3928d536eccf7cfb67076a3c038176105e13b5f269a9d31ed3f6"
+        },
+        "firmware-update/vbmeta_system.img": {
+          "size": 4096,
+          "sha256": "aecf32cca910e54bbda996ea9e56edf820640b9db531d9239999f387c8ef4c78"
+        },
+        "dynamic_partitions_op_list": {
+          "size": 821,
+          "sha256": "6a413593c535c4c9dc2dc6167f4e6836c800c81cb4b6479fd17e9cf22a29d9a7"
+        },
+        "product.transfer.list": {
+          "size": 15499,
+          "sha256": "90d85fc212503e9cdccfe99b9f310c20ff1cdfb69b3ce829f7c495f8349b4bd9"
+        },
+        "vendor.transfer.list": {
+          "size": 4376,
+          "sha256": "451bcd4ca704cef6f9da776466129dca9fc9fde276fddb3421338a87e1b79b16"
+        },
+        "system.transfer.list": {
+          "size": 28032,
+          "sha256": "8f1c215675eefdc3ee07ddf34f89630b4c3c367bfbcb1bafbe81e1858adb24f7"
+        },
+        "odm.transfer.list": {
+          "size": 149,
+          "sha256": "60492ae624d2771be42bf9287ddb4cfd21bf9c78020c29d728e946e1e085ad5d"
+        }
+      }
     },
     "5.13.7-global-seko": {
       "build": "b9665",
       "oem_state": true,
       "url": "https://lf-stone-iot-va.dlpicovr.com/obj/stone-iot-us/5.13.7-202510301735-RELEASE-user-phoenix-b9665-42be801fae.zip",
-      "zip_size": 3723574018
+      "mirrors": [
+        "https://lf-stone-iot-my.dlpicovr.com/obj/stone-iot-my/5.13.7-202510301735-RELEASE-user-phoenix-b9665-42be801fae.zip",
+        "https://static.us-pui.picovr.com/5.13.7-202510301735-RELEASE-user-phoenix-b9665-42be801fae.zip"
+      ],
+      "zip_size": 3723574018,
+      "rescue": {
+        "firmware-update/xbl.elf": {
+          "size": 3435672,
+          "sha256": "b5216b484a0bda8784a91dbd3f12419a9983b5cb968a90aa1ebd9670c08c413a"
+        },
+        "firmware-update/xbl_ddr5.elf": {
+          "size": 3459800,
+          "sha256": "bafa20c06530c8f4840efca0f0a2e16a84f1953dca4785f71a54d732201915fc"
+        },
+        "firmware-update/xbl_config.elf": {
+          "size": 92568,
+          "sha256": "794ed6e4c7d4cfcc457c332d2e1f5bfd609942e081134548d6961983b2b06c0a"
+        },
+        "firmware-update/xbl_config_ddr5.elf": {
+          "size": 92568,
+          "sha256": "3794ae7d8bbb292bb2be0cb4eee4e730254034dac82516cbd2cd60678a1ca06e"
+        },
+        "firmware-update/tz.mbn": {
+          "size": 3190848,
+          "sha256": "6eef75bde6c85d0952514adecd06e4c397515c35f2dd10bf4948ee639c8085bb"
+        },
+        "firmware-update/aop.mbn": {
+          "size": 203372,
+          "sha256": "a703a11f0d25f205d4c4825796dfb14f47629fa3ae519b8855ed6cea7d090928"
+        },
+        "firmware-update/hyp.mbn": {
+          "size": 449416,
+          "sha256": "c3c57c0231db797c761be3e87bfe6400644b770ed0145642e1aa7c09c04217c2"
+        },
+        "firmware-update/abl.elf": {
+          "size": 208896,
+          "sha256": "70874c0d118cbd1f187bfc91bd751d4200edd160b810b90c24918ab73d64b694"
+        },
+        "boot.img": {
+          "size": 100663296,
+          "sha256": "35e0d0b1c4b0897cacab79e37017f718f62ed60d6c29028d231e8d0afa8d1cfa"
+        },
+        "recovery.img": {
+          "size": 104857600,
+          "sha256": "68b368875f31aa57b4468eefbf45fa714b17f6c7091f8ea39105ca26c4db53c8"
+        },
+        "firmware-update/dtbo.img": {
+          "size": 8388608,
+          "sha256": "1caaecf2e5ebdcd3eb35c77072b0c3299ae84fd099fa273cdcaab73405509630"
+        },
+        "firmware-update/vbmeta.img": {
+          "size": 8192,
+          "sha256": "66b83c8909ddd4fae126da88fd52945e6d72076ec35a7562a7c67992cf397327"
+        },
+        "firmware-update/vbmeta_system.img": {
+          "size": 4096,
+          "sha256": "c304910337d0068630b791036413bd7a72d1c31722ea300d523f67ea8c3005fc"
+        },
+        "dynamic_partitions_op_list": {
+          "size": 821,
+          "sha256": "caa76dcbd675f69559f2bfe357d2afd83947ccf290e85fbf81616a4ef21a595a"
+        },
+        "product.transfer.list": {
+          "size": 15499,
+          "sha256": "90d85fc212503e9cdccfe99b9f310c20ff1cdfb69b3ce829f7c495f8349b4bd9"
+        },
+        "vendor.transfer.list": {
+          "size": 4376,
+          "sha256": "6eb52f2abc353efebcc73e133dc6644ee78b4b6a2573cd1547b53309773ca378"
+        },
+        "system.transfer.list": {
+          "size": 28032,
+          "sha256": "c5d5d8627f425a2d2bc22f40451ce5305f27b00b66a9c8371eae76f5b9393a17"
+        },
+        "odm.transfer.list": {
+          "size": 149,
+          "sha256": "60492ae624d2771be42bf9287ddb4cfd21bf9c78020c29d728e946e1e085ad5d"
+        },
+        "product.new.dat.br": {
+          "size": 123623434,
+          "sha256": "8a50dfbaac66021fc257ec909cfe0d8980a616830bf1522d68c1c5b5523d778d"
+        },
+        "vendor.new.dat.br": {
+          "size": 341117834,
+          "sha256": "543941d81c53e35775df4d757a44c8b5c17f3ae8c122cdff19c03d0e8b9bccd1"
+        },
+        "system.new.dat.br": {
+          "size": 3176996802,
+          "sha256": "72c1d2db8797973aaf9fe0c3408eba31215c53fedf23b80b633af13f8c2172c7"
+        },
+        "odm.new.dat.br": {
+          "size": 257866,
+          "sha256": "ff92b96e3c88ece00c9dd92ae100c08989cca3a7e710e2710dd761e7e529c9ea"
+        }
+      }
     },
     "5.13.7-global-sek": {
       "build": "b9666",
       "oem_state": false,
       "fingerprint": "Pico/Phoenix_ovs/PICOA8110:10/5.13.7/smartcm.1761818300:user/dev-keys",
       "url": "https://lf-stone-iot-va.dlpicovr.com/obj/stone-iot-us/5.13.7-202510301739-RELEASE-user-phoenix-b9666-26140cfa0d.zip",
-      "zip_size": 3723882791
+      "mirrors": [
+        "https://lf-stone-iot-my.dlpicovr.com/obj/stone-iot-my/5.13.7-202510301739-RELEASE-user-phoenix-b9666-26140cfa0d.zip",
+        "https://static.us-pui.picovr.com/5.13.7-202510301739-RELEASE-user-phoenix-b9666-26140cfa0d.zip"
+      ],
+      "zip_size": 3723882791,
+      "rescue": {
+        "firmware-update/xbl.elf": {
+          "size": 3435672,
+          "sha256": "47853b3e00e6a6ce06d0dc93cb10b8ae7236155b8debc277c69751ca722fc580"
+        },
+        "firmware-update/xbl_ddr5.elf": {
+          "size": 3459800,
+          "sha256": "02b20df90a81dc2f39224bba2d13945e7859285535be8912105503185ad0a08a"
+        },
+        "firmware-update/xbl_config.elf": {
+          "size": 92568,
+          "sha256": "821baf0bd4a4b8d7d699c2e8b567d1b3443544bfa8904923cbabc088dc2288ec"
+        },
+        "firmware-update/xbl_config_ddr5.elf": {
+          "size": 92568,
+          "sha256": "83491d60a53faac128b3e17a929e8f2c3709b1dbfb4449185d5a553771624663"
+        },
+        "firmware-update/tz.mbn": {
+          "size": 3190848,
+          "sha256": "1f311a5078ddaaba8a985271a14247c1083a488699db4c3d89c6c0943c410aad"
+        },
+        "firmware-update/aop.mbn": {
+          "size": 203372,
+          "sha256": "29d8535b409ce9741b06ebbd56329aaed5fa6c483263ac097054b99095e3faf3"
+        },
+        "firmware-update/hyp.mbn": {
+          "size": 449416,
+          "sha256": "a862d4d126df9e5fa04fbd4f60b5c1dcddc018c90141edea78e9125595030037"
+        },
+        "firmware-update/abl.elf": {
+          "size": 208896,
+          "sha256": "8e2dc455860cae592c4598fd82ee49fa8dd0e9367de1986edf9125f72139f014"
+        },
+        "boot.img": {
+          "size": 100663296,
+          "sha256": "74a3344d23cb72b73db9ed69778aee467fea71f0af36121ef0b05e6eac4fdc20"
+        },
+        "recovery.img": {
+          "size": 104857600,
+          "sha256": "a280d12bc48ef1c796fa156910dccd99eed57aaf739964449cb2140d9cc6b744"
+        },
+        "firmware-update/dtbo.img": {
+          "size": 8388608,
+          "sha256": "f7fba7e5cb7778d3a13c280f731cc1faab20e385cb89dbd284d66cd65c150f3e"
+        },
+        "firmware-update/vbmeta.img": {
+          "size": 8192,
+          "sha256": "a129cd923a7d785123cf11bc8143ccc7dfc727fa75fd65993f4047b8e1c4b11e"
+        },
+        "firmware-update/vbmeta_system.img": {
+          "size": 4096,
+          "sha256": "878a299a8497e9b39a748248597808b3ae85bab6cd08d81a0a64ac0f72955d73"
+        },
+        "dynamic_partitions_op_list": {
+          "size": 821,
+          "sha256": "dfe1b48aa457de0225d788aab3d6efada1da433e2d527d7d69f387daa3eb78ad"
+        },
+        "product.transfer.list": {
+          "size": 15499,
+          "sha256": "90d85fc212503e9cdccfe99b9f310c20ff1cdfb69b3ce829f7c495f8349b4bd9"
+        },
+        "vendor.transfer.list": {
+          "size": 4376,
+          "sha256": "68a5c92a788041377092ab94376a295d8f7b0f665e4c61afa9be5d35f1471eb7"
+        },
+        "system.transfer.list": {
+          "size": 28032,
+          "sha256": "4c917c04aae33f31ecfe990fc441f628ce1531ec3f45fdca99af568f9f877c55"
+        },
+        "odm.transfer.list": {
+          "size": 149,
+          "sha256": "60492ae624d2771be42bf9287ddb4cfd21bf9c78020c29d728e946e1e085ad5d"
+        }
+      }
     },
     "5.13.7-cn-seko": {
       "build": "b9650",
       "oem_state": true,
       "url": "https://lf-iot-ota.picovr.com/obj/iot-ota/5.13.7-202510300008-RELEASE-user-phoenix-b9650-de69e61ba0.zip",
       "zip_size": 3845747804,
-      "zip_md5": "de69e61ba09344df6303bcd2ccd5f07a"
+      "zip_md5": "de69e61ba09344df6303bcd2ccd5f07a",
+      "rescue": {
+        "firmware-update/xbl.elf": {
+          "size": 3435672,
+          "sha256": "ea0055592199864574da67d1dae171467fb6385ff8961a3e86ae3040f66983a0"
+        },
+        "firmware-update/xbl_ddr5.elf": {
+          "size": 3459800,
+          "sha256": "c3b1a7a8d2db89d2f553bd030d2b601a0d408a6f72e1a480375e608af3a2ab8c"
+        },
+        "firmware-update/xbl_config.elf": {
+          "size": 92568,
+          "sha256": "ba010b2baa29c2829044b8ed81222a7c021746df7b4f282f6be56244dadc3eb9"
+        },
+        "firmware-update/xbl_config_ddr5.elf": {
+          "size": 92568,
+          "sha256": "929689d99650d48bef73973ef6c5dfb7b19f4ea4da0840d1f82afd0e9850ceb7"
+        },
+        "firmware-update/tz.mbn": {
+          "size": 3190848,
+          "sha256": "77ea1875b2b31e0791f043b4d86881d2b926124a5c84fc14c7ae55153584f689"
+        },
+        "firmware-update/aop.mbn": {
+          "size": 203372,
+          "sha256": "b5ffafc451d47347b08cd68dac73633990692ef9b6e0e727de5989c67219a94f"
+        },
+        "firmware-update/hyp.mbn": {
+          "size": 449416,
+          "sha256": "df87c06c710fc992666d32cba449ab2f5f3a9e340c0490d0090fbe432c0f95f6"
+        },
+        "firmware-update/abl.elf": {
+          "size": 208896,
+          "sha256": "25c00dbee78271d4727e71bf33d429b814d2382319ba8e5f4b5dbfc4ca2f1bdf"
+        },
+        "boot.img": {
+          "size": 100663296,
+          "sha256": "aa978cd9a4c0c7c90ebdd1666eaff88b8f8971b85a561a5cf16f2e5aa7cd001c"
+        },
+        "recovery.img": {
+          "size": 104857600,
+          "sha256": "7817756bf61ca819a4c9cee801ba4fd6dff4ab651a138898c3df7aebdeaf392c"
+        },
+        "firmware-update/dtbo.img": {
+          "size": 8388608,
+          "sha256": "ffd65209d3454a08eabac35e1518621a74942e21fbdf48065da990a69536052a"
+        },
+        "firmware-update/vbmeta.img": {
+          "size": 8192,
+          "sha256": "d7a8f46d64a6fe5c322ef99dd3b8e9d78dc8777bb4b1ec5bd6ba46804b688be4"
+        },
+        "firmware-update/vbmeta_system.img": {
+          "size": 4096,
+          "sha256": "527640d559ac25786907def72185e63c5d22fb5302230fad0b645f4698fdac69"
+        },
+        "dynamic_partitions_op_list": {
+          "size": 821,
+          "sha256": "cb484850f1e2a93f8519322b912bab2ff0e15decf4bd373318642f75562bb478"
+        },
+        "product.transfer.list": {
+          "size": 15499,
+          "sha256": "90d85fc212503e9cdccfe99b9f310c20ff1cdfb69b3ce829f7c495f8349b4bd9"
+        },
+        "vendor.transfer.list": {
+          "size": 4404,
+          "sha256": "3c4925b3dd3defa0fb69dfcd1cb10be9554b27df5addfe795f20d29307bdbcbc"
+        },
+        "system.transfer.list": {
+          "size": 29013,
+          "sha256": "ab9864bf96926260d3df8cceeb0bc975fdc10352477fd7074002ef9d45036356"
+        },
+        "odm.transfer.list": {
+          "size": 149,
+          "sha256": "60492ae624d2771be42bf9287ddb4cfd21bf9c78020c29d728e946e1e085ad5d"
+        }
+      }
     },
     "5.13.7-cn-sek": {
       "build": "b9651",
       "oem_state": false,
       "url": "https://lf-iot-ota.picovr.com/obj/iot-ota/5.13.7-202510300015-RELEASE-user-phoenix-b9651-cb5ad9d7db.zip",
       "zip_size": 3845798940,
-      "zip_md5": "cb5ad9d7db168c019f40c3dd8b39e8f6"
+      "zip_md5": "cb5ad9d7db168c019f40c3dd8b39e8f6",
+      "rescue": {
+        "firmware-update/xbl.elf": {
+          "size": 3435672,
+          "sha256": "01b7d40d32e8c3c11d9241355e63356b51afe2571f49d3de9e4365b36bbd53da"
+        },
+        "firmware-update/xbl_ddr5.elf": {
+          "size": 3459800,
+          "sha256": "3690da4e6465651c63624b5341f820a2f22e685ca0191a8092dcd4f5b7f118a4"
+        },
+        "firmware-update/xbl_config.elf": {
+          "size": 92568,
+          "sha256": "9f7f55611a0aa8be7c229778555d548e19bf3398858aec2d439d212639e968c8"
+        },
+        "firmware-update/xbl_config_ddr5.elf": {
+          "size": 92568,
+          "sha256": "2870664a3791df2b66085039e95ba84c7fd7a79b8b49ac876a76f082d8d5f7b7"
+        },
+        "firmware-update/tz.mbn": {
+          "size": 3190848,
+          "sha256": "0abe690e38c09fd173b830c0220fa799a2250a0eb0ea3c9b2b13787c373c07f5"
+        },
+        "firmware-update/aop.mbn": {
+          "size": 203372,
+          "sha256": "f87dc561db68925d9c36e83bc27e085927fcb2e7980abb22624ba822a89703ac"
+        },
+        "firmware-update/hyp.mbn": {
+          "size": 449416,
+          "sha256": "baf07c579cf329d092cd87c4fdae64cdd0c352b0b6f930875aee31e16158ea10"
+        },
+        "firmware-update/abl.elf": {
+          "size": 208896,
+          "sha256": "68f0ad4226c689ef75343fce525fb0031b6bf7a22ac950936a8ccec2e97020f5"
+        },
+        "boot.img": {
+          "size": 100663296,
+          "sha256": "597aa7733a7a85d8bc14c488fdc23e7cc66f7c2f7c6c083aaeef97eeca4c08e3"
+        },
+        "recovery.img": {
+          "size": 104857600,
+          "sha256": "c1bfe11253057a83817004af6b8d8b6e927f6423dd2a248e374029eb01a1ff0f"
+        },
+        "firmware-update/dtbo.img": {
+          "size": 8388608,
+          "sha256": "97f772e8d719e476aa0397de5f0de0bbf2ac1d1437066eeb251449a0a38be0fb"
+        },
+        "firmware-update/vbmeta.img": {
+          "size": 8192,
+          "sha256": "68b91966d08fd0c725c608ec0aa3da9f05b92950eae5d62bd373a1306047146b"
+        },
+        "firmware-update/vbmeta_system.img": {
+          "size": 4096,
+          "sha256": "2ac0cc5b4625d1b5db950e26e7f587e1121ce6e44060c2ed284541a186504383"
+        },
+        "dynamic_partitions_op_list": {
+          "size": 821,
+          "sha256": "994e1b05caea8eb07108a7c7521113b6cc43404441a293531697be6b5b80b10f"
+        },
+        "product.transfer.list": {
+          "size": 15499,
+          "sha256": "90d85fc212503e9cdccfe99b9f310c20ff1cdfb69b3ce829f7c495f8349b4bd9"
+        },
+        "vendor.transfer.list": {
+          "size": 4404,
+          "sha256": "ca1ff5f62361ee2165fe1b388f82b29cb80b389b62e691241114acca27ed23a9"
+        },
+        "system.transfer.list": {
+          "size": 29013,
+          "sha256": "19320b487d8d175228b2acc4185b5e0c9f8657000586b07c6ee2002216850cde"
+        },
+        "odm.transfer.list": {
+          "size": 149,
+          "sha256": "60492ae624d2771be42bf9287ddb4cfd21bf9c78020c29d728e946e1e085ad5d"
+        }
+      }
     },
     "5.13.3-global-seko": {
       "build": "b9480",
       "oem_state": true,
       "url": "https://static.us-pui.picovr.com/5.13.3-202507030112-RELEASE-user-phoenix-b9480-6746cfb44c.zip",
+      "mirrors": [
+        "https://lf-stone-iot-va.dlpicovr.com/obj/stone-iot-us/5.13.3-202507030112-RELEASE-user-phoenix-b9480-6746cfb44c.zip",
+        "https://lf-stone-iot-my.dlpicovr.com/obj/stone-iot-my/5.13.3-202507030112-RELEASE-user-phoenix-b9480-6746cfb44c.zip"
+      ],
       "zip_size": 3663144256,
-      "zip_md5": "6746cfb44c2723964f82b3c470d959c5"
+      "zip_md5": "6746cfb44c2723964f82b3c470d959c5",
+      "rescue": {
+        "firmware-update/xbl.elf": {
+          "size": 3435672,
+          "sha256": "33aafafe4e8c3821474195bcc69f005869dbeb54d5282c317cd3aed2e09e6c8c"
+        },
+        "firmware-update/xbl_ddr5.elf": {
+          "size": 3459800,
+          "sha256": "53e14c80acce043aa2bb458cd6676ff9510571554efc2d0ab6eb0d4fd73c24af"
+        },
+        "firmware-update/xbl_config.elf": {
+          "size": 92568,
+          "sha256": "73d288cd21474c03b130543cd7ff1142e86d69b5d038feb6683772ab4a8ca8d2"
+        },
+        "firmware-update/xbl_config_ddr5.elf": {
+          "size": 92568,
+          "sha256": "50905440f56fa7796996afd1bb30f29d9e1cb09a8571ad11f4ad177fb3bc529d"
+        },
+        "firmware-update/tz.mbn": {
+          "size": 3190848,
+          "sha256": "fc635e318a381c04be676de4e8fe608dd059dbdc634416c6bafa2746e72e2a8f"
+        },
+        "firmware-update/aop.mbn": {
+          "size": 203372,
+          "sha256": "8a0ca19502786fbe1bfcf77bde808523ee886ddea340fe67b32578863970262e"
+        },
+        "firmware-update/hyp.mbn": {
+          "size": 449416,
+          "sha256": "ceda64d03d3353649f0cfdde215f73d300bae73116ef3ff0ae9b6fb4cef52d65"
+        },
+        "firmware-update/abl.elf": {
+          "size": 208896,
+          "sha256": "653ca37545c4c97366ab132f17e001236503ea13260fa879f62fbd1e64c2b2de"
+        },
+        "boot.img": {
+          "size": 100663296,
+          "sha256": "4c682f5d899d5c8fb78a8731c543e7a1f91e247e246b2f72f8a507cea2fcae86"
+        },
+        "recovery.img": {
+          "size": 104857600,
+          "sha256": "8492efe08e57dc364dd6efe7d58f3c362f7a1f3789c479ff6e615ac41818121c"
+        },
+        "firmware-update/dtbo.img": {
+          "size": 8388608,
+          "sha256": "ff2db5cb54aeca75009fafeb64a9da7da734ffe64480b5077b402b644f80f87c"
+        },
+        "firmware-update/vbmeta.img": {
+          "size": 8192,
+          "sha256": "d2333cc759a80705e1a1230bc11400ac670e15824e8e97035ec52fec1c7591a7"
+        },
+        "firmware-update/vbmeta_system.img": {
+          "size": 4096,
+          "sha256": "3a0e9e5f29c5d630255cd0ac267a34c99ac32c842e318f16c5bf108cc9543003"
+        },
+        "dynamic_partitions_op_list": {
+          "size": 821,
+          "sha256": "3007d42a1b85bd9b4147dade5b2938faeb4e25df8ebad43ea76ef1c3928639d1"
+        },
+        "product.transfer.list": {
+          "size": 15499,
+          "sha256": "90d85fc212503e9cdccfe99b9f310c20ff1cdfb69b3ce829f7c495f8349b4bd9"
+        },
+        "vendor.transfer.list": {
+          "size": 3704,
+          "sha256": "ce19b53f4d1c26acafc0257faebbdf8bb0d9347fe5d13b3d0b0e9444cb5e299c"
+        },
+        "system.transfer.list": {
+          "size": 28032,
+          "sha256": "86c0b70ce903942dfed58eb97fa6f7e2e492d07ab64b0ce761f18f5e9189e094"
+        },
+        "odm.transfer.list": {
+          "size": 149,
+          "sha256": "60492ae624d2771be42bf9287ddb4cfd21bf9c78020c29d728e946e1e085ad5d"
+        }
+      }
     },
     "5.13.3-global-sek": {
       "build": "b9479",
       "oem_state": false,
       "url": "https://static.us-pui.picovr.com/5.13.3-202507030047-RELEASE-user-phoenix-b9479-aa79997682.zip",
+      "mirrors": [
+        "https://lf-stone-iot-va.dlpicovr.com/obj/stone-iot-us/5.13.3-202507030047-RELEASE-user-phoenix-b9479-aa79997682.zip",
+        "https://lf-stone-iot-my.dlpicovr.com/obj/stone-iot-my/5.13.3-202507030047-RELEASE-user-phoenix-b9479-aa79997682.zip"
+      ],
       "zip_size": 3662898669,
-      "zip_md5": "aa799976821101ee425fb10e1ab1a2f1"
+      "zip_md5": "aa799976821101ee425fb10e1ab1a2f1",
+      "rescue": {
+        "firmware-update/xbl.elf": {
+          "size": 3435672,
+          "sha256": "4a6deff97317f880dfaa8058a2f26a0162f3d6ab61f3cb3ae355cbfc4a359534"
+        },
+        "firmware-update/xbl_ddr5.elf": {
+          "size": 3459800,
+          "sha256": "ecc86265f345bfb3a2591b635963e8305df670fb20da171aac783f3cc2c79328"
+        },
+        "firmware-update/xbl_config.elf": {
+          "size": 92568,
+          "sha256": "40d5afd5ff9dbe3fb14ba898746da5e6e5c3eb1e7396232f625df329653b0f36"
+        },
+        "firmware-update/xbl_config_ddr5.elf": {
+          "size": 92568,
+          "sha256": "614ed2522bcc5308e9458e96718ab4514b7f2bf9e429c24f5261fd7ecd377ed4"
+        },
+        "firmware-update/tz.mbn": {
+          "size": 3190848,
+          "sha256": "d4d1eebd7eaf44d96ff63dc04c3ed0bccab0d88b50b305205aa0baec928da836"
+        },
+        "firmware-update/aop.mbn": {
+          "size": 203372,
+          "sha256": "0c66c6a02e0b5c1cd803bc9e299f926ff84654c28b0033d8d4f8e5b9a54048e7"
+        },
+        "firmware-update/hyp.mbn": {
+          "size": 449416,
+          "sha256": "7e0017bdefaf826f477c7ef8915d4c10ce12f1502ead29001ef17c0b5beec3a6"
+        },
+        "firmware-update/abl.elf": {
+          "size": 208896,
+          "sha256": "279aa6d790e53d922aa4df6c1d167c1339ada7d674ef7a4ec5514250d0e5aafe"
+        },
+        "boot.img": {
+          "size": 100663296,
+          "sha256": "5e07f93abe6ae10d6e1efbda63322706c38b511c813c1b555f86bb193b9ca531"
+        },
+        "recovery.img": {
+          "size": 104857600,
+          "sha256": "6e26b4e828cf0242e076474769b4fafe06ef0c87006f204fef0d13a2b57286d5"
+        },
+        "firmware-update/dtbo.img": {
+          "size": 8388608,
+          "sha256": "4452974618f1df4bb0af218c50c734020549548d81e0befbb847a4e2e9c152d2"
+        },
+        "firmware-update/vbmeta.img": {
+          "size": 8192,
+          "sha256": "d0b277bbbfeac3aacbed1c8fab5dcab1f20af30ec21c16a5619c0f2a9ceecf8b"
+        },
+        "firmware-update/vbmeta_system.img": {
+          "size": 4096,
+          "sha256": "2d49b091ffb0de67d1e1dc82f8d40bdad825842890abf9d98dd89f97bc7e465c"
+        },
+        "dynamic_partitions_op_list": {
+          "size": 821,
+          "sha256": "2674a66466521c42e0590562203fc461bf2d58926dbc00a25314fce900294a32"
+        },
+        "product.transfer.list": {
+          "size": 15499,
+          "sha256": "90d85fc212503e9cdccfe99b9f310c20ff1cdfb69b3ce829f7c495f8349b4bd9"
+        },
+        "vendor.transfer.list": {
+          "size": 3704,
+          "sha256": "324734dbaaaae4540b50a0a3b45f49194cae9ce37d0a1811d046547446aa8ccc"
+        },
+        "system.transfer.list": {
+          "size": 28032,
+          "sha256": "28c930a96d048ce3be7d6d7e46e43a766e287b92b04ea013ec16b8f8cd365913"
+        },
+        "odm.transfer.list": {
+          "size": 149,
+          "sha256": "60492ae624d2771be42bf9287ddb4cfd21bf9c78020c29d728e946e1e085ad5d"
+        }
+      }
     }
   }
 }

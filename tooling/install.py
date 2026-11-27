@@ -188,6 +188,18 @@ EDL_BY_HAND = Ask(
     "Choose Power off in the menu on the headset (the volume buttons move, the power button chooses). Unplug the "
     "USB cable, then hold both volume buttons and plug the cable back in. The lenses stay dark. Then press Done.",
 )
+#: The rescue's consent and its end (Plan.rescue_stages).
+RESCUE_CONSENT = Ask(
+    "consent",
+    "confirm",
+    "Rescue PICO OS?",
+    "The rescue writes PICO OS back over whatever is on your headset: its system, apps and data are erased. Its "
+    "own partitions (calibration, the modem's) stay as they are.",
+)
+RESCUED = (
+    "PICO OS starts its first-time setup; the first start takes a few minutes. Turn on developer mode and USB "
+    "debugging again in its settings to install from here."
+)
 #: The install's engineering bootloader from PICO's stock bootloader in fastboot (Plan.stage_abl).
 STOCK_FASTBOOT = (
     "The headset waits in its bootloader (fastboot) with PICO's own bootloader, which cannot be replaced from "
@@ -417,6 +429,83 @@ class Plan:
     def put_down(ctx: Context) -> None:
         """Ask the owner to leave the headset on a table for the checks."""
         ctx.ask(PUT_DOWN)
+
+    def rescue_stages(self) -> tuple[Stage, ...]:
+        """Return the rescue: PICO OS back without a backup, from PICO's own package of the headset's build (rescue)."""
+        in_edl = "Nothing was written to your headset; it may be in EDL mode (its lenses stay dark). " + AGAIN
+        return (
+            Stage(
+                "computer",
+                "Check this computer",
+                "The host tools and the EDL loader from PICO's public downloads. The headset is not needed yet.",
+                (
+                    self.step_task("tools", "Host tools", "about 1 min", done=self.tools_there, where=UNCHANGED),
+                    self.step_task(
+                        "unlock-files", "EDL loader", "about 2 min", done=self.unlock_files_there, where=UNCHANGED
+                    ),
+                ),
+            ),
+            Stage(
+                "look",
+                "Look at the headset",
+                "EDL mode, then a read-only look: the headset's serial, its partition table and its boot chain, "
+                "which names its PICO OS build. A PICO 4 Pro or Enterprise, or a build the installer does not know, "
+                "stops here.",
+                (
+                    Task("edl", "EDL mode", self.rescue_edl, "about 1 min", where=in_edl),
+                    self.step_task("rescue-look", "Which PICO 4 and which build", "a minute", where=in_edl),
+                ),
+            ),
+            Stage(
+                "rescue",
+                "Rescue PICO OS",
+                "PICO's package of that build is downloaded and its images rebuilt; then PICO OS's bootloader, "
+                "system, boot and recovery are written over EDL mode, each read back, and its data starts fresh. "
+                "Keep the cable in.",
+                (
+                    self.step_task("rescue-prepare", "PICO OS's package", "about 20 min", where=in_edl),
+                    Task("consent", "Your consent", self.consent_rescue, where=in_edl),
+                    self.step_task(
+                        "rescue-write",
+                        "PICO OS over EDL",
+                        "about 15 min",
+                        where="The headset is in EDL mode with PICO OS written up to where it stopped; what was "
+                        "written was read back. Keep the cable in and start the installer again: the rescue can be "
+                        "repeated.",
+                    ),
+                    Task(
+                        "start",
+                        "Start PICO OS",
+                        self.rescue_start,
+                        "about 2 min",
+                        where="PICO OS is written; hold the power button for about 10 s, and it starts again "
+                        "into its setup.",
+                    ),
+                ),
+            ),
+        )
+
+    def rescue_edl(self, ctx: Context) -> None:
+        """Bring the headset into EDL mode: by itself from PICO OS or our systems when one answers, else by hand."""
+        if self.edl_count() == 1:
+            return
+        ctx.progress(None, "Starting EDL mode")
+        try:
+            AskingDev(ctx, self.work).to_edl()
+        except RuntimeError:
+            ctx.note("Neither PICO OS nor the headset's own system answers: EDL mode by hand, then.")
+            self.edl_by_hand(ctx)
+
+    def consent_rescue(self, ctx: Context) -> None:
+        """Ask before the rescue writes: it erases whatever is on the headset."""
+        ctx.ask(RESCUE_CONSENT)
+
+    def rescue_start(self, ctx: Context) -> None:
+        """Restart the headset out of EDL mode: PICO OS starts its first-time setup."""
+        settings = ctx.settings(Settings)
+        ctx.output(qualcomm.reboot_argv(settings.edl_program(), settings.path("loader")), 60)
+        qualcomm.drain_until_gone(ctx.clock, reader=self.usb_reader)  # Linux: read its last message
+        ctx.note(RESCUED)
 
     def check_stages(self) -> tuple[Stage, ...]:
         """Return the check workflow: the headset left alone, then the stage-2 checks one by one.

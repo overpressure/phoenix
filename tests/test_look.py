@@ -91,6 +91,11 @@ class LookTest(unittest.TestCase):
         self.assertEqual((found.state, found.workflows), (headsets.EDL, ("restore",)))
         self.assertEqual(self.fakes.ran, [])  # no loader, no tool: the bus only
 
+    def test_edl_mode_without_this_computers_backup_offers_the_rescue(self):
+        self.fakes.bus[EDL] = 1
+        self.look.backup_there = lambda: False
+        self.assertEqual(self.found().workflows, ("rescue",))
+
     def test_where_the_bus_cannot_be_read_edl_mode_is_seen_in_the_systems_own_listing(self):
         self.look.bus = lambda _vendor, _product: None
         self.fakes.bus[EDL] = 1

@@ -77,6 +77,7 @@ class Look:
     port_open: Callable[[str, int, float], bool] | None = None
     bus: Callable[[int, int], int | None] = usb_count
     edl_listing: Callable[[], int] = edl_devices  #: EDL devices by this system's own listing, where the bus is unread
+    backup_there: Callable[[], bool] = lambda: True  #: whether this computer has the headset's backup (Restore)
     clock: Timing = time
 
     def found(self, modes: tuple[UsbMode, ...], edl: UsbMode) -> Found:
@@ -85,7 +86,9 @@ class Look:
         if in_edl is None:  # without pyusb: this system's own listing (Get-PnpDevice, ioreg, sysfs)
             in_edl = self.edl_listing()
         if in_edl:
-            return Found(headsets.EDL, "Emergency download mode", workflows=("restore",), note=EDL_WAY_OUT)
+            # Without this computer's backup, PICO OS comes back from PICO's own downloads (the rescue).
+            way_back = ("restore",) if self.backup_there() else ("rescue",)
+            return Found(headsets.EDL, "Emergency download mode", workflows=way_back, note=EDL_WAY_OUT)
         fastboot = next((m for m in modes if m.name.startswith("fastboot")), None)
         in_fastboot = self.count(fastboot) if fastboot is not None else 0  # None: the bus cannot tell here
         # adb answers at once; the headset's own system may take the port's timeout.

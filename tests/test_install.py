@@ -954,17 +954,25 @@ class WorkflowTests(unittest.TestCase):
 
     def test_the_workflows_in_order_with_their_plans(self):
         check = ["check"] if tooling.CHECK_WORKFLOW else []
-        self.assertEqual([w.key for w in HEADSET.workflows()], ["install", "upgrade", "restore", *check])
-        self.assertEqual([w.erases for w in HEADSET.workflows()], [True, False, True, *[False for _ in check]])
+        self.assertEqual([w.key for w in HEADSET.workflows()], ["install", "upgrade", "restore", "rescue", *check])
+        self.assertEqual([w.erases for w in HEADSET.workflows()], [True, False, True, True, *[False for _ in check]])
         self.assertEqual([s.id for s in self.plan.check_stages()], ["check"])
         # Nothing of the check writes to the headset.
         self.assertFalse(any(t.writes for s in self.plan.check_stages() for t in s.tasks))
         self.assertEqual([s.id for s in self.plan.upgrade_stages()], ["computer", "build", "install"])
         self.assertEqual([s.id for s in self.plan.restore_stages()], ["backup", "restore", "pico-os", "bootloader"])
+        self.assertEqual([s.id for s in self.plan.rescue_stages()], ["computer", "look", "rescue"])
+        rescue = [t for s in self.plan.rescue_stages() for t in s.tasks]
+        # Nothing writes before the consent, which comes after the download.
+        ids = [t.id for t in rescue]
+        self.assertEqual([t.id for t in rescue if t.writes], ["rescue-write"])
+        self.assertLess(ids.index("rescue-prepare"), ids.index("consent"))
+        self.assertLess(ids.index("consent"), ids.index("rescue-write"))
 
     def test_every_task_that_can_fail_says_where_the_headset_is_and_what_next(self):
         # Its where is what a failure shows unless the failure says more; only the closing notes have none.
-        plans = (self.plan.stages(), self.plan.upgrade_stages(), self.plan.restore_stages(), self.plan.check_stages())
+        plan = self.plan
+        plans = (plan.stages(), plan.upgrade_stages(), plan.restore_stages(), plan.check_stages(), plan.rescue_stages())
         for stages in plans:
             for task in (t for s in stages for t in s.tasks if t.id not in ("ready", "restored", "checked")):
                 self.assertTrue(task.where, task.id)
