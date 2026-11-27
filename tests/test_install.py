@@ -255,8 +255,18 @@ class PlanTests(unittest.TestCase):
         done = {t.id: t.done for t in self.plan.image_tasks("")}
         self.assertFalse(any(check(ctx) for check in done.values() if check))
         out.mkdir(parents=True, exist_ok=True)
-        (out / "pico4-stage1-5.13.7-global-seko.img").write_text("x")
+        source = self.root / "runtime" / "svc"
+        source.parent.mkdir()
+        source.write_text("x")
+        self.plan.stage1_sources = (source.parent,)
+        image = out / "pico4-stage1-5.13.7-global-seko.img"
+        image.write_text("x")
+        os.utime(source, (1000, 1000))
         self.assertTrue(done["stage1"](ctx))  # ty: ignore[call-non-callable]  # every build has one
+        # An update of overpressure's runtime or of the headset's overlay builds the maintenance system again.
+        later = image.stat().st_mtime + 10
+        os.utime(source, (later, later))
+        self.assertFalse(done["stage1"](ctx))  # ty: ignore[call-non-callable]  # every build has one
 
     def test_connect_and_prepare_find_the_serials_and_write_them_to_env(self):
         reads = []  # the loader's last message, read after the restart into PICO OS (on Linux it waits for that)
@@ -1075,6 +1085,7 @@ class WorkflowTests(unittest.TestCase):
             mock.patch.object(install_plan, "run_step", side_effect=lambda _ctx, key: order.append(key)),
         ):
             dev.return_value.other_abl_in_fastboot.return_value = True
+            dev.return_value.start_from_fastboot.return_value = False  # PICO OS does not start from it
             task.run(ctx)
             self.assertEqual(ctx.note.call_args.args[0], plan.STOCK_FASTBOOT)
             self.assertEqual(ctx.ask.call_args.args[0].id, "edl")
@@ -1089,6 +1100,39 @@ class WorkflowTests(unittest.TestCase):
                 task.run(ctx)
                 ctx.ask.assert_not_called()
                 self.assertEqual(order, ["stage-abl"])
+
+    def test_the_stock_bootloader_in_fastboot_starts_pico_os_and_adb_takes_it_to_edl_without_hands(self):
+        # PICO OS is still there before the install writes: started from the bootloader, it answers adb, and the
+        # engineering bootloader's step enters EDL mode from it (adb reboot edl).
+        ctx = mock.Mock()
+        ctx.clock = FakeClock()
+        install_plan = plan.Plan(HEADSET, root=Path("/nowhere"), computer=list, edl_count=lambda: 0)
+        task = next(t for s in install_plan.stages() for t in s.tasks if t.id == "stage-abl")
+        answers = iter([False, False, True])  # PICO OS answers adb on the third look
+        order: list[str] = []
+        with (
+            mock.patch.object(plan, "AskingDev") as dev,
+            mock.patch.object(install_plan, "run_step", side_effect=lambda _ctx, key: order.append(key)),
+            mock.patch.object(install_plan, "pico_os_running", side_effect=lambda _ctx: next(answers, True)),
+        ):
+            dev.return_value.other_abl_in_fastboot.return_value = True
+            dev.return_value.start_from_fastboot.return_value = True
+            dev.return_value.fastboot_listed.return_value = False  # it left fastboot
+            task.run(ctx)
+            ctx.ask.assert_not_called()
+            self.assertEqual(order, ["stage-abl"])
+
+            # PICO OS that never answers (its setup, no USB debugging): EDL by hand after the wait.
+            ctx.reset_mock()
+            install_plan.pico_os_running = lambda _ctx: False  # ty: ignore[invalid-assignment]  # the fake
+            edl = [0]
+            install_plan.edl_count = lambda: edl[0]
+            ctx.ask.side_effect = lambda ask: edl.__setitem__(0, 1) if ask.id == "edl" else None
+            start = ctx.clock.now
+            task.run(ctx)
+            self.assertEqual(ctx.note.call_args.args[0], plan.STOCK_FASTBOOT)
+            self.assertEqual(ctx.ask.call_args.args[0].id, "edl")
+            self.assertGreaterEqual(ctx.clock.now - start, plan.PICO_OS_SECONDS)
 
     def test_a_headset_found_in_edl_gets_its_whole_backup_over_edl_instead_of_the_other_writes(self):
         # No bootloader starts it any more: the whole backup, boot chain and stock bootloader with it.

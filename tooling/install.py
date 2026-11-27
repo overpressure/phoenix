@@ -42,20 +42,32 @@ import json
 import re
 import sys
 import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING, Callable, ClassVar, TypeVar
 
 from overpressure.api.v1 import REPO, android, doctor, install, qualcomm, runner, ssh, tools, usbaccess, usblink, wifi
 from overpressure.api.v1 import backup as backups
+from overpressure.api.v1 import stage1 as stage1_build
 from overpressure.api.v1.install import Ask, Context, Failed, NoBackup, Stage, Task
 from overpressure.api.v1.process import until
 
-from . import ADB_MODE, CHECK_WORKFLOW, FASTBOOT_MODE, GADGET, USB_MODES, device, devloop, localconfig, unlockfiles
+from . import (
+    ADB_MODE,
+    CHECK_WORKFLOW,
+    FASTBOOT_MODE,
+    GADGET,
+    USB_MODES,
+    device,
+    devloop,
+    image,
+    localconfig,
+    unlockfiles,
+)
 from . import doctor as checks
 from . import kernel as pinned_kernel
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
     from overpressure.api.v1.doctor import Check
     from overpressure.api.v1.headset import Headset, Step
@@ -179,8 +191,11 @@ EDL_BY_HAND = Ask(
 #: The install's engineering bootloader from PICO's stock bootloader in fastboot (Plan.stage_abl).
 STOCK_FASTBOOT = (
     "The headset waits in its bootloader (fastboot) with PICO's own bootloader, which cannot be replaced from "
-    "there. It goes into EDL mode by hand instead; then the engineering bootloader is written."
+    "there, and PICO OS did not start from it. It goes into EDL mode by hand instead; then the engineering "
+    "bootloader is written."
 )
+#: How long PICO OS, started from PICO's stock bootloader, has to answer adb (Plan.pico_os_from_fastboot).
+PICO_OS_SECONDS = 180
 #: A restore after an install that stopped before the maintenance system (Plan.install_stopped_early).
 STOPPED_EARLY = (
     "The install stopped before it replaced anything of PICO OS: its system is still on the headset. Only the "
@@ -339,6 +354,8 @@ class Plan:
         self.edl_denied = edl_denied
         self.usb_reader: Callable[[], bool] | None = None  #: tests: what reads the EDL device's pipe
         self.stale_reader: Callable[[], int] | None = None  #: tests: what reads a broken session's leftovers
+        #: What the maintenance system image is built from: overpressure's runtime, the overlay and the recipe.
+        self.stage1_sources: tuple[Path, ...] = (stage1_build.RUNTIME, image.OVERLAY, Path(image.__file__))
         self.steps: dict[str, Step] = {step.key: step for step in headset.steps()}
 
     # -- helpers ------------------------------------------------------------------------------
@@ -444,10 +461,11 @@ class Plan:
 
     @staticmethod
     def newer(output: Path, *inputs: Path) -> bool:
-        """Tell whether @p output is there and not older than any of @p inputs that are there."""
+        """Tell whether @p output is there and not older than any of @p inputs that are there (folders: their files)."""
         if not output.is_file():
             return False
-        return all(output.stat().st_mtime >= p.stat().st_mtime for p in inputs if p.exists())
+        files = [f for p in inputs for f in ([p] if p.is_file() else p.rglob("*") if p.is_dir() else []) if f.is_file()]
+        return all(output.stat().st_mtime >= f.stat().st_mtime for f in files)
 
     # -- 1. this computer -------------------------------------------------------------------
     @staticmethod
@@ -479,7 +497,9 @@ class Plan:
         dev = self.work
 
         outputs: dict[str, Callable[[Context], bool]] = {
-            "stage1": lambda ctx: self.stage1(ctx).is_file(),
+            # Built again when overpressure's runtime, this headset's overlay or its recipe changed since (an update
+            # of either): an older image would put the old maintenance system on the headset.
+            "stage1": lambda ctx: self.newer(self.stage1(ctx), *self.stage1_sources),
             "dev-image": lambda ctx: (
                 self.newer(dev / "dev-image.json", self.stage1(ctx), kernel) and (dev / "dev-recovery.img").is_file()
             ),
@@ -996,16 +1016,35 @@ class Plan:
         replug_until(ctx, "EDL mode", EDL_SECONDS, in_edl)
 
     def stage_abl(self, ctx: Context) -> None:
-        """Write the engineering bootloader (dev stage-abl); from the stock bootloader in fastboot, through EDL by hand.
+        """Write the engineering bootloader (dev stage-abl); from the stock bootloader in fastboot, through PICO OS.
 
         adb takes the headset from PICO OS to EDL mode, and the engineering bootloader left in fastboot by an
         earlier run is staged already (cycle.Headset.staged_and_locked). The stock bootloader in fastboot can do
-        neither: the owner puts the headset into EDL mode, and the step goes on from there.
+        neither, but it starts PICO OS, which is still there before the install writes (pico_os_from_fastboot);
+        only when PICO OS does not answer does the owner put the headset into EDL mode by hand.
         """
-        if self.edl_count() != 1 and AskingDev(ctx, self.work).other_abl_in_fastboot():
-            ctx.note(STOCK_FASTBOOT)
-            self.edl_by_hand(ctx)
+        if self.edl_count() != 1:
+            dev = AskingDev(ctx, self.work)
+            if dev.other_abl_in_fastboot() and not self.pico_os_from_fastboot(ctx, dev):
+                ctx.note(STOCK_FASTBOOT)
+                self.edl_by_hand(ctx)
         self.run_step(ctx, "stage-abl")
+
+    def pico_os_from_fastboot(self, ctx: Context, dev: devloop.Dev) -> bool:
+        """Start PICO OS from PICO's stock bootloader in fastboot; tell whether it answers adb within PICO_OS_SECONDS.
+
+        It does not when its system is gone (then the bootloader comes back), or when PICO OS waits in its setup
+        without USB debugging for this computer.
+        """
+        ctx.progress(None, "Starting PICO OS from its bootloader")
+        if not dev.start_from_fastboot() or self.back_in_fastboot(ctx, dev):
+            return False
+        until = ctx.clock.monotonic() + PICO_OS_SECONDS
+        while not self.pico_os_running(ctx):
+            if ctx.clock.monotonic() >= until:
+                return False
+            ctx.clock.sleep(5)
+        return True
 
     def bootloader_first(self, ctx: Context) -> None:
         """Write the stock bootloader from EDL mode, which the owner enters by hand, then wait for PICO OS.

@@ -389,6 +389,14 @@ After the backup the installer suggests exporting it. It goes from the unlock st
 [device-preparation.md](device-preparation.md#5-factory-reset-and-stage-1-work): the install formats `userdata`
 anyway. `Plan(factory_reset=True)` adds the reset as an action ask after the unlock.
 
+A headset that waits in fastboot with PICO's own bootloader when the engineering bootloader is due cannot be
+taken to EDL mode from there: that bootloader's EDL command needs the unlock token's authority. The install starts
+PICO OS from it instead (`fastboot reboot`), which is still there before the install writes, and goes on through
+adb once PICO OS answers within 3 minutes. Only when it does not (the bootloader comes back, or PICO OS waits in
+its setup without USB debugging for this computer) does it ask for EDL by hand. Both halves run on the headset
+(`fastboot reboot` from PICO's bootloader into PICO OS, `adb reboot edl` from there); the install's own run of it
+from PICO's bootloader is covered by host tests.
+
 ### The upgrade and the way back
 
 *Upgrade* has the headset build this version of the system and installs it over the one this computer installed,
