@@ -128,7 +128,7 @@ class LookTest(unittest.TestCase):
 
     def test_the_installed_system_offers_the_upgrade_the_check_and_the_way_back(self):
         self.fakes.port = True
-        self.fakes.answers["ssh"] = "systemd\nboot\n80\n"
+        self.fakes.answers["ssh"] = "Warning: Permanently added the host.\r\noverpressure-look\nsystemd\nboot\n80\n"
         (self.work / INSTALLED).write_text("{}", encoding="utf-8")
         found = self.found()
         self.assertEqual((found.state, found.system), (headsets.OVERPRESSURE, "overpressure"))
@@ -139,7 +139,7 @@ class LookTest(unittest.TestCase):
 
     def test_the_maintenance_system_offers_the_install_and_the_way_back(self):
         self.fakes.port = True
-        self.fakes.answers["ssh"] = "pico4-init\nrecovery\n50\n"
+        self.fakes.answers["ssh"] = "overpressure-look\npico4-init\nrecovery\n50\n"
         found = self.found()
         self.assertEqual(found.workflows, ("install", "restore"))
         self.assertEqual(found.facts[0], ("Running", "Maintenance system"))
@@ -148,6 +148,13 @@ class LookTest(unittest.TestCase):
         self.fakes.port = True
         found = self.found()
         self.assertEqual((found.state, found.workflows, found.note), (headsets.OVERPRESSURE, ("restore",), NO_KEY))
+        # What OpenSSH prints for a missing or refused key is no answer of the headset's.
+        self.fakes.answers["ssh"] = (
+            "Warning: Identity file id_ed25519 not accessible: No such file or directory.\r\n"
+            "root@172.16.42.1: Permission denied (publickey)."
+        )
+        found = self.found()
+        self.assertEqual((found.workflows, found.note, found.facts), (("restore",), NO_KEY, ()))
 
     def test_fastboot_is_asked_only_when_the_bus_holds_it_and_tells_the_bootloader(self):
         self.found()
@@ -181,7 +188,7 @@ class LookTest(unittest.TestCase):
         self.fakes.answers["fastboot devices"] = "FB1\tfastboot\n"
         self.found()
         self.fakes.port = True
-        self.fakes.answers["ssh"] = "systemd\nboot\n80\n"
+        self.fakes.answers["ssh"] = "overpressure-look\nsystemd\nboot\n80\n"
         self.found()
         self.fakes.pico_os()
         self.found()

@@ -49,10 +49,12 @@ PROPERTIES = (
 )
 #: Its battery, after the properties: dumpsys's level line.
 BATTERY = "dumpsys battery | grep -m1 'level:'"
-#: What the headset's own system is asked over SSH: its first process (systemd: the installed system), whether
-#: it was started from recovery (the maintenance system), and its battery.
+#: What the headset's own system is asked over SSH, after a line of its own (ANSWERED: what SSH itself prints, such as
+#: a refused key, comes before it or alone): its first process (systemd: the installed system), whether it was
+#: started from recovery (the maintenance system), and its battery.
+ANSWERED = "overpressure-look"
 OWN_SYSTEM = (
-    "cat /proc/1/comm; grep -qw pico4.part=recovery /proc/cmdline && echo recovery || echo boot; "
+    f"echo {ANSWERED}; cat /proc/1/comm; grep -qw pico4.part=recovery /proc/cmdline && echo recovery || echo boot; "
     "cat /sys/class/power_supply/battery/capacity"
 )
 #: What to do in each state that offers nothing, in the owner's words.
@@ -118,10 +120,11 @@ class Look:
         )
         (self.work / "look_known_hosts").unlink(missing_ok=True)  # the maintenance system makes new keys each boot
         try:
-            lines = self.runner(argv, 10, check=False).split()
+            output = [line.strip() for line in self.runner(argv, 10, check=False).splitlines()]
         except (OSError, subprocess.SubprocessError):
-            lines = []
-        if len(lines) < 2:  # noqa: PLR2004  # its first process and where it started
+            output = []
+        lines = output[output.index(ANSWERED) + 1 :] if ANSWERED in output else []
+        if len(lines) < 2 or lines[1] not in ("boot", "recovery"):  # noqa: PLR2004  # its first process, where it started
             return Found(headsets.OVERPRESSURE, "overpressure", version, workflows=("restore",), note=NO_KEY)
         facts = []
         if lines[2:3] and lines[2].isdigit():
