@@ -152,6 +152,16 @@ class LookTest(unittest.TestCase):
         self.assertEqual(found.facts, (("Bootloader", "Engineering, unlocked"),))
         self.fakes.answers["fastboot -s FB1 oem device-info"] = "(bootloader) DeviceUnlocked=true\nOKAY\n"
         self.assertEqual(self.found().facts, (("Bootloader", "Stock"),))
+        self.assertFalse(any(Path(w[0]).stem == "ssh" for w in self.fakes.ran))  # the bus said fastboot: no SSH wait
+
+    def test_where_the_bus_cannot_be_read_fastboot_is_asked_last(self):
+        self.look.bus = lambda _vendor, _product: None
+        self.fakes.answers["fastboot devices"] = "FB1\tfastboot\n"
+        self.fakes.answers["fastboot -s FB1 oem device-info"] = "(bootloader) Device unlocked: no\nOKAY\n"
+        found = self.found()
+        self.assertEqual(found.facts, (("Bootloader", "Engineering, locked"),))
+        programs = [Path(w[0]).stem for w in self.fakes.ran]
+        self.assertLess(programs.index("adb"), programs.index("fastboot"))
 
     def test_a_headset_on_usb_that_answers_nothing_is_unknown(self):
         self.fakes.bus[ADB] = 1

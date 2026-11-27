@@ -336,12 +336,13 @@ and `restore` ([`tooling/install.py`](../tooling/install.py): `Plan.stages`, `up
 ### The look at the headset
 
 The app asks for the headset first and looks at it without changing it (`Headset.assess`, headset interface
-1.11; [`tooling/look.py`](../tooling/look.py)), within a second in PICO OS. In this order: the USB bus for EDL
-mode (enumeration only, no loader session), `adb devices` and, for a headset listed ready, its properties
-(build, `ro.oem.state`, `ro.boot.flash.locked`, model, memory) and battery; the headset's own system on its USB
-network (SSH's port, then its first process and where it started, over this computer's key); and fastboot only
-when the bus holds the headset in fastboot mode (`oem device-info`: the engineering bootloader and its lock, or
-PICO's stock one). On Linux adb's server is stopped before fastboot looks, as everywhere else.
+1.11; [`tooling/look.py`](../tooling/look.py)), within a second in PICO OS and fastboot. In this order: the USB
+bus for EDL mode (enumeration only, no loader session); fastboot when the bus holds the headset in fastboot mode
+(`oem device-info`: the engineering bootloader and its lock, or PICO's stock one); `adb devices` and, for a
+headset listed ready, its properties (build, `ro.oem.state`, `ro.boot.flash.locked`, model, memory) and battery;
+the headset's own system on its USB network (SSH's port, then its first process and where it started, over this
+computer's key). Where the bus cannot be read, fastboot is asked last. On Linux adb's server is stopped before
+fastboot looks, as everywhere else.
 
 | Found | Offered |
 | --- | --- |
@@ -355,6 +356,10 @@ PICO's stock one). On Linux adb's server is stopped before fastboot looks, as ev
 | Fastboot | Install, Restore to stock |
 | EDL mode | Restore to stock |
 | On the bus, answering nothing | nothing: wait, or restart it |
+
+Verified on the headset: PICO OS 5.13.7, fastboot with PICO's stock bootloader, EDL mode, and the moments between
+them (nothing on USB, then on the bus but not answering yet while PICO OS starts). The installed and the
+maintenance system, the engineering bootloader in fastboot and PICO OS's recovery are covered by host tests.
 
 Every command that touches the headset first asks the disclaimer (y/n); `--accept-disclaimer` or
 `OVERPRESSURE_ACCEPT_DISCLAIMER=1` accepts it for unattended runs

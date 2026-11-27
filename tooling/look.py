@@ -2,9 +2,10 @@
 """The PICO 4 on USB, looked at without changing it (Headset.assess, headset interface 1.11).
 
 The quickest first, each bounded by seconds: the USB bus for EDL mode (enumeration only: an EDL loader's session
-would have to be ended by hand), PICO OS over adb (its build, the model, the bootloader's lock, the battery), the
-headset's own system on its USB network (SSH's port, then its first process, over this computer's key), and
-fastboot only when the bus holds the headset in fastboot mode (which bootloader, locked or not). Nothing is
+would have to be ended by hand), fastboot when the bus holds the headset in fastboot mode (which bootloader, locked
+or not), PICO OS over adb (its build, the model, the bootloader's lock, the battery), and the headset's own system
+on its USB network (SSH's port, then its first process, over this computer's key). Where the bus cannot be read,
+fastboot is asked last. Nothing is
 written, restarted or started on the headset; on this computer adb's server may start, and on Linux it is stopped
 again before fastboot looks (cycle.Headset.release_adb). What fits each state is a workflow of the installer.
 """
@@ -79,15 +80,16 @@ class Look:
         """Return what runs on the headset, and the workflows that fit (tooling's keys: install, upgrade, ...)."""
         if self.count(edl):
             return Found(headsets.EDL, "Emergency download mode", workflows=("restore",), note=EDL_WAY_OUT)
-        maker = self.pico_os()  # adb answers at once; the headset's own system may take the port's timeout
-        if maker is not None:
-            return maker
-        own = self.own_system()
-        if own is not None:
-            return own
         fastboot = next((m for m in modes if m.name.startswith("fastboot")), None)
-        if fastboot is not None and self.count(fastboot) != 0:
-            found = self.bootloader()
+        in_fastboot = self.count(fastboot) if fastboot is not None else 0  # None: the bus cannot tell here
+        # adb answers at once; the headset's own system may take the port's timeout.
+        probes: list[Callable[[], Found | None]] = [self.pico_os, self.own_system]
+        if in_fastboot:
+            probes.insert(0, self.bootloader)
+        elif in_fastboot is None:
+            probes.append(self.bootloader)
+        for probe in probes:
+            found = probe()
             if found is not None:
                 return found
         if any(self.count(mode) for mode in modes):
