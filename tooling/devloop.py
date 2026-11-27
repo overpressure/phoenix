@@ -598,6 +598,20 @@ class Dev(Headset):
         self.until("EDL mode", EDL_SECONDS, one)
         usbaccess.require(qualcomm.EDL_MODE, USB_MODES, self.clock)
 
+    def again_in_edl(self) -> None:
+        """Enter EDL mode again after free_edl's normal restart, from PICO OS or our own systems (to_edl)."""
+
+        def started() -> None:
+            self.release_adb()
+            rows = android.device_rows(self.run([self.s.tool("adb"), "devices"], 30, check=False), ("device",))
+            self.release_adb()
+            if not (self.s.adb_serial in rows or self.answers()):
+                msg = "neither PICO OS nor the headset's own system answers yet"
+                raise RuntimeError(msg)
+
+        self.until("PICO OS or the headset's own system", 300, started)
+        self.to_edl()
+
     def check_boot_partition(self, image: Path, name: str = "boot") -> None:
         """Run the acceptance runner's checks before it writes a boot image.
 

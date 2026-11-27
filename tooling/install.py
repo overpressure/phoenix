@@ -697,6 +697,40 @@ class Plan:
         except (OSError, ValueError, KeyError):
             return False
 
+    def free_edl(self, ctx: Context, settings: localconfig.Settings) -> None:
+        """Free the EDL device's loader, restart into PICO OS and enter EDL mode afresh; nothing is written.
+
+        What the loader still sends is read first, then it restarts normally (qualcomm.unstick, overpressure 1.12;
+        before, the restart alone): a restart into a fresh EDL session is left undone after a session. A device
+        that takes no restart (no loader runs: its greeting has passed) needs the power button.
+        """
+        program, loader = settings.edl_program(), settings.path("loader")
+        unstick = getattr(qualcomm, "unstick", None)
+        try:
+            if unstick is None:
+                ctx.output(qualcomm.reboot_argv(program, loader), 60)
+            else:
+                read = {"read": self.stale_reader} if self.stale_reader is not None else {}
+                unstick(program, loader, ctx.output, ctx.clock, **read)
+        except RuntimeError as exc:
+            raise Failed(qualcomm.NO_ANSWER, STALE_EDL_WHERE) from exc
+        qualcomm.drain_until_gone(ctx.clock, reader=self.usb_reader)  # Linux: read its last message
+
+        def gone() -> None:
+            if self.edl_count():
+                msg = "the headset is still in EDL mode"
+                raise RuntimeError(msg)
+
+        until("the headset to leave EDL mode", qualcomm.RESTART_SECONDS, gone, ctx.clock)
+        android.wait_booted(
+            settings.tool("adb"),
+            settings.adb_serial,
+            lambda argv, timeout=60: ctx.output(argv, timeout, check=False),
+            ctx.clock,
+            system="PICO OS",
+        )
+        self.enter_edl(ctx, settings)
+
     def backup(self, ctx: Context) -> None:
         """EDL, its partition table for the LUNs and the serial, then a full backup without userdata, verified."""
         resume = self.backup_folder(ctx)
@@ -706,20 +740,12 @@ class Plan:
         ctx.progress(None, "Reading the partition table")
         printgpt = qualcomm.edl_ng(settings.edl_program(), settings.path("loader"), "printgpt")
         table = ctx.output(printgpt, 180, check=False)
-        if not qualcomm.serial_shown(table) and not qualcomm.unanswered(table):
-            # An earlier session's loader still runs (a resumed backup on Linux), or the session broke mid-transfer
-            # and its loader still sends the rest (a lost link): read that first, then a fresh EDL session names
-            # the serial.
-            ctx.progress(None, "Restarting the headset into a fresh EDL session")
-            program, loader = settings.edl_program(), settings.path("loader")
-            unstick = getattr(qualcomm, "unstick", None)  # overpressure 1.12
-            if unstick is None:
-                ctx.output(qualcomm.fresh_edl_argv(program, loader), 60)
-            else:
-                read = {"read": self.stale_reader} if self.stale_reader is not None else {}
-                unstick(program, loader, ctx.output, ctx.clock, **read)
-            qualcomm.drain_until_gone(ctx.clock, reader=self.usb_reader)  # Linux: read its last message
-            qualcomm.wait_fresh_edl(self.edl_count, ctx.clock)
+        if not qualcomm.serial_shown(table):
+            # An earlier session's loader still runs (a resumed backup), or one broke mid-transfer and still sends
+            # the rest (a lost link, or no mode found at all): it is freed, PICO OS starts, and EDL mode is entered
+            # afresh from there, where the first session names the serial.
+            ctx.progress(None, "Freeing EDL mode and entering it again through PICO OS")
+            self.free_edl(ctx, settings)
             ctx.progress(None, "Reading the partition table")
             table = ctx.output(printgpt, 180, check=False)
         if qualcomm.unanswered(table):

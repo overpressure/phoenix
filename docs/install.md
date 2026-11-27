@@ -184,6 +184,11 @@ The ABL starts `recovery` instead of `boot` while `misc` holds the bootloader me
 The maintenance stage 1's deadlines return the headset to fastboot; with `boot-recovery` in `misc`, every boot
 from there starts the maintenance stage 1 again.
 
+The maintenance system arms the same watchdog (its `watchdog` service,
+[runtime.md](https://github.com/overpressure/overpressure/blob/main/docs/runtime.md#the-recovery-deadline)): with its
+pings stopped (SIGSTOP), the bark panicked 20 s after the stop (within 30 s of the last ping), and it was back in the
+maintenance system, answering SSH, 40 s after the stop.
+
 ### Charger mode
 
 A powered-off headset starts with `androidboot.mode=charger` when USB power comes: at the power-off with the cable
@@ -357,10 +362,10 @@ fastboot looks, as everywhere else.
 | EDL mode | Restore to stock |
 | On the bus, answering nothing | nothing: wait, or restart it |
 
-Verified on the headset: PICO OS 5.13.7, fastboot with PICO's stock bootloader, EDL mode, the maintenance and the
-installed system after an install from this computer, and the moments between them (nothing on USB, then on the
-bus but not answering yet while PICO OS starts). The engineering bootloader in fastboot, the headset's own system
-without this computer's key and PICO OS's recovery are covered by host tests.
+Verified on the headset: PICO OS 5.13.7, fastboot with PICO's stock bootloader and with the engineering one, EDL
+mode, the maintenance and the installed system after an install from this computer, the installed system without
+this computer's key, and the moments between them (nothing on USB, then on the bus but not answering yet while
+PICO OS starts). PICO OS's recovery is covered by host tests.
 
 Every command that touches the headset first asks the disclaimer (y/n); `--accept-disclaimer` or
 `OVERPRESSURE_ACCEPT_DISCLAIMER=1` accepts it for unattended runs

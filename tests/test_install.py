@@ -635,7 +635,7 @@ class PlanTests(unittest.TestCase):
         self.assertFalse(any("reset --mode Edl" in " ".join(map(str, c)) for c in self.captured))
         self.assertNotIn("device backup", self.commands())
 
-    def test_a_loader_left_running_is_restarted_into_a_fresh_session_for_the_serial(self):
+    def test_a_loader_left_running_enters_edl_afresh_through_pico_os_for_the_serial(self):
         original, replies = (
             self.capture,
             iter(["[INFO]  Detected device mode: Firehose\n" + PRINTGPT.split("Serial", maxsplit=1)[0]]),
@@ -651,14 +651,16 @@ class PlanTests(unittest.TestCase):
         ui = self.run_stages(("connect", "prepare"), self.yes("plug-in", "consent"))
         self.assertEqual(ui.finished()["status"], "done", ui.finished())
         texts = [" ".join(map(str, c)) for c in self.captured]
-        fresh = [n for n, t in enumerate(texts) if "reset --mode Edl" in t]
-        self.assertEqual(len(fresh), 1)
-        self.assertIn("printgpt", texts[fresh[0] + 1])  # identified again in the fresh session
+        # A restart into a fresh EDL session is left undone after a session: a normal one, then adb's from PICO OS.
+        freed = next(n for n, t in enumerate(texts) if "reset --mode" in t)
+        self.assertIn("reset --mode Reset", texts[freed])
+        again = next(n for n, t in enumerate(texts) if n > freed and t.endswith("reboot edl"))
+        self.assertIn("printgpt", next(t for t in texts[again:] if "edl-ng" in t or "printgpt" in t))
         self.assertEqual(self.settings().edl_serial, EDL)
 
     def test_a_session_that_broke_mid_transfer_is_read_out_then_restarted_for_the_serial(self):
         # A backup cut off mid-read: its loader still sends the rest, and the next session reads those bytes as
-        # its answers. What is left is read first, then the loader takes the restart into a fresh session.
+        # its answers. What is left is read first, then the loader takes the restart, and EDL mode is entered afresh.
         original, replies = (
             self.capture,
             iter(["[ERROR] Exception: '.', hexadecimal value 0x00, is an invalid character.\n"]),
@@ -677,8 +679,8 @@ class PlanTests(unittest.TestCase):
         ui = self.run_stages(("connect", "prepare"), self.yes("plug-in", "consent"))
         self.assertEqual(ui.finished()["status"], "done", ui.finished())
         texts = [" ".join(map(str, c)) for c in self.captured]
-        fresh = [t for t in texts if "reset --mode Edl" in t]
-        self.assertEqual(fresh[0][-len("(left to read: 0)") :], "(left to read: 0)")  # read out before the restart
+        freed = [t for t in texts if "reset --mode Reset" in t]
+        self.assertEqual(freed[0][-len("(left to read: 0)") :], "(left to read: 0)")  # read out before the restart
         self.assertEqual(self.settings().edl_serial, EDL)
 
     def test_a_stale_edl_session_in_the_dump_says_the_same(self):

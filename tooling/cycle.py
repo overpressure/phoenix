@@ -162,10 +162,9 @@ class Headset:
         """Identify the EDL device in a read-only session before anything is written: only the configured headset.
 
         A headset that still runs the Firehose loader of an earlier session names no serial, and one whose
-        earlier session broke mid-transfer (its link lost: edl-ng's writes time out, its answers arrive
-        garbled) answers nothing useful: either is restarted into a fresh EDL session (no storage written)
-        and identified again. The sessions that follow in the same step need no check: on Linux they would
-        name no serial either.
+        earlier session broke mid-transfer answers nothing useful (edl-ng's writes time out, its answers arrive
+        garbled, or it finds no mode at all): either is freed and enters EDL mode afresh (free_edl, no storage
+        written), then identified again. The sessions that follow in the same step need no check.
         """
         try:
             output = self.edl("printgpt", log="edl-identify", timeout=120)
@@ -174,39 +173,63 @@ class Headset:
                 logged = (self.folder / "edl-identify.log").read_text(encoding="utf-8", errors="replace")
             except OSError:
                 logged = ""
-            if not qualcomm.link_lost(qualcomm.failed_output(exc) + logged):
+            text = qualcomm.failed_output(exc) + logged
+            if not (qualcomm.link_lost(text) or qualcomm.unanswered(text)):
                 raise
-            print("   the EDL device's last session broke mid-transfer: freeing its loader", flush=True)
+            print("   the EDL device does not answer a new session: freeing its loader", flush=True)
             output = ""
-        if not qualcomm.serial_shown(output) and not qualcomm.unanswered(output):
-            print("   restarting the EDL device into a fresh EDL session", flush=True)
-            self.fresh_edl("edl-fresh")
-            output = self.edl("printgpt", log="edl-identify-fresh", timeout=120)
+        if not qualcomm.serial_shown(output):
+            print("   entering EDL mode afresh, from the system that starts", flush=True)
+            self.free_edl("edl-free")
+            output = self.edl("printgpt", log="edl-identify-again", timeout=120)
         self.check_edl_serial(output)
 
-    def fresh_edl(self, log: str) -> None:
-        """Restart the EDL device into a fresh EDL session (no storage written): its next session names its serial.
+    def free_edl(self, log: str) -> None:
+        """Free the EDL device's loader and enter EDL mode afresh from what starts; nothing is written to storage.
 
-        A loader that a broken session left mid-transfer takes no command until what it still sends is read
-        (qualcomm.unstick; overpressure before 1.12 only restarts it).
+        What the loader still sends is read first, then it restarts normally (qualcomm.unstick, overpressure 1.12;
+        before, the restart alone): its restart into a fresh EDL session is acknowledged but left undone after a
+        session. What starts takes it to EDL mode again (again_in_edl: PICO OS through adb; the development loop's
+        also our own systems), where the first session names the serial. A device that takes no restart (no
+        loader runs: its greeting has passed) needs the power button.
         """
         program, loader = self.s.edl_program(), self.s.path("loader")
+
+        def runner(argv: list[str | Path], timeout: float) -> str:
+            return self.run(argv, timeout, log=self.folder / f"{log}.log")
+
         unstick = getattr(qualcomm, "unstick", None)
-        if unstick is None:
-            self.run(qualcomm.fresh_edl_argv(program, loader), 60, log=self.folder / f"{log}.log")
-        else:
-            read = unstick(
-                program,
-                loader,
-                lambda argv, timeout: self.run(argv, timeout, log=self.folder / f"{log}.log"),
-                self.clock,
-                **({"read": self.stale_reader} if self.stale_reader is not None else {}),
-            )
-            if read:
-                print(f"   read {read} bytes the loader still sent", flush=True)
-        self.drain()
-        qualcomm.wait_fresh_edl(self.edl_count, self.clock)
+        try:
+            if unstick is None:
+                runner(qualcomm.reboot_argv(program, loader), 60)
+            else:
+                read = unstick(
+                    program,
+                    loader,
+                    runner,
+                    self.clock,
+                    **({"read": self.stale_reader} if self.stale_reader is not None else {}),
+                )
+                if read:
+                    print(f"   read {read} bytes the loader still sent", flush=True)
+        except RuntimeError as exc:
+            msg = f"{qualcomm.NO_ANSWER} Nothing was written to it. {EDL_RESTART}"
+            raise RuntimeError(msg) from exc
+        self.drain()  # Linux: the loader restarts only once its last message is read
+
+        def gone() -> None:
+            if self.edl_count():
+                msg = "the headset is still in EDL mode"
+                raise RuntimeError(msg)
+
+        self.until("the headset to leave EDL mode", qualcomm.RESTART_SECONDS, gone)
+        self.again_in_edl()
         usbaccess.require(qualcomm.EDL_MODE, USB_MODES, self.clock)
+
+    def again_in_edl(self) -> None:
+        """Enter EDL mode again after free_edl's normal restart: from PICO OS, through adb (enter_edl)."""
+        self.wait_pico_os()
+        self.enter_edl()
 
     def device_args(self) -> list[str | Path]:
         """Return the device command's arguments for the ABL with this headset's backup and loader."""

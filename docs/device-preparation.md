@@ -216,14 +216,16 @@ for each transfer, and a transfer that times out in the middle of the session en
 out`); a reply can also arrive garbled, as zeros that edl-ng's XML reader refuses (`'.', hexadecimal value 0x00, is
 an invalid character`). Either way the loader keeps running, and it is still sending the rest of the cut-off
 transfer: until that is read it takes no command, and a new session meets those bytes as its answers and fails the
-same way. The installer says so, and asks for another USB port directly on the computer (no hub, dock or front
-panel) or another cable first. The next try frees the loader itself: its first, read-only session sees the broken
-link, reads what the loader still sends (`qualcomm.unstick`: the COM port on Windows, libusb elsewhere; nothing is
-sent), restarts it into a fresh EDL session and goes on from where it stopped. Only a loader that still sends after
-5 minutes, or does not take the restart, needs a restart by hand (hold the power button for about 10 s). On the
-headset, a loader cut off in the middle of a readback was freed this way on Windows (about 3.7 KB read, then a
-normal restart); the installer's own run of it, with its restart into EDL, and Linux's are not tried on hardware
-yet. A failed command's whole output goes into the backup's `edl.log`.
+same way, or finds no mode at all (`Device mode is Unknown`). The installer says so, and asks for another USB port
+directly on the computer (no hub, dock or front panel) or another cable first. The next try frees the loader
+itself: its first, read-only session sees that the headset does not answer, reads what the loader still sends
+(`qualcomm.unstick`: the COM port on Windows, libusb elsewhere; nothing is sent), restarts it normally (a restart
+into a fresh EDL session is acknowledged but left undone after a session), enters EDL mode again from what starts
+(PICO OS through adb, our systems with `dev edl`'s restart) and goes on from where it stopped. Only a loader that
+still sends after 5 minutes, or a headset that takes no restart (no loader runs), needs a restart by hand (hold the
+power button for about 10 s). On the headset, on Windows: a read of `boot` cut off after 4 s left 4.4 MB to read;
+the first session then freed it, came back through the maintenance system and named the serial in 34 s. Linux's
+libusb path is not tried on hardware yet. A failed command's whole output goes into the backup's `edl.log`.
 
 A manifest is written only when the dump has `abl`, `boot` and `devinfo` images, the GPT (`gpt_main*`), the
 rawprogram maps and, when requested, userdata; a failed dump has none and cannot be used later. `edl.log` keeps

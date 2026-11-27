@@ -167,6 +167,8 @@ class HeadsetFixture(unittest.TestCase):
             self.edl = 1
         elif "reset --mode Edl" in text:
             self.restarting = [1, 1, 1, 0, 0]  # still there a while, then gone, then back (as the PICO 4)
+        elif "reset --mode Reset" in text:
+            self.edl = 0  # it leaves EDL mode and starts PICO OS
         elif "soc0/serial_number" in text:  # one device's boot state, SoC ID and fingerprint
             chip = self.adb_listed.get(words[words.index("-s") + 1])
             fingerprint = "Pico/Phoenix_ovs/PICOA8110:10/5.13.7/test:user/dev-keys"
@@ -330,15 +332,16 @@ class CycleTests(HeadsetFixture):
             self.run_cycle(self.make())
         self.assertNotIn("restore-abl", self.steps())
 
-    def test_a_loader_left_running_is_restarted_into_a_fresh_edl_session_to_identify_it(self):
-        # Linux: the backup's Firehose loader still runs; edl-ng's session then names no serial.
+    def test_a_loader_left_running_enters_edl_afresh_through_pico_os_to_identify_it(self):
+        # The backup's Firehose loader still runs; edl-ng's session then names no serial. Its restart into a
+        # fresh EDL session is left undone after a session: it restarts into PICO OS, and adb takes it back.
         self.edl_outputs = ["[INFO]  Detected device mode: Firehose\n--- Partitions LUN 0 ---"]
         c = self.make()
         self.edl = 1  # in EDL already, from the backup
         c.stage_abl()
-        self.assertEqual(self.steps()[:4], ["identify", "edl-reset", "identify", "stage"])
+        self.assertEqual(self.steps()[:7], ["identify", "edl-reset", "pico-os", "mcu", "adb-edl", "identify", "stage"])
         fresh = next(w for w in self.calls if "reset" in w)
-        self.assertEqual(fresh[fresh.index("--mode") + 1], "Edl")
+        self.assertEqual(fresh[fresh.index("--mode") + 1], "Reset")
 
     def test_a_session_that_broke_mid_transfer_is_drained_and_restarted_before_anything_is_written(self):
         # An earlier step's readback broke: its loader still sends the rest, and edl-ng's next session meets
@@ -353,10 +356,37 @@ class CycleTests(HeadsetFixture):
         c = self.make()
         self.edl = 1
         c.stage_abl()
-        steps = [s for s in self.steps() if s in ("identify", "edl-reset", "stage")]
-        self.assertEqual(steps[:4], ["identify", "edl-reset", "identify", "stage"])
+        self.assertEqual(self.steps()[:7], ["identify", "edl-reset", "pico-os", "mcu", "adb-edl", "identify", "stage"])
         texts = self.texts()
-        self.assertLess(texts.index("read-leftovers"), next(i for i, t in enumerate(texts) if "--mode Edl" in t))
+        self.assertLess(texts.index("read-leftovers"), next(i for i, t in enumerate(texts) if "--mode Reset" in t))
+
+    def test_a_session_that_finds_no_mode_after_a_cut_off_read_is_freed_too(self):
+        # On Windows a read cut off in the middle leaves edl-ng no mode to find ("Device mode is Unknown"): the
+        # loader still sends the rest. Read out and restarted, it answers again.
+        self.edl_broken = ["[ERROR] Cannot proceed: Device mode is Unknown or could not be determined.\n"]
+        self.leftovers = [4645470]
+        c = self.make()
+        self.edl = 1
+        c.stage_abl()
+        self.assertEqual(self.steps()[:7], ["identify", "edl-reset", "pico-os", "mcu", "adb-edl", "identify", "stage"])
+
+    def test_a_device_that_takes_no_restart_needs_the_power_button(self):
+        # No loader runs (the greeting has passed): the restart cannot be sent either.
+        self.edl_broken = ["[ERROR] Cannot proceed: Device mode is Unknown or could not be determined.\n"]
+        c = self.make()
+        self.edl = 1
+        real = c.run
+
+        def no_restart(argv: Sequence[object], timeout: float = 60, **kwargs: object) -> str:
+            if "reset" in [str(a) for a in argv]:
+                msg = "edl-ng.exe failed (1); see edl-free.log"
+                raise RuntimeError(msg)
+            return real(argv, timeout, **kwargs)
+
+        c.run = no_restart  # the fake in the runner's place
+        with self.assertRaisesRegex(RuntimeError, "power button"):
+            c.stage_abl()
+        self.assertNotIn("stage", self.steps())
 
     def test_any_other_failure_of_the_first_session_stops_the_step(self):
         self.edl_broken = ["[ERROR] Loader file not found\n"]
@@ -374,8 +404,11 @@ class CycleTests(HeadsetFixture):
         reads: list[str] = []
         c.usb_reader = lambda: reads.append(self.steps()[-1]) is None  # read once; the device then left
         c.stage_abl()
-        self.assertEqual(reads, ["edl-reset", "edl-reset"])  # after the fresh-session restart and the final reset
-        self.assertEqual(self.steps(), ["identify", "edl-reset", "identify", "stage", "edl-reset", "pico-os"])
+        self.assertEqual(reads, ["edl-reset", "edl-reset"])  # after the restart that frees it and the final reset
+        self.assertEqual(
+            self.steps(),
+            [*["identify", "edl-reset", "pico-os", "mcu", "adb-edl", "identify", "stage"], "edl-reset", "pico-os"],
+        )
 
     def test_a_locked_headset_waits_in_fastboot_after_the_stage(self):
         # On a locked headset the engineering ABL refuses PICO OS's signing key and falls back to fastboot.
@@ -502,7 +535,7 @@ class CycleTests(HeadsetFixture):
         self.edl_outputs = ["[INFO]  Detected device mode: Firehose"]
         c = self.make()
         c.edl_count = lambda: 1  # the restart command is sent, but the device never leaves USB
-        with self.assertRaisesRegex(RuntimeError, "did not restart"):
+        with self.assertRaisesRegex(RuntimeError, "leave EDL mode"):
             c.stage_abl()
         self.assertEqual(self.steps(), ["identify", "edl-reset"])  # no second session with the old loader
 
