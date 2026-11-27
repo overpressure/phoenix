@@ -49,13 +49,14 @@ installed automatically.
 
 ## Verified hardware
 
-The tools run only on what the whole path has run on, or on PICO OS builds that run the same code before the
-kernel, and refuse the rest before they change anything:
+The tools run only on what the whole path has run on, on PICO OS builds that run the same code before the
+kernel, and on one China build accepted by its whole fingerprint; they refuse the rest before they change
+anything:
 
 | | Verified | Checked by |
 | --- | --- | --- |
 | Headset | original PICO 4, A8110, *phoenix*, with LPDDR4X | the fingerprint, PICO OS's model (`pxr.vendorhw.product.model` `PICO 4`) and memory (`ro.vendor.ddr_type` `DDR4`), in `device probe` and every later command |
-| PICO OS | 5.13.7 `global-seko` (`ro.oem.state` true), where the whole path has run; 5.13.3 and 5.13.8 `global-seko` and 5.13.3, 5.13.7 and 5.13.8 `global-sek`, which run the same code before the kernel ([other builds](#other-pico-os-builds)) | the same, with the fingerprint's region |
+| PICO OS | 5.13.7 `global-seko` (`ro.oem.state` true), where the whole path has run; 5.13.3 and 5.13.8 `global-seko` and 5.13.3, 5.13.7 and 5.13.8 `global-sek`, which run the same code before the kernel; and the official 5.13.7 `cn-seko` build (b9650, `smartcm.1761755159`, `dev-keys`), the one China build the install and the installed system have run on, by its whole fingerprint ([other builds](#other-pico-os-builds)) | the same, with the fingerprint's region, and the China build by all of its fingerprint |
 | Panel | Sharp LS026B3SA | `dev install`, from the kernel command line in the maintenance stage 1 (the installer checks it on PICO OS too): the stock tree also knows an Innolux NT57900, which our driver and tree do not |
 
 Neo 3 and Ultra have other fingerprints and are refused. The PICO 4 Pro and Enterprise take the same packages
@@ -87,10 +88,10 @@ the other value, so it picks the headset's update track. The region is the finge
 **What the headset's own build decides.** The installed system runs the headset's own build's files: DSP
 images, Wi-Fi and Bluetooth firmware from its `modem`, `dsp` and `bluetooth` partitions; GPU firmware, PICO's
 tracker and libraries, sensor and audio configuration from its backup's `super`
-([install.md](install.md#pico-oss-files)); `persist`. Only on 5.13.7 `global-seko` have they run; on the other
-accepted builds they are that build's, untested. The stock recovery under the maintenance stage 1 comes from the
-headset's own backup (its `recovery` partition). The headset's own build also stays in what runs before the kernel and is never
-written: the boot chain (XBL and its configuration, AOP,
+([install.md](install.md#pico-oss-files)); `persist`. They have run on 5.13.7 `global-seko` and on the China
+build in the table below; on the other accepted builds they are that build's, untested. The stock recovery under
+the maintenance stage 1 comes from the headset's own backup (its `recovery` partition). The headset's own build
+also stays in what runs before the kernel and is never written: the boot chain (XBL and its configuration, AOP,
 TrustZone and its libraries, the hypervisor, devcfg, the serial engines' firmware, the UEFI volume) and the board
 overlay in `dtbo`. The ABL is not among them: the install replaces it with the engineering ABL.
 
@@ -118,11 +119,13 @@ recovery the install writes is checked against the headset's `vbmeta`: its key a
 | 5.13.3 `global-seko` (b9480) | true | 2025-07-03 | the same code, re-signed; `dtbo` the same | the same, recovery rollback index 1 | accepted: the same code |
 | 5.13.8 `global-seko` (b10102) | true | 2026-09-02 | the same code, re-signed; `dtbo` the same | the same, recovery rollback index 1 | accepted: the same code |
 | 5.13.3, 5.13.7, 5.13.8 `global-sek` (b9479, b9666, b10113) | empty | | the same code, re-signed; `dtbo` the same | another key: the install keeps the headset's own `vbmeta` and writes its recovery with the headset's own stock recovery's | accepted: the same code |
-| 5.13.7 `cn-seko`, `cn-sek` (b9650, b9651) | true, empty | 2025-10-30 | XBL and AOP differ | | refused: other code before the kernel |
+| 5.13.7 `cn-seko` (b9650; `smartcm.1761755159`, `dev-keys`) | true | 2025-10-30 | the official China 5.13.7 package's XBL and AOP, other code than the reference's; `dtbo` the same in the package, the headset's own not compared | | accepted: the install and the installed system have run on this exact build, by its whole fingerprint only |
+| 5.13.7 `cn-sek` (b9651) and every other China build | true, empty | 2025-10-30 | XBL and AOP differ | | refused: other code before the kernel |
 
-The tools refuse every other build too, naming the reason, before anything is written. An accepted build is
-accepted on this comparison: the engineering ABL, the unlock and the whole path have run on 5.13.7 only; the
-unlock's upstream reports it working through 5.13.8.
+The tools refuse every other build too, naming the reason, before anything is written. The global builds are
+accepted on this comparison; the China build is accepted on its own install and installed system having run. The
+engineering ABL, the unlock and the on-headset build have run on 5.13.7 only; the unlock's upstream reports it
+working through 5.13.8.
 
 What the packages also say (their `updater-script` and firmware):
 
@@ -133,7 +136,8 @@ What the packages also say (their `updater-script` and firmware):
   certificates, and the engineering ABL chains to the same Pico root CA as every 5.13.7 and 5.13.8 ABL and XBL.
   In all eight packages `vbmeta` has rollback index 0 and `vbmeta_system` 1617580800; recovery's is 1 in every
   `global` one.
-- **Who can install today:** a headset on a `global` build, `seko` or `sek`, 5.13.3, 5.13.7 or 5.13.8.
+- **Who can install today:** a headset on a `global` build, `seko` or `sek`, 5.13.3, 5.13.7 or 5.13.8, or on the
+  one China build in the table above.
 
 ## Entering and leaving EDL
 

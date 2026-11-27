@@ -232,6 +232,27 @@ class WorkflowTests(unittest.TestCase):
                 self.assertEqual(device.read_identity(self.identity), self.record)
                 self.assertEqual(device.firmware_support(self.record), support)
 
+    def test_the_one_china_build_the_install_has_run_on_passes(self):
+        # The whole fingerprint, not 5.13.7/cn/true: that names every China build of the release.
+        self.record["fingerprint"] = "Pico/Phoenix/PICOA8110:10/5.13.7/smartcm.1761755159:user/dev-keys"
+        self.identity.write_text(json.dumps(self.record))
+        # The saved record stays as it is: backups compare it as a whole.
+        self.assertEqual(device.read_identity(self.identity), self.record)
+        self.assertEqual(
+            device.firmware_support(self.record),
+            "accepted: the install and the installed system have run on this build",
+        )
+        for fingerprint in (
+            "Pico/Phoenix/PICOA8110:10/5.13.7/smartcm.1761755159:user/release-keys",  # another tags value
+            "Pico/Phoenix/PICOA8110:10/5.13.7/other.1761755159:user/dev-keys",  # another build id
+            "Pico/Phoenix/PICOA8110:10/5.13.8/smartcm.1761755159:user/dev-keys",  # another version
+        ):
+            self.record["fingerprint"] = fingerprint
+            self.identity.write_text(json.dumps(self.record))
+            with self.subTest(fingerprint=fingerprint):
+                with self.assertRaisesRegex(ValueError, "China builds run another XBL and AOP"):
+                    device.read_identity(self.identity)
+
     def test_every_other_build_is_refused_with_its_reason(self):
         for product, version, state, reason in (
             ("Phoenix", "5.13.7", "true", "China builds run another XBL and AOP"),

@@ -71,6 +71,13 @@ SAME_CODE_FIRMWARES = {
     ("5.13.7", "global", ""),
     ("5.13.8", "global", ""),
 }
+#: PICO OS builds accepted by their whole fingerprint, which alone tells them from a build the tables above
+#: refuse: the official China 5.13.7 seko build (b9650) the install and the installed system have run on. Its
+#: XBL and AOP are that package's code, other code than the verified build's, so it is not in
+#: SAME_CODE_FIRMWARES, and every other China build stays refused.
+ACCEPTED_BUILD_FINGERPRINTS = {
+    "Pico/Phoenix/PICOA8110:10/5.13.7/smartcm.1761755159:user/dev-keys",
+}
 #: Panels the kernel's driver and tree know, as the bootloader names them to the stock kernel.
 VERIFIED_PANELS = ("sharp_ls026b3sa",)
 #: The PICO 4 among the headsets PICO OS's one package serves, as PICO OS tells them apart: the model from
@@ -90,11 +97,17 @@ def firmware_region(fingerprint: str) -> str:
 def firmware_support(identity: dict) -> str:
     """Return how the install supports a saved identity's PICO OS build; refuse one it does not."""
     fingerprint = identity.get("fingerprint", "")
-    return check_firmware(fingerprint.split("/")[3], identity.get("oem_state", ""), firmware_region(fingerprint))
+    return check_firmware(
+        fingerprint.split("/")[3], identity.get("oem_state", ""), firmware_region(fingerprint), fingerprint
+    )
 
 
-def check_firmware(version: str, oem_state: str, region: str = "global") -> str:
-    """Return whether a PICO OS build is verified or the same code before the kernel; refuse any other."""
+def check_firmware(version: str, oem_state: str, region: str = "global", fingerprint: str = "") -> str:
+    """Return whether a PICO OS build is accepted; refuse any other."""
+    # A China build's version, region and ro.oem.state name every build of that release; only the whole
+    # fingerprint tells the one the install has run on.
+    if fingerprint in ACCEPTED_BUILD_FINGERPRINTS:
+        return "accepted: the install and the installed system have run on this build"
     # sek builds report ro.oem.state empty; firmware.json and `match` call that false.
     state = "true" if str(oem_state).lower() == "true" else ""
     build = (version, region, state)
@@ -109,7 +122,8 @@ def check_firmware(version: str, oem_state: str, region: str = "global") -> str:
     accepted = ", ".join(sorted({v for v, _r, _s in VERIFIED_FIRMWARES | SAME_CODE_FIRMWARES}))
     msg = (
         f"PICO OS {version} ({region}, ro.oem.state {oem_state}) is not supported: {why}. Supported: the global "
-        f"builds {accepted}, seko and sek. Nothing was changed (docs/device-preparation.md)"
+        f"builds {accepted}, seko and sek, and one China build by its whole fingerprint. Nothing was changed "
+        "(docs/device-preparation.md)"
     )
     raise ValueError(msg)
 
