@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from overpressure.api.v1.doctor import Check, Host
+    from overpressure.api.v1.headset import Found
     from overpressure.api.v1.install import Stage
 
 #: The PICO 4 on USB, as the host's tools open it (checked on this unit): PICO OS with USB debugging,
@@ -446,6 +447,16 @@ class Phoenix(Headset):
         if workflow == RESTORE and not (self.backup_set().folder / "manifest.json").is_file():
             return f"This computer has no backup of your headset: {backup.HOW_TO_IMPORT}."
         return ""
+
+    def assess(self) -> Found:
+        """Look at the headset on USB without changing it (interface 1.11; tooling/look.py): what runs, what fits."""
+        from overpressure.api.v1 import install  # noqa: PLC0415  # only an overpressure with 1.11 calls this
+
+        from . import devloop, localconfig  # noqa: PLC0415  # they import this package's modules: circular otherwise
+        from .look import Look  # noqa: PLC0415  # it needs interface 1.11's Found
+
+        look = Look(localconfig.load(), devloop.WORK, install.OUT, self.info.codename)
+        return look.found(USB_MODES, qualcomm.EDL_MODE)
 
     def after_install(self) -> AfterInstall:
         """Return the finished page: sign in to Steam; upgrade, back to PICO OS or a support bundle."""

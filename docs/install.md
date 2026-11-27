@@ -333,6 +333,29 @@ and `restore` ([`tooling/install.py`](../tooling/install.py): `Plan.stages`, `up
 `restore_stages`; the engine: [docs/tool.md](https://github.com/overpressure/overpressure/blob/main/docs/tool.md#the-installer); the owner's steps:
 [README](../README.md#install)).
 
+### The look at the headset
+
+The app asks for the headset first and looks at it without changing it (`Headset.assess`, headset interface
+1.11; [`tooling/look.py`](../tooling/look.py)), within a second in PICO OS. In this order: the USB bus for EDL
+mode (enumeration only, no loader session), `adb devices` and, for a headset listed ready, its properties
+(build, `ro.oem.state`, `ro.boot.flash.locked`, model, memory) and battery; the headset's own system on its USB
+network (SSH's port, then its first process and where it started, over this computer's key); and fastboot only
+when the bus holds the headset in fastboot mode (`oem device-info`: the engineering bootloader and its lock, or
+PICO's stock one). On Linux adb's server is stopped before fastboot looks, as everywhere else.
+
+| Found | Offered |
+| --- | --- |
+| PICO OS, a supported PICO 4 and build | Install |
+| PICO OS, a PICO 4 Pro or Enterprise, or a build not supported | nothing: why |
+| PICO OS without USB debugging allowed for this computer | nothing: allow it |
+| PICO OS's recovery | nothing: *Reboot system now* |
+| The installed system | Upgrade, Check the headset, Restore to stock |
+| The maintenance system | Install, Restore to stock |
+| The headset's own system without this computer's key | Restore to stock |
+| Fastboot | Install, Restore to stock |
+| EDL mode | Restore to stock |
+| On the bus, answering nothing | nothing: wait, or restart it |
+
 Every command that touches the headset first asks the disclaimer (y/n); `--accept-disclaimer` or
 `OVERPRESSURE_ACCEPT_DISCLAIMER=1` accepts it for unattended runs
 ([overpressure/disclaimer.py](https://github.com/overpressure/overpressure/blob/main/overpressure/disclaimer.py)). A computer on its battery below 30 % is
