@@ -319,7 +319,7 @@ class AskingDev(devloop.Dev):
 
 def edl_serial(output: str) -> str:
     """Return the serial number edl-ng reports when it connects, or empty."""
-    found = re.search(r"Serial Number:\s*(\S+)", output)
+    found = re.search(getattr(qualcomm, "HANDSHAKE_SERIAL", r"Serial Number:\s*") + r"(\S+)", output)
     return found.group(1) if found else ""
 
 

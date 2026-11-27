@@ -2,11 +2,12 @@
 """The PICO 4 on USB, looked at without changing it (Headset.assess, headset interface 1.11).
 
 The quickest first, each bounded by seconds: the USB bus for EDL mode (enumeration only: an EDL loader's session
-would have to be ended by hand; without pyusb this system's own device listing), fastboot when the bus holds the
-headset in fastboot mode (which bootloader, locked or not), PICO OS over adb (its build, the model, the bootloader's
-lock, the battery), and the headset's own system on its USB network (SSH's port, then its first process, over this
-computer's key). Where the bus cannot be read, fastboot is asked last. Nothing is written, restarted or started on
-the headset; on this computer adb's server may start, and on Linux it is stopped again before fastboot looks
+would have to be ended by hand; without pyusb this system's own device listing, read once), fastboot when the bus
+holds the headset in fastboot mode (which bootloader, locked or not), PICO OS over adb (its build, the model, the
+bootloader's lock, the battery), the headset's own system on its USB network (SSH's port, then its first process,
+over this computer's key), and PICO OS with USB debugging off (its setup, after a restore or a rescue). Where
+neither the bus nor a listing can be read, fastboot is asked last. Nothing is written, restarted or started on the
+headset; on this computer adb's server may start, and on Linux it is stopped again before fastboot looks
 (cycle.Headset.release_adb). What fits each state is a workflow of the installer.
 """
 
@@ -16,14 +17,15 @@ import contextlib
 import socket
 import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable
 
 from overpressure.api.v1 import headset as headsets
 from overpressure.api.v1 import install, ssh
 from overpressure.api.v1.headset import Found
 from overpressure.api.v1.process import run
-from overpressure.api.v1.qualcomm import edl_devices, usb_count
+from overpressure.api.v1.qualcomm import usb_count, usb_ids
+from overpressure.api.v1.usbaccess import UsbMode
 
 from . import device
 from .cycle import Headset as CycleHeadset
@@ -33,7 +35,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from overpressure.api.v1.process import Timing
-    from overpressure.api.v1.usbaccess import UsbMode
 
     from .localconfig import Settings
 
@@ -63,6 +64,12 @@ REBOOT_FROM_RECOVERY = "The headset is in PICO OS's recovery: choose Reboot syst
 EDL_WAY_OUT = "Hold the power button for about 10 s to restart it."
 NOT_ANSWERING = "The headset is on USB but does not answer yet. Wait a moment; if it stays so, restart it."
 NO_KEY = "This computer did not install the system on it and has no key for it."
+#: PICO OS with USB debugging off (its first-time setup, after a restore or a rescue): no adb, its own functions.
+NO_DEBUGGING = UsbMode("PICO OS without USB debugging", "2d40", "00b6")
+TURN_ON_DEBUGGING = (
+    "PICO OS runs with USB debugging off. Finish its setup on the headset, then turn on developer mode (Settings, "
+    "General, About: tap the software version seven times) and USB debugging (Developer), and look again."
+)
 
 
 @dataclass
@@ -76,16 +83,16 @@ class Look:
     runner: Callable[..., str] = run
     port_open: Callable[[str, int, float], bool] | None = None
     bus: Callable[[int, int], int | None] = usb_count
-    edl_listing: Callable[[], int] = edl_devices  #: EDL devices by this system's own listing, where the bus is unread
+    #: This system's own listing of USB devices (vendor, product), where the bus cannot be read: read once a look.
+    listing: Callable[[], list[tuple[int, int]]] | None = usb_ids
     backup_there: Callable[[], bool] = lambda: True  #: whether this computer has the headset's backup (Restore)
     clock: Timing = time
+    _listed: list[tuple[int, int]] | None = field(default=None, init=False, repr=False)
 
     def found(self, modes: tuple[UsbMode, ...], edl: UsbMode) -> Found:
         """Return what runs on the headset, and the workflows that fit (tooling's keys: install, upgrade, ...)."""
-        in_edl = self.count(edl)
-        if in_edl is None:  # without pyusb: this system's own listing (Get-PnpDevice, ioreg, sysfs)
-            in_edl = self.edl_listing()
-        if in_edl:
+        self._listed = None  # this look's own listing, read when the bus cannot be
+        if self.count(edl):
             # Without this computer's backup, PICO OS comes back from PICO's own downloads (the rescue).
             way_back = ("restore",) if self.backup_there() else ("rescue",)
             return Found(headsets.EDL, "Emergency download mode", workflows=way_back, note=EDL_WAY_OUT)
@@ -101,13 +108,21 @@ class Look:
             found = probe()
             if found is not None:
                 return found
+        if self.count(NO_DEBUGGING):
+            return Found(headsets.MAKER, "PICO OS", workflows=("install",), note=TURN_ON_DEBUGGING)
         if any(self.count(mode) for mode in modes):
             return Found(headsets.UNKNOWN, note=NOT_ANSWERING)
         return Found(headsets.ABSENT)
 
     def count(self, mode: UsbMode) -> int | None:
-        """Return how many devices of @p mode the USB bus holds; None when the bus cannot be read here."""
-        return self.bus(int(mode.vendor, 16), int(mode.product, 16))
+        """Return how many devices of @p mode are on USB: the bus, else this system's own listing; None: neither."""
+        ids = (int(mode.vendor, 16), int(mode.product, 16))
+        found = self.bus(*ids)
+        if found is not None or self.listing is None:
+            return found
+        if self._listed is None:
+            self._listed = self.listing()
+        return self._listed.count(ids)
 
     # -- the headset's own system -------------------------------------------------------------
     def own_system(self) -> Found | None:

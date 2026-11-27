@@ -70,8 +70,12 @@ class FakeEdl:
         if "printgpt" in argv:
             output = printgpt(self.serial)
             self.serial = ""  # later sessions name none
-        elif "read-part" in argv:
-            Path(argv[argv.index("read-part") + 2]).write_bytes(self.chain[argv[argv.index("read-part") + 1]])
+        elif "read-sector" in argv:
+            first, sectors = int(argv[argv.index("read-sector") + 1]), int(argv[argv.index("read-sector") + 2])
+            lun = int(argv[argv.index("--lun") + 1])
+            name = next(n for n, a, _b in ROWS[lun] if a == first)
+            data = self.chain[name] if self.chain is not None else b""
+            Path(argv[argv.index("read-sector") + 3]).write_bytes(data.ljust(sectors * rescue.SECTOR, b"\0"))
             output = "Successfully read"
         else:
             output = ""
@@ -113,6 +117,20 @@ class LookTest(unittest.TestCase):
         words = {word for argv in fake.ran for word in argv}
         self.assertIn("printgpt", words)
         self.assertFalse(any(word in argv for argv in fake.ran for word in ("write-part", "write-sector", "reset")))
+
+    def test_a_used_loader_is_freed_once_then_named_by_its_fresh_session(self):
+        fake = FakeEdl(chain_of("5.13.7-global-seko"), serial="")
+        freed = []
+
+        def free() -> None:
+            freed.append(True)
+            fake.serial = "ABCDEF12"  # the headset is back in a fresh EDL session
+
+        found = rescue.look(self.edl(fake), self.work, "", BUILDS, free)
+        self.assertEqual((freed, found["serial"]), ([True], "ABCDEF12"))
+        fake.serial = ""
+        with self.assertRaisesRegex(rescue.RescueError, "names no serial"):
+            rescue.look(self.edl(fake), self.work, "", BUILDS, lambda: None)  # freed, still none: by hand
 
     def test_another_headset_or_an_earlier_sessions_loader_is_refused(self):
         with self.assertRaisesRegex(rescue.RescueError, "not the one .env names"):
@@ -254,7 +272,7 @@ class PlanTest(unittest.TestCase):
 
     def test_the_write_checks_it_is_still_the_same_headset(self):
         chain = chain_of("5.13.7-global-seko")
-        (self.work / "xbl.bin").write_bytes(chain["xbl"])
+        (self.work / "xbl.bin").write_bytes(chain["xbl"].ljust(21 * rescue.SECTOR, bytes(1)))  # its 21 sectors, whole
         edl = rescue.Edl("edl-ng", "loader.elf", FakeEdl(chain, serial=""))
         rescue.same_headset(self.found, edl, self.work)
         edl = rescue.Edl("edl-ng", "loader.elf", FakeEdl(chain_of("5.13.3-global-seko"), serial=""))

@@ -39,6 +39,7 @@ class Fakes:
         self.bus: dict[tuple[int, int], int] = {}
         self.port = False
         self.ran: list[list[str]] = []
+        self.listings = 0
 
     def run(self, argv: list, _timeout: float = 0, **_kw: object) -> str:
         words = [str(w) for w in argv]
@@ -51,6 +52,10 @@ class Fakes:
 
     def count(self, vendor: int, product: int) -> int:
         return self.bus.get((vendor, product), 0)
+
+    def listed(self) -> list[tuple[int, int]]:
+        self.listings += 1
+        return [ids for ids, n in self.bus.items() for _ in range(n)]
 
     def pico_os(self, *, model: str = "PICO 4", memory: str = "DDR4", version: str = "5.13.7") -> None:
         """Answer as PICO OS with USB debugging allowed."""
@@ -75,7 +80,7 @@ class LookTest(unittest.TestCase):
             runner=self.fakes.run,
             port_open=lambda _host, _port, _seconds: self.fakes.port,
             bus=self.fakes.count,
-            edl_listing=lambda: self.fakes.bus.get(EDL, 0),
+            listing=self.fakes.listed,
             clock=Clock(),
         )
 
@@ -102,6 +107,16 @@ class LookTest(unittest.TestCase):
         found = self.found()
         self.assertEqual((found.state, found.workflows), (headsets.EDL, ("restore",)))
         self.assertEqual(self.fakes.ran, [])
+        del self.fakes.bus[EDL]
+        self.found()
+        self.assertEqual(self.fakes.listings, 2)  # once a look, for every mode it counts
+
+    def test_pico_os_with_usb_debugging_off_says_how_to_turn_it_on(self):
+        # After a restore or a rescue PICO OS starts its setup: its own USB functions, no adb.
+        self.fakes.bus[(0x2D40, 0x00B6)] = 1
+        found = self.found()
+        self.assertEqual((found.state, found.workflows), (headsets.MAKER, ("install",)))
+        self.assertIn("USB debugging", found.note)
 
     def test_supported_pico_os_offers_the_install_with_its_facts(self):
         self.fakes.pico_os()
@@ -176,6 +191,7 @@ class LookTest(unittest.TestCase):
 
     def test_where_the_bus_cannot_be_read_fastboot_is_asked_last(self):
         self.look.bus = lambda _vendor, _product: None
+        self.look.listing = None  # no listing either
         self.fakes.answers["fastboot devices"] = "FB1\tfastboot\n"
         self.fakes.answers["fastboot -s FB1 oem device-info"] = "(bootloader) Device unlocked: no\nOKAY\n"
         found = self.found()

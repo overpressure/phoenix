@@ -26,6 +26,7 @@ import hashlib
 import json
 import re
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -33,7 +34,7 @@ from typing import TYPE_CHECKING, Callable
 from overpressure.api.v1 import REPO, lp, ota, payload, qualcomm
 from overpressure.api.v1.process import run
 
-from . import localconfig
+from . import devloop, localconfig
 from .image import CATALOG
 
 if TYPE_CHECKING:
@@ -157,27 +158,51 @@ def needed(op_list: str) -> list[str]:
 
 @dataclass(frozen=True)
 class Edl:
-    """edl-ng with the headset's loader; a runner that tests replace."""
+    """edl-ng with the headset's loader; a runner that tests replace.
+
+    Before each session what the loader still sends is read (@p quiet: qualcomm.drain_session's reader): bytes
+    left from an earlier session, which edl-ng would take for its answers, now and then are there on Windows.
+    """
 
     program: str | Path
     loader: str | Path
     runner: Callable[..., str] = run
+    quiet: Callable[[], int] | None = None
 
     def __call__(self, *words: str | Path, timeout: float = 300, log: Path | None = None) -> str:
-        """Run edl-ng with @p words; its output also goes to @p log."""
+        """Run edl-ng with @p words, the port read empty first; its output also goes to @p log."""
+        self.empty()
         argv = [str(a) for a in qualcomm.edl_ng(self.program, self.loader, *words)]
         return self.runner(argv, timeout, log=log)
 
+    def empty(self) -> None:
+        """Read what waits on the device's pipe until it stays quiet for a second (nothing is sent)."""
+        if self.quiet is not None:
+            qualcomm.drain_session(self.quiet, time, quiet=1.0, seconds=120)
 
-def look(edl: Edl, work: Path, serial: str, pinned: Mapping[str, Mapping[str, Pin]]) -> dict:
+
+def look(
+    edl: Edl,
+    work: Path,
+    serial: str,
+    pinned: Mapping[str, Mapping[str, Pin]],
+    free: Callable[[], None] | None = None,
+) -> dict:
     """Look at the headset in EDL mode without writing to it: its serial, partition table and build.
 
-    The first session after EDL mode was entered names the serial; it must be @p serial when .env has one.
-    The boot chain's partitions are read into @p work. Return the look, also written to work/look.json.
+    The first session after EDL mode was entered names the serial; it must be @p serial when .env has one. A
+    loader an earlier session used names none, and one cut off mid-transfer answers nothing useful: @p free
+    restarts it and enters EDL mode afresh (cycle.Headset.free_edl), once. The boot chain's partitions are read
+    by sector, one read a session (two in one session can arrive as one chunk, which edl-ng 1.6 misreads on
+    Windows), into @p work. Return the look, also written to work/look.json.
     """
     work.mkdir(parents=True, exist_ok=True)
-    output = edl("--loglevel", "Debug", "printgpt", log=work / "look-printgpt.log")
-    shown = re.search(r"Serial Number:\s*(\S+)", output)
+    output = _first_session(edl, work)
+    shown = re.search(qualcomm.HANDSHAKE_SERIAL + r"(\S+)", output)
+    if not shown and free is not None:
+        free()
+        output = _first_session(edl, work)
+        shown = re.search(qualcomm.HANDSHAKE_SERIAL + r"(\S+)", output)
     if not shown:
         raise RescueError(NOT_FRESH)
     if serial and shown.group(1).lower() != serial.lower():
@@ -188,12 +213,7 @@ def look(edl: Edl, work: Path, serial: str, pinned: Mapping[str, Mapping[str, Pi
     if missing:
         msg = f"The headset's partition table has no {', '.join(missing)}: it is not a PICO 4 as the rescue knows it."
         raise RescueError(msg)
-    chain = {}
-    for part in BOOT_CHAIN:
-        path = work / f"{part}.bin"
-        path.unlink(missing_ok=True)
-        edl("read-part", part, path, log=work / f"look-{part}.log")
-        chain[part] = path.read_bytes()
+    chain = {part: read(edl, table[part], work / f"{part}.bin", work / f"look-{part}.log") for part in BOOT_CHAIN}
     build = identify(chain, pinned)
     found = {
         "schema": 1,
@@ -203,6 +223,26 @@ def look(edl: Edl, work: Path, serial: str, pinned: Mapping[str, Mapping[str, Pi
     }
     (work / "look.json").write_text(json.dumps(found, indent=2) + "\n", encoding="utf-8")
     return found
+
+
+def _first_session(edl: Edl, work: Path) -> str:
+    """Return the partition table at edl-ng's debug level; a failed session's output, for the serial's check."""
+    try:
+        return edl("--loglevel", "Debug", "printgpt", log=work / "look-printgpt.log")
+    except RuntimeError as exc:
+        return qualcomm.failed_output(exc)
+
+
+def read(edl: Edl, partition: Partition, path: Path, log: Path) -> bytes:
+    """Read @p partition into @p path by its sectors (read-sector, one read in its session); return the bytes."""
+    path.unlink(missing_ok=True)
+    sectors = partition.last - partition.first + 1
+    edl("read-sector", str(partition.first), str(sectors), path, "--lun", str(partition.lun), log=log)
+    data = path.read_bytes()
+    if len(data) != sectors * SECTOR:
+        msg = f"the read of {path.stem} gave {len(data)} bytes, not {sectors * SECTOR}; nothing was written"
+        raise RescueError(msg)
+    return data
 
 
 def table_of(found: Mapping) -> dict[str, Partition]:
@@ -334,10 +374,8 @@ def same_headset(found: Mapping, edl: Edl, work: Path) -> None:
     if partition_table(output) != table_of(found):
         msg = "The headset in EDL mode has another partition table than the one looked at. Nothing was written."
         raise RescueError(msg)
-    path = work / "xbl-again.bin"
-    path.unlink(missing_ok=True)
-    edl("read-part", "xbl", path, log=work / "write-xbl.log")
-    if path.read_bytes() != (work / "xbl.bin").read_bytes():
+    again = read(edl, table_of(found)["xbl"], work / "xbl-again.bin", work / "write-xbl.log")
+    if again != (work / "xbl.bin").read_bytes():
         msg = "The headset in EDL mode is not the one looked at (another XBL). Nothing was written."
         raise RescueError(msg)
 
@@ -399,11 +437,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{build}: pinned")
         return 0
     settings = localconfig.load()
-    edl = Edl(settings.edl_program(), settings.path("loader"))
+    reader = qualcomm.ComReader() if sys.platform == "win32" else qualcomm.UsbReader().queued
+    edl = Edl(settings.edl_program(), settings.path("loader"), quiet=reader)
 
     try:
         if args.command == "look":
-            found = look(edl, args.work, settings.edl_serial, pins(catalog))
+            dev = devloop.Dev(settings)
+            dev.folder = args.work
+            found = look(edl, args.work, settings.edl_serial, pins(catalog), lambda: dev.free_edl("look-free"))
             print(f"PICO 4, PICO OS {found['build']}: the rescue writes this build back")
             return 0
         found = json.loads((args.work / "look.json").read_text(encoding="utf-8"))
@@ -419,9 +460,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{len(writes)} writes, {size:.2f} GiB, each read back (preview: nothing was written)")
             return 0
         same_headset(found, edl, args.work)
-        qualcomm.write_back(
-            writes, edl.program, edl.loader, args.work / "write", lambda a, t: run([str(w) for w in a], int(t))
-        )
+
+        def session(argv: list[str | Path], timeout: float) -> str:
+            edl.empty()  # each write and each read back in a session of its own, the port empty first
+            return run([str(w) for w in argv], int(timeout))
+
+        qualcomm.write_back(writes, edl.program, edl.loader, args.work / "write", session)
         print(
             f"Wrote {len(writes)} partitions ({size:.2f} GiB), each read back; the headset is in EDL mode, not reset."
         )

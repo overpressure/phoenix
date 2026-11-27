@@ -94,7 +94,7 @@ to PICO OS is part of it.
 | Install | ✅ | From Windows and Linux; macOS is not tested yet ([#33](https://github.com/overpressure/phoenix/issues/33)) |
 | Upgrade to a new release | ✅ | Keeps your data, Wi-Fi, room and Steam sign-in |
 | Back to PICO OS | ✅ | From the backup the install made |
-| Back to PICO OS without a backup | 🟡 | From PICO's own downloads, the build the headset's firmware has; not run on a headset yet |
+| Back to PICO OS without a backup | ✅ | From PICO's own downloads, the build the headset's firmware has; run once, on Windows |
 
 Everything that is still open: [the issues](https://github.com/overpressure/phoenix/issues).
 

@@ -355,6 +355,7 @@ fastboot looks, as everywhere else.
 | PICO OS, a PICO 4 Pro or Enterprise, or a build not supported | nothing: why |
 | PICO OS without USB debugging allowed for this computer | nothing: allow it |
 | PICO OS's recovery | nothing: *Reboot system now* |
+| PICO OS with USB debugging off (its setup, after a restore or a rescue) | Install: how to turn USB debugging on |
 | The installed system | Upgrade, Check the headset, Restore to stock |
 | The maintenance system | Install, Restore to stock |
 | The headset's own system without this computer's key | Restore to stock |
@@ -631,7 +632,13 @@ pins, rebuilt every image the rescue writes byte for byte as the backup holds it
 `super`'s stock metadata the new layout has the same geometry, group, block device and partition entries; only the
 extents differ (one each instead of the stock layout's fragments from earlier updates). `firmware.json` pins every
 build's boot chain and images, and 5.13.7-global-seko's block images too: the others need `rescue pin BUILD` (3.6
-GB each) before their rescue. Not run on a headset yet.
+GB each) before their rescue.
+
+On the headset, from the installed system and without its backup in use: EDL mode by itself, the look named
+5.13.7-global-seko, and 14 writes (6.76 GiB) were each read back in about 6.5 minutes; PICO OS then started its
+first-time setup. On Windows edl-ng sometimes meets bytes an earlier session left, or two reads of one session
+arriving as one chunk: the rescue reads the boot chain by sector, one read a session, reads the port empty before
+each session, and frees a loader its first session finds used (drain, restart, EDL mode again from what starts).
 
 ## Verified results
 
