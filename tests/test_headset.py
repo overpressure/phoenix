@@ -127,6 +127,8 @@ class HeadsetFixture(unittest.TestCase):
         self.readback = self.boot
         self.edl_output = "Serial Number: EDL1"
         self.edl_outputs: list[str] = []  # the next printgpt sessions' outputs, before edl_output
+        self.edl_broken: list[str] = []  # the next printgpt sessions that fail, with their logs (a lost link)
+        self.leftovers: list[int] = []  # what a broken session's loader still sends, read by read
         self.restarting: list[int] = []  # the EDL count's next answers while a restart into EDL runs
         self.run_result = {"status": "passed", "boot_restore_required": False}
         self.fastboot_listed = True
@@ -186,6 +188,11 @@ class HeadsetFixture(unittest.TestCase):
         elif "read-part boot" in text:
             Path(words[words.index("boot") + 1]).write_bytes(self.readback)
             output = self.edl_output
+        elif "printgpt" in text and self.edl_broken:
+            assert log is not None
+            log.write_text(self.edl_broken.pop(0))
+            msg = f"edl-ng.exe failed (1); see {log.name}"
+            raise RuntimeError(msg)
         elif "printgpt" in text:
             output = self.edl_outputs.pop(0) if self.edl_outputs else self.edl_output
         elif "oem device-info" in text:
@@ -230,7 +237,13 @@ class CycleTests(HeadsetFixture):
         self.adb_listed = {"ADB1": 1234567}  # PICO OS on the headset answers adb
 
     def make(self):
-        return cycle.Cycle(self.settings, self.folder, self.fake, self.clock, self.edl_count)
+        c = cycle.Cycle(self.settings, self.folder, self.fake, self.clock, self.edl_count)
+        c.stale_reader = self.read_leftovers
+        return c
+
+    def read_leftovers(self) -> int:
+        self.calls.append(["read-leftovers"])
+        return self.leftovers.pop(0) if self.leftovers else 0
 
     def run_cycle(self, c: cycle.Cycle) -> int:
         with patch.object(cycle, "ROOT", self.root):
@@ -326,6 +339,32 @@ class CycleTests(HeadsetFixture):
         self.assertEqual(self.steps()[:4], ["identify", "edl-reset", "identify", "stage"])
         fresh = next(w for w in self.calls if "reset" in w)
         self.assertEqual(fresh[fresh.index("--mode") + 1], "Edl")
+
+    def test_a_session_that_broke_mid_transfer_is_drained_and_restarted_before_anything_is_written(self):
+        # An earlier step's readback broke: its loader still sends the rest, and edl-ng's next session meets
+        # those bytes as answers ("hexadecimal value 0x00") and its writes time out.
+        self.edl_broken = [
+            (
+                "[ERROR] Exception: '.', hexadecimal value 0x00, is an invalid character.\n"
+                "[ERROR] Error accessing LUN 2: QUD write to \\\\.\\COM8 timed out.\n"
+            )
+        ]
+        self.leftovers = [3693]
+        c = self.make()
+        self.edl = 1
+        c.stage_abl()
+        steps = [s for s in self.steps() if s in ("identify", "edl-reset", "stage")]
+        self.assertEqual(steps[:4], ["identify", "edl-reset", "identify", "stage"])
+        texts = self.texts()
+        self.assertLess(texts.index("read-leftovers"), next(i for i, t in enumerate(texts) if "--mode Edl" in t))
+
+    def test_any_other_failure_of_the_first_session_stops_the_step(self):
+        self.edl_broken = ["[ERROR] Loader file not found\n"]
+        c = self.make()
+        self.edl = 1
+        with self.assertRaisesRegex(RuntimeError, "failed"):
+            c.stage_abl()
+        self.assertNotIn("stage", self.steps())
 
     def test_the_pipe_is_read_after_each_power_command(self):
         # Linux: the loader carries out a reset only once its last message is read.

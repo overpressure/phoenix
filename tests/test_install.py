@@ -127,6 +127,8 @@ class PlanTests(unittest.TestCase):
             computer=lambda: self.checks,
             edl_count=lambda: self.restarting.pop(0) if self.restarting else self.edl,
         )
+        self.leftovers: list[int] = []  # what a broken session's loader still sends
+        self.plan.stale_reader = lambda: self.leftovers.pop(0) if self.leftovers else 0
 
     # -- the fakes -----------------------------------------------------------------------------
     def spawn(self, argv: list[str], stdin: bytes | None, writes: bool, line: Callable[[str], None]) -> int:  # noqa: FBT001  # the Spawn signature
@@ -642,6 +644,31 @@ class PlanTests(unittest.TestCase):
         fresh = [n for n, t in enumerate(texts) if "reset --mode Edl" in t]
         self.assertEqual(len(fresh), 1)
         self.assertIn("printgpt", texts[fresh[0] + 1])  # identified again in the fresh session
+        self.assertEqual(self.settings().edl_serial, EDL)
+
+    def test_a_session_that_broke_mid_transfer_is_read_out_then_restarted_for_the_serial(self):
+        # A backup cut off mid-read: its loader still sends the rest, and the next session reads those bytes as
+        # its answers. What is left is read first, then the loader takes the restart into a fresh session.
+        original, replies = (
+            self.capture,
+            iter(["[ERROR] Exception: '.', hexadecimal value 0x00, is an invalid character.\n"]),
+        )
+        self.leftovers = [3693, 0]
+
+        def capture(argv: list[str], timeout: float) -> tuple[int, str]:
+            if "printgpt" in argv:
+                self.captured.append(argv)
+                return 0, next(replies, PRINTGPT)
+            if "--mode" in argv:
+                self.captured.append([*argv, f"(left to read: {len(self.leftovers)})"])
+            return original(argv, timeout)
+
+        self.capture = capture  # ty: ignore[invalid-assignment]  # the test's own capture in the method's place
+        ui = self.run_stages(("connect", "prepare"), self.yes("plug-in", "consent"))
+        self.assertEqual(ui.finished()["status"], "done", ui.finished())
+        texts = [" ".join(map(str, c)) for c in self.captured]
+        fresh = [t for t in texts if "reset --mode Edl" in t]
+        self.assertEqual(fresh[0][-len("(left to read: 0)") :], "(left to read: 0)")  # read out before the restart
         self.assertEqual(self.settings().edl_serial, EDL)
 
     def test_a_stale_edl_session_in_the_dump_says_the_same(self):

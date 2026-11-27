@@ -214,10 +214,16 @@ stopped backup goes on with it, where an older or another headset's folder stays
 A stopped backup is almost always the USB port or the cable. Windows' Qualcomm serial driver gives edl-ng a second
 for each transfer, and a transfer that times out in the middle of the session ends it (`QUD write to \\.\COM5 timed
 out`); a reply can also arrive garbled, as zeros that edl-ng's XML reader refuses (`'.', hexadecimal value 0x00, is
-an invalid character`). Either way the loader keeps running but answers no new session, so the headset has to
-restart (hold the power button for about 10 s) before EDL mode works again. The installer says so, and asks for
-another USB port directly on the computer (no hub, dock or front panel) or another cable first; the next try goes on
-from where it stopped. A failed command's whole output goes into the backup's `edl.log`.
+an invalid character`). Either way the loader keeps running, and it is still sending the rest of the cut-off
+transfer: until that is read it takes no command, and a new session meets those bytes as its answers and fails the
+same way. The installer says so, and asks for another USB port directly on the computer (no hub, dock or front
+panel) or another cable first. The next try frees the loader itself: its first, read-only session sees the broken
+link, reads what the loader still sends (`qualcomm.unstick`: the COM port on Windows, libusb elsewhere; nothing is
+sent), restarts it into a fresh EDL session and goes on from where it stopped. Only a loader that still sends after
+5 minutes, or does not take the restart, needs a restart by hand (hold the power button for about 10 s). On the
+headset, a loader cut off in the middle of a readback was freed this way on Windows (about 3.7 KB read, then a
+normal restart); the installer's own run of it, with its restart into EDL, and Linux's are not tried on hardware
+yet. A failed command's whole output goes into the backup's `edl.log`.
 
 A manifest is written only when the dump has `abl`, `boot` and `devinfo` images, the GPT (`gpt_main*`), the
 rawprogram maps and, when requested, userdata; a failed dump has none and cannot be used later. `edl.log` keeps

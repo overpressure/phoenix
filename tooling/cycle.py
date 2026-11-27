@@ -81,6 +81,7 @@ class Headset:
         self.clock = clock
         self.edl_count = edl_count
         self.usb_reader: Callable[[], bool] | None = None  #: tests: what reads the EDL device's pipe
+        self.stale_reader: Callable[[], int] | None = None  #: tests: what reads a broken session's leftovers
 
     def until(self, name: str, seconds: float, operation: Callable[[], T]) -> T:
         """Retry @p operation until it succeeds, for at most @p seconds."""
@@ -160,24 +161,49 @@ class Headset:
     def identify(self) -> None:
         """Identify the EDL device in a read-only session before anything is written: only the configured headset.
 
-        A headset that still runs the Firehose loader of an earlier session names no serial: it is
-        restarted into a fresh EDL session (no storage written) and identified again. The sessions
-        that follow in the same step need no check: on Linux they would name no serial either.
+        A headset that still runs the Firehose loader of an earlier session names no serial, and one whose
+        earlier session broke mid-transfer (its link lost: edl-ng's writes time out, its answers arrive
+        garbled) answers nothing useful: either is restarted into a fresh EDL session (no storage written)
+        and identified again. The sessions that follow in the same step need no check: on Linux they would
+        name no serial either.
         """
-        output = self.edl("printgpt", log="edl-identify", timeout=120)
+        try:
+            output = self.edl("printgpt", log="edl-identify", timeout=120)
+        except RuntimeError as exc:
+            try:  # edl-ng's output went to its log; the error may only name it
+                logged = (self.folder / "edl-identify.log").read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                logged = ""
+            if not qualcomm.link_lost(qualcomm.failed_output(exc) + logged):
+                raise
+            print("   the EDL device's last session broke mid-transfer: freeing its loader", flush=True)
+            output = ""
         if not qualcomm.serial_shown(output) and not qualcomm.unanswered(output):
-            print(
-                "   the EDL device runs an earlier session's loader: restarting it into a fresh EDL session", flush=True
-            )
+            print("   restarting the EDL device into a fresh EDL session", flush=True)
             self.fresh_edl("edl-fresh")
             output = self.edl("printgpt", log="edl-identify-fresh", timeout=120)
         self.check_edl_serial(output)
 
     def fresh_edl(self, log: str) -> None:
-        """Restart the EDL device into a fresh EDL session (no storage written): its next session names its serial."""
-        self.run(
-            qualcomm.fresh_edl_argv(self.s.edl_program(), self.s.path("loader")), 60, log=self.folder / f"{log}.log"
-        )
+        """Restart the EDL device into a fresh EDL session (no storage written): its next session names its serial.
+
+        A loader that a broken session left mid-transfer takes no command until what it still sends is read
+        (qualcomm.unstick; overpressure before 1.12 only restarts it).
+        """
+        program, loader = self.s.edl_program(), self.s.path("loader")
+        unstick = getattr(qualcomm, "unstick", None)
+        if unstick is None:
+            self.run(qualcomm.fresh_edl_argv(program, loader), 60, log=self.folder / f"{log}.log")
+        else:
+            read = unstick(
+                program,
+                loader,
+                lambda argv, timeout: self.run(argv, timeout, log=self.folder / f"{log}.log"),
+                self.clock,
+                **({"read": self.stale_reader} if self.stale_reader is not None else {}),
+            )
+            if read:
+                print(f"   read {read} bytes the loader still sent", flush=True)
         self.drain()
         qualcomm.wait_fresh_edl(self.edl_count, self.clock)
         usbaccess.require(qualcomm.EDL_MODE, USB_MODES, self.clock)

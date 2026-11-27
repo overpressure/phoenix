@@ -338,6 +338,7 @@ class Plan:
         self.factory_reset = factory_reset
         self.edl_denied = edl_denied
         self.usb_reader: Callable[[], bool] | None = None  #: tests: what reads the EDL device's pipe
+        self.stale_reader: Callable[[], int] | None = None  #: tests: what reads a broken session's leftovers
         self.steps: dict[str, Step] = {step.key: step for step in headset.steps()}
 
     # -- helpers ------------------------------------------------------------------------------
@@ -686,9 +687,17 @@ class Plan:
         printgpt = qualcomm.edl_ng(settings.edl_program(), settings.path("loader"), "printgpt")
         table = ctx.output(printgpt, 180, check=False)
         if not qualcomm.serial_shown(table) and not qualcomm.unanswered(table):
-            # An earlier session's loader still runs (a resumed backup on Linux): a fresh EDL session names the serial.
+            # An earlier session's loader still runs (a resumed backup on Linux), or the session broke mid-transfer
+            # and its loader still sends the rest (a lost link): read that first, then a fresh EDL session names
+            # the serial.
             ctx.progress(None, "Restarting the headset into a fresh EDL session")
-            ctx.output(qualcomm.fresh_edl_argv(settings.edl_program(), settings.path("loader")), 60)
+            program, loader = settings.edl_program(), settings.path("loader")
+            unstick = getattr(qualcomm, "unstick", None)  # overpressure 1.12
+            if unstick is None:
+                ctx.output(qualcomm.fresh_edl_argv(program, loader), 60)
+            else:
+                read = {"read": self.stale_reader} if self.stale_reader is not None else {}
+                unstick(program, loader, lambda argv, timeout: ctx.output(argv, timeout), ctx.clock, **read)
             qualcomm.drain_until_gone(ctx.clock, reader=self.usb_reader)  # Linux: read its last message
             qualcomm.wait_fresh_edl(self.edl_count, ctx.clock)
             ctx.progress(None, "Reading the partition table")
