@@ -86,12 +86,12 @@ STALE_EDL_WHERE = (
     "keep the cable in, then start the installer again: it puts the headset into EDL mode afresh."
 )
 #: Where the headset is when the USB link broke in the middle of the backup: what it read stays. The port or the
-#: cable is almost always the cause, so the hint starts with them.
+#: cable is almost always the cause, so the hint starts with them. The next try frees the headset's EDL mode itself
+#: (Plan.backup: qualcomm.unstick); only when that fails does it ask for the power button.
 LINK_LOST_WHERE = (
     "Nothing was written to your headset. Plug the cable into another USB port, one directly on this computer "
-    "(not a hub, a dock or the front panel), or use another USB-C data cable. Then hold the power button for "
-    "about 10 s until the headset restarts into PICO OS, keep the cable in and start the installer again: the "
-    "backup goes on from where it stopped."
+    "(not a hub, a dock or the front panel), or use another USB-C data cable. Then start the installer again: it "
+    "frees the headset's EDL mode, and the backup goes on from where it stopped."
 )
 #: Where the headset is when this computer may not use it in EDL or fastboot mode.
 EDL_WHERE = (
@@ -697,7 +697,7 @@ class Plan:
                 ctx.output(qualcomm.fresh_edl_argv(program, loader), 60)
             else:
                 read = {"read": self.stale_reader} if self.stale_reader is not None else {}
-                unstick(program, loader, lambda argv, timeout: ctx.output(argv, timeout), ctx.clock, **read)
+                unstick(program, loader, ctx.output, ctx.clock, **read)
             qualcomm.drain_until_gone(ctx.clock, reader=self.usb_reader)  # Linux: read its last message
             qualcomm.wait_fresh_edl(self.edl_count, ctx.clock)
             ctx.progress(None, "Reading the partition table")
