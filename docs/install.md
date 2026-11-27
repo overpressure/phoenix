@@ -336,8 +336,8 @@ and `restore` ([`tooling/install.py`](../tooling/install.py): `Plan.stages`, `up
 ### The look at the headset
 
 The app asks for the headset first and looks at it without changing it (`Headset.assess`, headset interface
-1.11; [`tooling/look.py`](../tooling/look.py)), within a second in PICO OS and fastboot. In this order: the USB
-bus for EDL mode (enumeration only, no loader session); fastboot when the bus holds the headset in fastboot mode
+1.11; [`tooling/look.py`](../tooling/look.py)), within one and a half seconds. In this order: the USB bus for EDL
+mode (enumeration only, no loader session; without pyusb Windows' device list, ioreg or sysfs); fastboot when the bus holds the headset in fastboot mode
 (`oem device-info`: the engineering bootloader and its lock, or PICO's stock one); `adb devices` and, for a
 headset listed ready, its properties (build, `ro.oem.state`, `ro.boot.flash.locked`, model, memory) and battery;
 the headset's own system on its USB network (SSH's port, then its first process and where it started, over this
@@ -357,9 +357,10 @@ fastboot looks, as everywhere else.
 | EDL mode | Restore to stock |
 | On the bus, answering nothing | nothing: wait, or restart it |
 
-Verified on the headset: PICO OS 5.13.7, fastboot with PICO's stock bootloader, EDL mode, and the moments between
-them (nothing on USB, then on the bus but not answering yet while PICO OS starts). The installed and the
-maintenance system, the engineering bootloader in fastboot and PICO OS's recovery are covered by host tests.
+Verified on the headset: PICO OS 5.13.7, fastboot with PICO's stock bootloader, EDL mode, the maintenance and the
+installed system after an install from this computer, and the moments between them (nothing on USB, then on the
+bus but not answering yet while PICO OS starts). The engineering bootloader in fastboot, the headset's own system
+without this computer's key and PICO OS's recovery are covered by host tests.
 
 Every command that touches the headset first asks the disclaimer (y/n); `--accept-disclaimer` or
 `OVERPRESSURE_ACCEPT_DISCLAIMER=1` accepts it for unattended runs

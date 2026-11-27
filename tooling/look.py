@@ -2,12 +2,12 @@
 """The PICO 4 on USB, looked at without changing it (Headset.assess, headset interface 1.11).
 
 The quickest first, each bounded by seconds: the USB bus for EDL mode (enumeration only: an EDL loader's session
-would have to be ended by hand), fastboot when the bus holds the headset in fastboot mode (which bootloader, locked
-or not), PICO OS over adb (its build, the model, the bootloader's lock, the battery), and the headset's own system
-on its USB network (SSH's port, then its first process, over this computer's key). Where the bus cannot be read,
-fastboot is asked last. Nothing is
-written, restarted or started on the headset; on this computer adb's server may start, and on Linux it is stopped
-again before fastboot looks (cycle.Headset.release_adb). What fits each state is a workflow of the installer.
+would have to be ended by hand; without pyusb this system's own device listing), fastboot when the bus holds the
+headset in fastboot mode (which bootloader, locked or not), PICO OS over adb (its build, the model, the bootloader's
+lock, the battery), and the headset's own system on its USB network (SSH's port, then its first process, over this
+computer's key). Where the bus cannot be read, fastboot is asked last. Nothing is written, restarted or started on
+the headset; on this computer adb's server may start, and on Linux it is stopped again before fastboot looks
+(cycle.Headset.release_adb). What fits each state is a workflow of the installer.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from overpressure.api.v1 import headset as headsets
 from overpressure.api.v1 import install, ssh
 from overpressure.api.v1.headset import Found
 from overpressure.api.v1.process import run
-from overpressure.api.v1.qualcomm import usb_count
+from overpressure.api.v1.qualcomm import edl_devices, usb_count
 
 from . import device
 from .cycle import Headset as CycleHeadset
@@ -74,11 +74,15 @@ class Look:
     runner: Callable[..., str] = run
     port_open: Callable[[str, int, float], bool] | None = None
     bus: Callable[[int, int], int | None] = usb_count
+    edl_listing: Callable[[], int] = edl_devices  #: EDL devices by this system's own listing, where the bus is unread
     clock: Timing = time
 
     def found(self, modes: tuple[UsbMode, ...], edl: UsbMode) -> Found:
         """Return what runs on the headset, and the workflows that fit (tooling's keys: install, upgrade, ...)."""
-        if self.count(edl):
+        in_edl = self.count(edl)
+        if in_edl is None:  # without pyusb: this system's own listing (Get-PnpDevice, ioreg, sysfs)
+            in_edl = self.edl_listing()
+        if in_edl:
             return Found(headsets.EDL, "Emergency download mode", workflows=("restore",), note=EDL_WAY_OUT)
         fastboot = next((m for m in modes if m.name.startswith("fastboot")), None)
         in_fastboot = self.count(fastboot) if fastboot is not None else 0  # None: the bus cannot tell here

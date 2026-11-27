@@ -75,6 +75,7 @@ class LookTest(unittest.TestCase):
             runner=self.fakes.run,
             port_open=lambda _host, _port, _seconds: self.fakes.port,
             bus=self.fakes.count,
+            edl_listing=lambda: self.fakes.bus.get(EDL, 0),
             clock=Clock(),
         )
 
@@ -89,6 +90,13 @@ class LookTest(unittest.TestCase):
         found = self.found()
         self.assertEqual((found.state, found.workflows), (headsets.EDL, ("restore",)))
         self.assertEqual(self.fakes.ran, [])  # no loader, no tool: the bus only
+
+    def test_where_the_bus_cannot_be_read_edl_mode_is_seen_in_the_systems_own_listing(self):
+        self.look.bus = lambda _vendor, _product: None
+        self.fakes.bus[EDL] = 1
+        found = self.found()
+        self.assertEqual((found.state, found.workflows), (headsets.EDL, ("restore",)))
+        self.assertEqual(self.fakes.ran, [])
 
     def test_supported_pico_os_offers_the_install_with_its_facts(self):
         self.fakes.pico_os()
